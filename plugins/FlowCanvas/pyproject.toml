@@ -18,7 +18,7 @@ flowcanvas = "flowcanvas.plugin:get_plugin"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["flowcanvas"]
+include = ["flowcanvas*"]
 
 [tool.setuptools.package-data]
 flowcanvas = ["web/*"]

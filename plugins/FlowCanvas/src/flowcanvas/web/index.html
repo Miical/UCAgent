@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -10,13 +10,14 @@
   <script src="/static/share/ucagent-shell.js"></script>
   <script>
     try {
-      if (!localStorage.getItem('ucagent.theme')) UCAgentShell.applyTheme('light');
+      const theme=localStorage.getItem('flowcanvas.theme');
+      UCAgentShell.applyTheme(UCAgentShell.themes[theme]?theme:'light', false);
     } catch (_) { UCAgentShell.applyTheme('light', false); }
   </script>
 </head>
 <body>
   <nav class="activity-bar" aria-label="主导航">
-    <a class="brand-home" href="/" aria-label="UCAgent FlowCanvas" title="UCAgent FlowCanvas"><span class="uc-shell-brand-mark" aria-hidden="true">UC</span></a>
+    <a class="brand-home" href="/" aria-label="返回初始页面" title="返回初始页面"><span class="uc-shell-brand-mark" aria-hidden="true">UC</span></a>
     <div class="project-navigation" aria-label="页面导航">
       <button class="nav-button active" data-view="验证进度" aria-label="验证进度" aria-current="page" aria-controls="project-content" title="验证进度"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h16M8 15l4-5 4 2 4-7"/></svg><span>验证进度</span></button>
       <button class="nav-button" data-view="验证目标" aria-label="验证目标" aria-controls="project-content" title="验证目标"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg><span>验证目标</span></button>
@@ -35,18 +36,84 @@
       <div class="pane-body" id="project-content" role="region" aria-label="验证进度内容"></div>
     </section>
     <div class="splitter" role="separator" tabindex="0" aria-label="调整项目与对话宽度" aria-orientation="vertical" aria-valuemin="18" aria-valuemax="45" aria-valuenow="25" data-split="0"></div>
-    <section class="pane chat-pane" aria-labelledby="chat-heading">
-      <header class="pane-header"><h2 id="chat-heading">对话</h2><div class="chat-actions"><button class="session-select" disabled title="暂未接入对话">新对话 <span>⌄</span></button><button class="icon-button" aria-label="新建对话" disabled>＋</button></div></header>
-      <div class="pane-body conversation" aria-label="对话内容"></div>
-      <div class="composer"><textarea aria-label="消息输入" placeholder="输入消息…" disabled rows="2"></textarea><div class="composer-footer"><button class="icon-button" disabled aria-label="附加工作流">＋</button><button class="send-button" disabled aria-label="发送消息">↑</button></div></div>
+    <section class="pane chat-pane" aria-label="对话">
+      <header class="pane-header conversation-header">
+        <div class="model-picker session-picker">
+          <button id="session-toggle" class="model-trigger session-trigger" aria-label="切换对话" aria-haspopup="dialog" aria-expanded="false" aria-controls="session-popover"><span id="session-label">新对话</span><svg class="picker-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+          <section id="session-popover" class="model-popover session-popover" role="dialog" aria-label="选择对话" hidden>
+            <div class="picker-heading">对话</div>
+            <input id="session-search" class="session-search" type="search" placeholder="搜索对话…" aria-label="搜索对话">
+            <div class="session-tools"><button id="show-archived" type="button" aria-pressed="false">已归档</button><button id="export-chat" type="button">导出对话</button><button id="fold-steps" type="button">收起执行详情</button></div>
+            <div id="session-options" class="model-options" role="group" aria-label="已有对话"></div>
+          </section>
+          <select id="sessions" hidden aria-label="当前对话"></select>
+        </div>
+        <div class="conversation-tools" role="group" aria-label="对话操作"><button class="icon-button" id="new-chat" aria-label="新建对话" title="新建对话"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+          <button id="detail-toggle" class="icon-button detail-toggle" type="button" aria-label="收起右侧栏" title="收起右侧栏" aria-expanded="true" aria-controls="detail-content"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M15 4v16"/><path class="sidebar-fill" d="M15 5h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-3Z"/></svg></button>
+        </div>
+      </header>
+      <div id="connection" role="status" hidden></div>
+      <div class="pane-body conversation" id="conversation" aria-label="对话内容"><div class="chat-welcome"><div class="welcome-mark">✦</div><h3>从一个想法开始</h3><p>与助手一起梳理你的验证思路</p></div></div>
+      <div id="reconnect-notice" class="reconnect-notice" role="status" hidden>连接中断，正在自动重连；回复会在连接恢复后同步。</div>
+      <div id="chat-error" class="chat-error" role="alert" hidden></div>
+      <div id="message-queue" class="message-queue" hidden></div>
+      <div class="composer">
+        <div id="quote-draft" class="annotation-tray" hidden>
+          <button id="quote-toggle" type="button" aria-expanded="false">批注</button><button id="remove-quote" type="button" aria-label="移除全部批注">×</button>
+          <section id="quote-panel" class="annotation-panel" aria-label="批注列表" hidden></section>
+        </div>
+        <textarea id="message" aria-label="消息输入" placeholder="有问题，尽管问" rows="2" maxlength="64000"></textarea>
+        <div class="composer-footer">
+          <div class="composer-selectors composer-left">
+          <div class="model-picker">
+            <button id="attach-toggle" class="model-trigger attach-trigger" aria-label="添加工作流" aria-haspopup="dialog" aria-expanded="false" aria-controls="attach-popover"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg></button>
+            <section id="attach-popover" class="model-popover" role="dialog" aria-label="添加工作流" hidden><p class="session-empty">暂无可用工作流</p></section>
+          </div>
+          <div class="model-picker">
+            <button id="permission-toggle" class="model-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="permission-popover"><span id="permission-label">工作流执行</span><svg class="picker-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+            <section id="permission-popover" class="model-popover" role="dialog" aria-label="权限模式" hidden>
+              <div class="picker-heading">权限模式</div>
+              <div id="permission-options" class="model-options" role="group" aria-label="权限模式"></div>
+            </section>
+          </div>
+          </div>
+          <div class="composer-selectors composer-right">
+          <div class="model-picker">
+            <button id="backend-toggle" class="model-trigger" aria-label="选择后端" aria-haspopup="dialog" aria-expanded="false" aria-controls="backend-popover"><span id="backend-label">Codex</span><svg class="picker-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+            <section id="backend-popover" class="model-popover backend-popover" role="dialog" aria-label="选择后端" hidden>
+              <div class="picker-heading">选择后端</div>
+              <div class="model-options" role="group" aria-label="可用后端">
+                <button id="backend-codex" class="model-option" aria-pressed="true"><span>Codex</span><span class="model-check">✓</span></button>
+                <button class="model-option" disabled><span>OpenCode</span><span class="backend-unavailable">尚未接入</span></button>
+                <button class="model-option" disabled><span>LangChain</span><span class="backend-unavailable">尚未接入</span></button>
+              </div>
+            </section>
+          </div>
+          <div class="model-picker">
+            <button id="model-toggle" class="model-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="model-popover" disabled><span id="model-label">连接中…</span><span id="model-effort-badge" class="model-effort-badge" hidden></span><span id="model-speed-badge" class="model-speed-badge" hidden></span><svg class="picker-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+            <section id="model-popover" class="model-popover" role="dialog" aria-label="选择模型" hidden>
+              <div class="picker-heading">选择模型 <span>Codex</span></div>
+              <div id="model-options" class="model-options" role="group" aria-label="可用模型"></div>
+              <div class="model-effort-section">
+                <div class="picker-heading">推理强度</div><div id="effort-options" class="effort-options" role="group" aria-label="推理强度"></div>
+              </div>
+              <div class="model-speed-section">
+                <div class="picker-heading">响应速度</div><div id="speed-options" role="group" aria-label="速度档位"></div>
+                <p class="speed-note">加速档位会增加用量消耗，Ultrafast 消耗更高。</p>
+              </div>
+            </section>
+            <select id="model" aria-label="模型" hidden></select><select id="effort" aria-label="推理强度" hidden></select>
+          </div>
+
+          <button id="send" class="send-button" disabled aria-label="发送消息" title="发送消息">↑</button>
+          </div>
+        </div>
+      </div>
+
     </section>
     <div class="splitter" role="separator" tabindex="0" aria-label="调整对话与详情宽度" aria-orientation="vertical" aria-valuemin="40" aria-valuemax="80" aria-valuenow="70" data-split="1"></div>
-    <section class="pane detail-pane" aria-label="运行与详情">
-      <div class="pane-header tabs detail-tabs" role="tablist" aria-label="辅助视图">
-        <button id="tab-detail" role="tab" aria-selected="true" aria-controls="detail-content">详情</button>
-        <button id="tab-runs" role="tab" aria-selected="false" aria-controls="detail-content" tabindex="-1">运行</button>
-      </div>
-      <div class="pane-body" id="detail-content" role="tabpanel" aria-labelledby="tab-detail"></div>
+    <section class="pane detail-pane" aria-label="详情区域">
+      <div class="pane-body" id="detail-content"></div>
     </section>
   </main>
   <section class="settings-panel" id="settings-panel" aria-label="外观设置" hidden>
@@ -54,5 +121,6 @@
     <p>外观</p><div id="theme-actions"></div>
   </section>
   <script src="/assets/app.js"></script>
+  <script type="module" src="/assets/chat.js"></script>
 </body>
 </html>

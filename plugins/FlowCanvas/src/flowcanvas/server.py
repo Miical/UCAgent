@@ -1,22 +1,55 @@
 """Standalone web host for the FlowCanvas plugin, sharing UCAgent theme assets."""
 import argparse
+import asyncio
+from contextlib import asynccontextmanager
+import os
 from importlib.util import find_spec
 from pathlib import Path
 import time
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from .chat import ChatService, routes
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from . import __version__
 
 
-def create_app() -> FastAPI:
-    """Create an empty workspace without starting agents or loading projects."""
+def create_app(state_dir=None) -> FastAPI:
+    """Create the workspace and lazily connect the selected chat backend."""
     package = find_spec("ucagent")
     if package is None or not package.origin:
         raise RuntimeError("Install UCAgent before starting FlowCanvas")
     shared = Path(package.origin).parent / "server/static/share"
     web = Path(__file__).parent / "web"
-    app = FastAPI(title="FlowCanvas", docs_url=None, redoc_url=None, openapi_url=None)
+    service = ChatService(state_dir or os.environ.get('FLOWCANVAS_STATE_DIR',
+        Path.home() / '.local/share/ucagent-flowcanvas'))
+
+    @asynccontextmanager
+    async def lifespan(app):
+        """Own background persistence and backend process lifetime."""
+        service.flusher = asyncio.create_task(service.flush())
+        yield
+        await service.close()
+
+    app = FastAPI(title="FlowCanvas", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=['127.0.0.1', 'localhost', 'testserver'])
+
+    @app.middleware('http')
+    async def same_origin(request: Request, call_next):
+        """Reject cross-site requests to local chat and avoid caching plugin assets."""
+        origin = request.headers.get('origin')
+        if request.url.path.startswith('/api/chat') and (
+            (origin and origin != str(request.base_url).rstrip('/')) or
+            request.headers.get('sec-fetch-site') == 'cross-site'
+        ):
+            return JSONResponse({'detail': 'Cross-origin access denied'}, status_code=403)
+        response = await call_next(request)
+        if request.url.path.startswith(('/assets/', '/api/chat')):
+            response.headers['Cache-Control'] = 'no-store'
+        return response
+
+    app.include_router(routes(service))
     started = time.time()
     app.mount("/assets", StaticFiles(directory=web), name="flowcanvas-assets")
 
@@ -46,4 +79,4 @@ def main():
     parser.add_argument("--port", type=int, default=8810)
     options = parser.parse_args()
     import uvicorn
-    uvicorn.run(create_app(), host="127.0.0.1", port=options.port)
+    uvicorn.run(create_app(), host="127.0.0.1", port=options.port, timeout_graceful_shutdown=3)
