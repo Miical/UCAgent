@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UCAgent FlowCanvas</title>
+  <link rel="icon" href="/static/share/ucagent-favicon.svg">
+  <link rel="stylesheet" href="/static/share/ucagent-shell.css">
+  <link rel="stylesheet" href="/assets/app.css">
+  <script src="/static/share/ucagent-shell.js"></script>
+  <script>
+    try {
+      if (!localStorage.getItem('ucagent.theme')) UCAgentShell.applyTheme('light');
+    } catch (_) { UCAgentShell.applyTheme('light', false); }
+  </script>
+</head>
+<body>
+  <nav class="activity-bar" aria-label="主导航">
+    <a class="brand-home" href="/" aria-label="UCAgent FlowCanvas" title="UCAgent FlowCanvas"><span class="uc-shell-brand-mark" aria-hidden="true">UC</span></a>
+    <div class="project-navigation" aria-label="页面导航">
+      <button class="nav-button active" data-view="验证进度" aria-label="验证进度" aria-current="page" aria-controls="project-content" title="验证进度"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5m0 14h16M8 15l4-5 4 2 4-7"/></svg><span>验证进度</span></button>
+      <button class="nav-button" data-view="验证目标" aria-label="验证目标" aria-controls="project-content" title="验证目标"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/></svg><span>验证目标</span></button>
+      <button class="nav-button" data-view="测试用例" aria-label="测试用例" aria-controls="project-content" title="测试用例"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="15" height="17" rx="2"/><path d="M9 4V2h7v2M9 10l2 2 4-4M9 16h7"/></svg><span>测试用例</span></button>
+      <button class="nav-button" data-view="Bug 管理" aria-label="Bug 管理" aria-controls="project-content" title="Bug 管理"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="13" rx="5"/><path d="M9 7V5a3 3 0 0 1 6 0v2M3 9l4 2m10 0 4-2M3 15h4m10 0h4M4 21l4-3m8 0 4 3M12 8v12"/></svg><span>Bug 管理</span></button>
+    </div>
+    <div class="nav-bottom">
+      <button class="nav-button" id="settings-toggle" aria-label="设置" title="设置与主题" aria-expanded="false" aria-controls="settings-panel">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-.6 2.3-2 .9L4.2 5.5 2 9.3l1.8 1.6v2.2L2 14.7l2.2 3.8 2.2-.7 2 .9L9 21h6l.6-2.3 2-.9 2.2.7 2.2-3.8-1.8-1.6v-2.2L22 9.3l-2.2-3.8-2.2.7-2-.9L15 3Z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </div>
+  </nav>
+  <main class="workspace" aria-label="工作台">
+    <section class="pane project-pane" aria-labelledby="project-heading">
+      <header class="pane-header project-header"><span class="project-brand" aria-label="UCAgent FlowCanvas">UC<span class="brand-accent">Agent</span> FlowCanvas</span><h2 id="project-heading">验证进度</h2></header>
+      <div class="pane-body" id="project-content" role="region" aria-label="验证进度内容"></div>
+    </section>
+    <div class="splitter" role="separator" tabindex="0" aria-label="调整项目与对话宽度" aria-orientation="vertical" aria-valuemin="18" aria-valuemax="45" aria-valuenow="25" data-split="0"></div>
+    <section class="pane chat-pane" aria-labelledby="chat-heading">
+      <header class="pane-header"><h2 id="chat-heading">对话</h2><div class="chat-actions"><button class="session-select" disabled title="暂未接入对话">新对话 <span>⌄</span></button><button class="icon-button" aria-label="新建对话" disabled>＋</button></div></header>
+      <div class="pane-body conversation" aria-label="对话内容"></div>
+      <div class="composer"><textarea aria-label="消息输入" placeholder="输入消息…" disabled rows="2"></textarea><div class="composer-footer"><button class="icon-button" disabled aria-label="附加工作流">＋</button><button class="send-button" disabled aria-label="发送消息">↑</button></div></div>
+    </section>
+    <div class="splitter" role="separator" tabindex="0" aria-label="调整对话与详情宽度" aria-orientation="vertical" aria-valuemin="40" aria-valuemax="80" aria-valuenow="70" data-split="1"></div>
+    <section class="pane detail-pane" aria-label="运行与详情">
+      <div class="pane-header tabs detail-tabs" role="tablist" aria-label="辅助视图">
+        <button id="tab-detail" role="tab" aria-selected="true" aria-controls="detail-content">详情</button>
+        <button id="tab-runs" role="tab" aria-selected="false" aria-controls="detail-content" tabindex="-1">运行</button>
+      </div>
+      <div class="pane-body" id="detail-content" role="tabpanel" aria-labelledby="tab-detail"></div>
+    </section>
+  </main>
+  <section class="settings-panel" id="settings-panel" aria-label="外观设置" hidden>
+    <div class="settings-brand">UC<span class="brand-accent">Agent</span> FlowCanvas</div>
+    <p>外观</p><div id="theme-actions"></div>
+  </section>
+  <script src="/assets/app.js"></script>
+</body>
+</html>
