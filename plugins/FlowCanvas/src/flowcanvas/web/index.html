@@ -67,7 +67,7 @@
           <div class="composer-selectors composer-left">
           <div class="model-picker">
             <button id="attach-toggle" class="model-trigger attach-trigger" aria-label="添加工作流" aria-haspopup="dialog" aria-expanded="false" aria-controls="attach-popover"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg></button>
-            <section id="attach-popover" class="model-popover" role="dialog" aria-label="添加工作流" hidden><p class="session-empty">暂无可用工作流</p></section>
+            <section id="attach-popover" class="model-popover" role="dialog" aria-label="添加工作流" hidden><div class="picker-heading">工作流</div><div id="workflow-options" class="model-options"><p class="session-empty">加载中…</p></div></section>
           </div>
           <div class="model-picker">
             <button id="permission-toggle" class="model-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="permission-popover"><span id="permission-label">工作流执行</span><svg class="picker-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
@@ -76,6 +76,7 @@
               <div id="permission-options" class="model-options" role="group" aria-label="权限模式"></div>
             </section>
           </div>
+          <div id="attached-workflows" class="attached-workflows" aria-label="已附加工作流"></div>
           </div>
           <div class="composer-selectors composer-right">
           <div class="model-picker">

@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from .chat import ChatService, routes
+from .catalog import workflow_menu
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from . import __version__
@@ -48,6 +49,14 @@ def create_app(state_dir=None) -> FastAPI:
         if request.url.path.startswith(('/assets/', '/api/chat')):
             response.headers['Cache-Control'] = 'no-store'
         return response
+
+    @app.get('/api/chat/workflows')
+    def workflows():
+        """Return explicitly curated menu items without starting any model or agent."""
+        try:
+            return {'workflows': workflow_menu()}
+        except (ValueError, OSError):
+            raise HTTPException(503, 'Workflow catalog could not be loaded') from None
 
     app.include_router(routes(service))
     started = time.time()

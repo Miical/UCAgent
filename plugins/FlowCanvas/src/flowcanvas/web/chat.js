@@ -34,6 +34,22 @@ function paintQuote(){
 function saveQuote(){if(selected){if(quoteDraft.length)quotes.set(selected,quoteDraft);else quotes.delete(selected);}try{localStorage.setItem('flowcanvas.annotations',JSON.stringify(Object.fromEntries(quotes)));}catch{}}
 /** Serialize attachments only at the backend boundary. */
 function quoteText(){return quoteDraft.map((item,index)=>(index+1)+'. 所选文本：\n'+item.text+(item.comment?'\n评论：'+item.comment:'')).join('\n\n');}
+// UI-only attachments are kept separate from message payloads and execution permissions.
+const attachedWorkflows=new Map();
+try{for(const [id,items]of Object.entries(JSON.parse(localStorage.getItem('flowcanvas.workflowAttachments')||'{}')))if(Array.isArray(items))attachedWorkflows.set(id,items.filter(item=>typeof item.id==='string'&&typeof item.name==='string'));}catch{}
+/** Render removable workflow chips scoped to the selected conversation, without execution. */
+function paintAttachments(){
+  const host=$('attached-workflows');host.replaceChildren();
+  for(const item of attachedWorkflows.get(selected)||[]){
+    const card=document.createElement('div');card.className='workflow-chip';card.title=item.name+' · 仅附加展示，暂不执行';
+    const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.setAttribute('viewBox','0 0 20 20');icon.setAttribute('aria-hidden','true');const path=document.createElementNS(icon.namespaceURI,'path');path.setAttribute('d','M7 4h6M10 7v3M4 10h12M4 10v3M16 10v3M7 2h6v5H7ZM1.5 13h5v5h-5ZM13.5 13h5v5h-5Z');icon.append(path);
+    const name=document.createElement('span');name.textContent=item.name;
+    const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.ariaLabel='移除工作流 '+item.name;remove.title='移除';remove.onclick=()=>{attachedWorkflows.set(selected,(attachedWorkflows.get(selected)||[]).filter(row=>row.id!==item.id));saveAttachments();paintAttachments();};
+    card.append(icon,name,remove);host.append(card);
+  }
+}
+/** Save presentation state only; backend messages do not receive these attachments yet. */
+function saveAttachments(){try{localStorage.setItem('flowcanvas.workflowAttachments',JSON.stringify(Object.fromEntries(attachedWorkflows)));}catch{}}
 /** Show actionable API failures independently of generated message content. */
 function error(message){$('chat-error').textContent=message||'';$('chat-error').hidden=!message;}
 /** Keep send/stop state tied to the real backend turn. */
@@ -239,7 +255,7 @@ async function updateSession(row,changes){
 async function choose(id){
   const number=++switchNumber;
   saveDraft();saveQuote();
-  unsubscribe?.();selected=id;localStorage.setItem('flowcanvas.session',id);
+  unsubscribe?.();selected=id;paintAttachments();localStorage.setItem('flowcanvas.session',id);
   $('message').value=drafts.get(id)||'';quoteDraft=quotes.get(id)||[];paintQuote();resizeDraft();session=null;controls();$('reconnect-notice').hidden=true;
   const data=await request('/sessions/'+id);if(number!==switchNumber)return;
   render(data);modelSelection();$('sessions').value=id;paintSessions();
@@ -275,7 +291,7 @@ for(const kind of ['model','session','backend','permission','attach']){
   toggle.onclick=()=>{
     const open=popup.hidden;closePicker();popup.hidden=!open;
     toggle.setAttribute('aria-expanded',String(open));
-    if(open){if(kind==='session'){$('session-search').focus();list().catch(exc=>error(exc.message));}else (popup.querySelector('[aria-pressed="true"]')||toggle).focus();}
+    if(open){if(kind==='attach')loadWorkflowMenu();if(kind==='session'){$('session-search').focus();list().catch(exc=>error(exc.message));}else (popup.querySelector('[aria-pressed="true"]')||toggle).focus();}
   };
   popup.addEventListener('keydown',event=>{
     if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closePicker(true,kind);}
@@ -288,6 +304,22 @@ for(const kind of ['model','session','backend','permission','attach']){
   popup.addEventListener('focusout',event=>{if(event.relatedTarget&&!event.relatedTarget.closest('.model-picker'))closePicker();});
 }
 document.addEventListener('click',event=>{if(!event.target.closest('.model-picker'))closePicker();});
+/** Read the curated menu; unsupported launch actions remain explicitly unavailable. */
+async function loadWorkflowMenu(){
+  const host=$('workflow-options');host.replaceChildren();
+  try{
+    const {workflows}=await request('/workflows');
+    for(const item of workflows){
+      const row=document.createElement('button');row.type='button';row.className='workflow-menu-item';row.disabled=!item.registered||!selected;row.setAttribute('aria-pressed',String((attachedWorkflows.get(selected)||[]).some(entry=>entry.id===item.id)));
+      const name=document.createElement('div');name.className='workflow-menu-name';name.textContent=item.name;
+      const description=document.createElement('p');description.textContent=item.description;
+      const status=document.createElement('small');status.textContent=!item.registered?'工作流尚未注册':'点击附加到对话 · 暂不执行';
+      row.onclick=()=>{const items=attachedWorkflows.get(selected)||[];if(!items.some(entry=>entry.id===item.id))attachedWorkflows.set(selected,[...items,{id:item.id,name:item.name}]);saveAttachments();paintAttachments();closePicker(true,'attach');};
+      row.append(name,description,status);host.append(row);
+    }
+    if(!workflows.length){const empty=document.createElement('p');empty.className='session-empty';empty.textContent='暂无可用工作流';host.append(empty);}
+  }catch{const notice=document.createElement('p');notice.className='session-empty';notice.textContent='工作流列表加载失败，请重新打开菜单重试。';host.append(notice);}
+}
 /** Load sessions independently of backend readiness so offline history remains readable. */
 async function init(){
   try{

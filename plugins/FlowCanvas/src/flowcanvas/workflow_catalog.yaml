@@ -1,0 +1,7 @@
+# Curated menu entries, displayed in file order. Execution lives in workflow YAML.
+workflows:
+  - id: rtl-summary
+    name: RTL 功能简述
+    description: 阅读 RTL，简要总结设计功能
+    workflow: flowcanvas:rtl-summary
+    enabled: true

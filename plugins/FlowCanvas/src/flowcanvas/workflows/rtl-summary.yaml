@@ -1,0 +1,55 @@
+# Read one RTL source and produce a brief functional description.
+template: null
+template_overwrite:
+  RTL_FILE: "{DUT}/{DUT}.v"
+
+guide_doc:
+  enable: false
+skill:
+  use_skill: false
+  general_skill_list: []
+
+mission:
+  name: "RTL 功能简述"
+  prompt:
+    system: |
+      你的任务是阅读 RTL，并用中文一句话说明它实现的功能。
+      优先使用后端原生的文件读写工具；没有内置读写工具时，使用 ReadTextFile 和 EditTextFile。
+      阅读 {RTL_FILE}，以源码为依据生成简述，保存到 {OUT}/rtl_summary.md，并在回复中展示。
+      用 SetCurrentStageJournal 记录输入与产物，调用 Complete，成功后调用 Exit 退出。
+    tips:
+      always: []
+      random: []
+
+tools:
+  selected_tools:
+    - ReadTextFile
+    - EditTextFile
+    - SetCurrentStageJournal
+    - Complete
+    - Exit
+
+un_write_dirs:
+  - "{DUT}"
+write_dirs:
+  - "{OUT}/rtl_summary.md"
+
+stage:
+  - name: rtl_summary
+    desc: "阅读 RTL 并简述功能"
+    task: []
+    reference_files: []
+    output_files:
+      - "{OUT}/rtl_summary.md"
+    need_human_check: false
+    need_fail_llm_suggestion: false
+    need_pass_llm_suggestion: false
+    checker:
+      - name: rtl_input_exists
+        clss: OrginFileMustExistChecker
+        args:
+          files: ["{RTL_FILE}"]
+      - name: summary_file_check
+        clss: UnityChipCheckerMarkdownFileFormat
+        args:
+          markdown_file_list: "{OUT}/rtl_summary.md"

@@ -72,3 +72,32 @@ FlowCanvas 的会话展示记录默认保存在 `~/.local/share/ucagent-flowcanv
 右栏可通过对话标题旁按钮完全收起，左栏通过当前导航图标收起，均支持缓动过渡。
 对话最小宽度为 500px。Logo 返回验证进度与空白对话，保留分栏状态及比例。
 Light 为默认主题，主题选择由 FlowCanvas 独立保存。
+
+
+## RTL 功能简述工作流
+
+`flowcanvas:rtl-summary` 从实验版迁入，配置位于 `src/flowcanvas/workflows/rtl-summary.yaml`。
+单阶段读取 RTL、生成一句中文功能摘要，写入 `{OUT}/rtl_summary.md`，记录阶段日志并验收退出。
+默认输入为 `{DUT}/{DUT}.v`；使用原生文件工具，后端没有原生读写工具时回退到 UCAgent 文件工具。
+不要求登记已读文件，不启用指导文档、Skill 或额外阶段。
+
+安装插件后，通过 UCAgent 启动（路径按实际项目替换）：
+
+```bash
+python -m pip install -e ./plugins/FlowCanvas
+ucagent /absolute/path/to/workspace MyModule \
+  --plugin flowcanvas --plugin-workflow flowcanvas:rtl-summary \
+  --backend codex --output summary --loop --exit-on-completion
+```
+
+输入文件为 `/absolute/path/to/workspace/MyModule/MyModule.v`，结果在该工作区的
+`summary/rtl_summary.md`。本次迁入注册和打包配置；网页“＋”的工作流启动入口尚未接入。
+
+
+## 维护＋号菜单
+
+编辑插件内 `src/flowcanvas/workflow_catalog.yaml`，按文件顺序展示工作流。
+每项包含 `id`、`name`、`description`、`workflow` 和 `enabled`；`id` 必须唯一，
+`workflow` 引用注册名（如 `flowcanvas:rtl-summary`），`enabled: false` 隐藏该项。
+执行逻辑仍在 `workflows/*.yaml`，菜单配置只负责展示。增加流程时先注册，再加入清单。
+后端 `/api/chat/workflows` 读取清单，前端打开＋号时刷新列表。当前仅展示，尚未接通启动。

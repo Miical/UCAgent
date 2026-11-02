@@ -21,4 +21,4 @@ where = ["src"]
 include = ["flowcanvas*"]
 
 [tool.setuptools.package-data]
-flowcanvas = ["web/*"]
+flowcanvas = ["web/*", "workflows/*.yaml", "workflow_catalog.yaml"]

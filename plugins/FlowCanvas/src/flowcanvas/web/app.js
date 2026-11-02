@@ -31,20 +31,28 @@ for(const group of document.querySelectorAll('[role="tablist"]')){
 }
 const workspace=document.querySelector('.workspace');
 let widths=[25,45,30];
-try{const stored=JSON.parse(localStorage.getItem('flowcanvas.layout'));if(Array.isArray(stored)&&stored.length===3&&stored.every(v=>Number.isFinite(v)&&v>=15)&&Math.abs(stored.reduce((a,b)=>a+b,0)-100)<.01)widths=stored;}catch(_){}
+try{const stored=JSON.parse(localStorage.getItem('flowcanvas.layout'));if(Array.isArray(stored)&&stored.length===3&&stored.every(v=>Number.isFinite(v)&&v>0)){const total=stored.reduce((a,b)=>a+b,0);if(Number.isFinite(total))widths=stored.map(v=>v/total*100);}}catch(_){}
 function paint(){['project','chat','detail'].forEach((name,i)=>workspace.style.setProperty('--'+name,widths[i]+'fr'));document.querySelectorAll('.splitter').forEach((el,i)=>el.setAttribute('aria-valuenow',String(Math.round(i?widths[0]+widths[1]:widths[0]))));}
-function save(){try{localStorage.setItem('flowcanvas.layout',JSON.stringify(widths));}catch(_){}}
-function move(index,change,initial){if(workspace.classList.contains('project-collapsed')){if(index!==1)return;const available=workspace.clientWidth-7;const total=initial[1]+initial[2];const value=Math.max(500/available*100,Math.min(total-190/available*100,initial[1]+change));workspace.style.setProperty('--left-hidden-chat',value+'fr');workspace.style.setProperty('--left-hidden-detail',(total-value)+'fr');return;}if(workspace.classList.contains('detail-collapsed')){const total=initial[0]+initial[1];const available=workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14);const value=Math.max(230/available*100,Math.min(total-500/available*100,initial[0]+change));workspace.style.setProperty('--collapsed-project',value+'fr');workspace.style.setProperty('--collapsed-chat',(total-value)+'fr');return;}const available=workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14);const minimum=[230,500,190].map(value=>value/available*100);const sum=initial[index]+initial[index+1];const value=Math.max(minimum[index],Math.min(sum-minimum[index+1],initial[index]+change));widths=[...initial];widths[index]=value;widths[index+1]=sum-value;paint();}
+const collapsedKeys=['--collapsed-project','--collapsed-chat','--left-hidden-chat','--left-hidden-detail'];
+try{const saved=JSON.parse(localStorage.getItem('flowcanvas.collapsedWidths')||'{}');for(const key of collapsedKeys){const value=saved[key];if(typeof value==='number'&&Number.isFinite(value)&&value>0)workspace.style.setProperty(key,value+'fr');}}catch{}
+/** Persist expanded and collapsed layouts independently so either view survives reload. */
+function save(){try{localStorage.setItem('flowcanvas.layout',JSON.stringify(widths));const values={};for(const key of collapsedKeys){const value=parseFloat(workspace.style.getPropertyValue(key));if(Number.isFinite(value)&&value>0)values[key]=value;}localStorage.setItem('flowcanvas.collapsedWidths',JSON.stringify(values));}catch(_){}}
+function move(index,change,initial){if(workspace.classList.contains('project-collapsed')){if(index!==1)return;const available=workspace.clientWidth-7;const total=initial[1]+initial[2];const value=Math.max(500/available*100,Math.min(total-190/available*100,initial[1]+change));workspace.style.setProperty('--left-hidden-chat',value+'fr');workspace.style.setProperty('--left-hidden-detail',(total-value)+'fr');return;}if(workspace.classList.contains('detail-collapsed')){const total=initial[0]+initial[1];const available=workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14);const value=Math.max(230/available*100,Math.min(total-500/available*100,initial[0]+change));workspace.style.setProperty('--project-track',(value/100*available)+'px');workspace.style.setProperty('--collapsed-project',value+'fr');workspace.style.setProperty('--collapsed-chat',(total-value)+'fr');return;}const available=workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14);const minimum=[230,500,190].map(value=>value/available*100);const sum=initial[index]+initial[index+1];const value=Math.max(minimum[index],Math.min(sum-minimum[index+1],initial[index]+change));widths=[...initial];widths[index]=value;widths[index+1]=sum-value;workspace.style.setProperty('--project-track',(widths[0]/100*available)+'px');paint();}
 for(const splitter of document.querySelectorAll('.splitter')){
   const index=Number(splitter.dataset.split);
   splitter.onpointerdown=event=>{if(event.button!==0)return;event.preventDefault();splitter.setPointerCapture(event.pointerId);const available=workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14);const initial=[...workspace.querySelectorAll(':scope > .pane')].map(pane=>pane.getBoundingClientRect().width/available*100),x=event.clientX;document.body.classList.add('resizing');splitter.onpointermove=e=>move(index,(e.clientX-x)/(workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14))*100,initial);const finish=()=>{splitter.onpointermove=null;document.body.classList.remove('resizing');save();};splitter.onpointerup=finish;splitter.onpointercancel=finish;splitter.onlostpointercapture=finish;};
   splitter.onkeydown=event=>{if(['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();const initial=[...workspace.querySelectorAll(':scope > .pane')].map(pane=>pane.getBoundingClientRect().width/(workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14))*100);move(index,event.key==='ArrowLeft'?-1:1,initial);save();}};
-  splitter.ondblclick=()=>{widths=[25,45,30];paint();save();};
+  splitter.ondblclick=()=>{workspace.style.removeProperty('--project-track');widths=[25,45,30];for(const key of collapsedKeys)workspace.style.removeProperty(key);paint();save();};
 }
 paint();
 
 /** Toggle the detail pane while preserving the expanded column proportions. */
 function toggleDetails(collapsed){
+  // Preserve the project pane when only the detail pane is changing.
+  if(!workspace.classList.contains('project-collapsed')){
+    const width=document.querySelector('.project-pane').getBoundingClientRect().width;
+    workspace.style.setProperty('--project-track',width+'px');
+  }
   workspace.classList.toggle('detail-collapsed',collapsed);
   document.querySelector('.detail-pane').inert=collapsed;
   document.querySelector('.splitter[data-split="1"]').tabIndex=collapsed?-1:0;
@@ -58,7 +66,7 @@ document.getElementById('detail-toggle').onclick=()=>{
   toggleDetails(!workspace.classList.contains('detail-collapsed'));
   detailMotionTimer=setTimeout(()=>workspace.classList.remove('detail-motion'),500);
 };
-try{toggleDetails(localStorage.getItem('flowcanvas.detailCollapsed')==='true');}catch{}
+try{if(localStorage.getItem('flowcanvas.detailCollapsed')==='true')toggleDetails(true);}catch{}
 
 /** Collapse the project column from its active navigation icon, keeping navigation visible. */
 let projectMotionTimer;
