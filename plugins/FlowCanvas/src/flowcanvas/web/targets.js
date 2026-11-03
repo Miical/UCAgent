@@ -1,10 +1,12 @@
 /* Verification goals are stable records; source scans only verify their bindings. */
-(()=>{
+function mountDefinitionPanel({view,endpoint,caseMode=false}){
+  const panelView=view;
   const host=document.getElementById('project-content');
   let project=null,data=null,panel=null,active=false,query='',busy=false,searchExpanded=true,selectedTarget=null;
   const opened=new Set();
   const labels={planned:'待实现',bound:'已绑定',changed:'待核对',missing:'绑定失效',conflict:'绑定冲突',unverified:'无法校验'};
-  const kinds={group:['FG','功能组'],point:['FP','功能点'],testpoint:['TP','测试点']};
+  const kinds=caseMode?{case:['TC','测试用例']}:{group:['FG','功能组'],point:['FP','功能点'],testpoint:['TP','测试点']};
+  const rootKind=caseMode?'case':'group';
   function el(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;}
   function button(text,fn,cls=''){const n=el('button',cls,text);n.type='button';n.onclick=fn;return n;}
   function smallAction(label,pathData,callback){
@@ -12,7 +14,7 @@
     const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
     const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',pathData);svg.append(path);b.append(svg);return b;
   }
-  async function api(request){const url='/api/chat/projects/'+encodeURIComponent(project.id)+'/targets';const response=await fetch(url,request?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)}:{});const body=await response.json();if(!response.ok)throw Error(typeof body.detail==='string'?body.detail:JSON.stringify(body.detail));return body;}
+  async function api(request){const url='/api/chat/projects/'+encodeURIComponent(project.id)+'/'+endpoint;const response=await fetch(url,request?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)}:{});const body=await response.json();if(!response.ok)throw Error(typeof body.detail==='string'?body.detail:JSON.stringify(body.detail));return body;}
   function fail(error){panel.querySelector('.targets-error').textContent=error.message;}
   async function refresh(){if(busy)return;busy=true;try{panel.querySelector('.targets-error').textContent='';const first=!data;data=await api();if(first)for(const n of data.targets)if(n.kind==='group')opened.add(n.id);render();}catch(e){fail(e);}finally{busy=false;}}
   function modal(title){const dialog=el('dialog','targets-dialog');const heading=el('header');heading.append(el('strong','',title),button('×',()=>dialog.close(),'targets-close'));const content=el('div','targets-dialog-content');dialog.append(heading,content);document.body.append(dialog);dialog.addEventListener('close',()=>dialog.remove());dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});dialog.showModal();return {dialog,content};}
@@ -35,7 +37,7 @@
     }catch(e){content.textContent=e.message;}
   }
 
-  function edit(node=null,kind='group',parent=''){
+  function edit(node=null,kind=rootKind,parent=''){
     if(!data)return;
     const {dialog,content}=modal(node?'编辑'+kinds[node.kind][1]:'新建'+kinds[kind][1]);
     const name=field(content,'名称',node?.name||'');const desc=field(content,'说明',node?.description||'',true);
@@ -101,7 +103,15 @@
         }
       };
       header.onclick=event=>{if(!event.target.closest('button'))head.click();};
-      const controls=el('div','target-actions target-header-actions');controls.append(smallAction('编辑','m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z',()=>edit(node)));if(node.kind!=='testpoint')controls.append(smallAction('添加'+(node.kind==='group'?'功能点':'测试点'),'M12 5v14M5 12h14',()=>edit(null,node.kind==='group'?'point':'testpoint',node.id)));
+      const controls=el('div','target-actions target-header-actions');controls.append(smallAction('编辑','m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z',()=>edit(node)));if(!caseMode&&node.kind!=='testpoint')controls.append(smallAction('添加'+(node.kind==='group'?'功能点':'测试点'),'M12 5v14M5 12h14',()=>edit(null,node.kind==='group'?'point':'testpoint',node.id)));
+      if(caseMode){
+        const run=smallAction('运行测试用例','m8 5 11 7-11 7Z',async()=>{run.disabled=true;try{
+          const response=await fetch('/api/chat/projects/'+encodeURIComponent(project.id)+'/test-runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:node.id})});
+          const result=await response.json();if(!response.ok)throw Error(result.detail||'启动失败');
+          document.dispatchEvent(new CustomEvent('flowcanvas-test-run',{detail:{project,run:result}}));
+        }catch(e){fail(e);}finally{run.disabled=!data.runner;}});
+        run.disabled=!data.runner;if(!data.runner)run.title='请让 AI 配置项目运行模板';controls.append(run);
+      }
       const links=el('div','target-title-sources');
       for(const binding of report.bindings){
         const label=binding.file.split('/').at(-1)+(binding.line?':'+binding.line+'–'+binding.end_line:'');
@@ -119,21 +129,23 @@
       }else if(children.length){head.title=children.length+' 个子目标';}
       return wrapper;
     }
-    for(const group of data.targets.filter(n=>n.kind==='group'&&visible.has(n.id)))list.append(card(group,0));
-    if(!list.children.length){const empty=el('div','targets-empty');empty.append(el('strong','',query?'没有匹配的验证目标':'从验证目标开始'),el('p','targets-muted','功能组 → 功能点 → 测试点。可以先规划，再绑定实现代码。'));if(!query)empty.append(button('创建功能组',()=>edit(), 'targets-primary'),button('导入已有定义',importer));list.append(empty);}
+    for(const group of data.targets.filter(n=>n.kind===rootKind&&visible.has(n.id)))list.append(card(group,0));
+    if(!list.children.length){const empty=el('div','targets-empty');empty.append(el('strong','',query?'没有匹配的'+view:'从'+view+'开始'),el('p','targets-muted',caseMode?'让 AI 检查项目并导入可独立运行的测试用例。':'功能组 → 功能点 → 测试点。可以先规划，再绑定实现代码。'));if(!query)empty.append(button(caseMode?'创建测试用例':'创建功能组',()=>edit(), 'targets-primary'),...(caseMode?[]:[button('导入已有定义',importer)]));list.append(empty);}
     const diagnostics=panel.querySelector('.targets-diagnostics');diagnostics.replaceChildren();for(const [file,error]of Object.entries(data.errors)){const d=el('details');d.append(el('summary','',file+' · 无法校验'),el('pre','',error));diagnostics.append(d);}
   }
-  function show(view){active=view==='验证目标';if(panel){panel.hidden=!active;if(active)refresh();}}
+  function show(view){active=view===panelView;if(panel){panel.hidden=!active;if(active)refresh();}}
   document.addEventListener('flowcanvas-view',e=>show(e.detail));
   // Watch published metadata only; never scan source files on a timer.
   let checking=false;
-  setInterval(async()=>{if(!active||!data||busy||checking||document.hidden)return;checking=true;try{const response=await fetch('/api/chat/projects/'+encodeURIComponent(project.id)+'/targets/revision');if(response.ok&&(await response.json()).revision!==data.revision)await refresh();}catch{}finally{checking=false;}},3000);
+  setInterval(async()=>{if(!active||!data||busy||checking||document.hidden)return;checking=true;try{const response=await fetch('/api/chat/projects/'+encodeURIComponent(project.id)+'/'+endpoint+'/revision');if(response.ok&&(await response.json()).revision!==data.revision)await refresh();}catch{}finally{checking=false;}},3000);
   fetch('/api/chat/projects').then(r=>r.json()).then(state=>{
     project=state.current;if(!project)return;panel=el('section','targets-panel');panel.hidden=true;
-    const toolbar=el('div','targets-toolbar');const search=el('input','targets-search');search.placeholder='筛选验证目标…  /';search.setAttribute('aria-label','搜索验证目标');search.oninput=()=>{query=search.value.trim().toLowerCase();searchExpanded=true;if(data)render();};
+    const toolbar=el('div','targets-toolbar');const search=el('input','targets-search');search.placeholder='筛选'+view+'…  /';search.setAttribute('aria-label','搜索'+view);search.oninput=()=>{query=search.value.trim().toLowerCase();searchExpanded=true;if(data)render();};
     search.onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();search.value='';query='';if(data)render();}else if(event.key==='ArrowDown'){event.preventDefault();panel.querySelector('.target-card-head')?.focus();}};
     document.addEventListener('keydown',event=>{if(active&&event.key==='/'&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.target.closest('input,textarea,select,[contenteditable="true"],dialog')){event.preventDefault();search.focus();}});
     toolbar.append(search);
     panel.append(toolbar,el('div','targets-summary'),el('p','targets-error'),el('div','targets-diagnostics'),el('div','targets-tree'));host.append(panel);show(document.getElementById('project-heading').textContent);
   }).catch(()=>{});
-})();
+}
+mountDefinitionPanel({view:'验证目标',endpoint:'targets'});
+mountDefinitionPanel({view:'测试用例',endpoint:'testcases',caseMode:true});

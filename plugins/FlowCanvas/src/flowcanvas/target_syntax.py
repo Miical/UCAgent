@@ -51,7 +51,8 @@ def inventory(path):
         # macros and unknown directives produce errors rather than fabricated nodes.
         options.predefines = ['uvm_component_utils(T)=', 'uvm_object_utils(T)=',
             'uvm_fatal(ID,MSG)=;', 'uvm_error(ID,MSG)=;', 'uvm_warning(ID,MSG)=;',
-            'uvm_info(ID,MSG,V)=;']
+            'uvm_info(ID,MSG,V)=;', 'uvm_do_with(OBJ,CONSTRAINTS)=;',
+            'uvm_do(OBJ)=;', 'uvm_create(OBJ)=;', 'uvm_send(OBJ)=;']
         tree = SyntaxTree.fromFile(str(path), slang.SourceManager(), slang.Bag([options]))
         sm = tree.sourceManager
         errors = [d for d in tree.diagnostics if d.isError()]
@@ -76,6 +77,7 @@ def inventory(path):
                 name = str(getattr(node, 'expr', '')).strip() or kind
             keyword = str(getattr(node, 'keyword', '')).strip()
             rows.append(dict(name=name, kind=kind, start=start, end=end,
+                             base=re.sub(r'^extends\s+', '', str(getattr(node, 'extendsClause', '') or '').strip()).split('#')[0].strip(),
                              excluded=keyword in {'ignore_bins', 'illegal_bins'}, bin_type=keyword))
         tree.root.visit(visit)
         # Only line comments outside strings/block comments can carry IDs.

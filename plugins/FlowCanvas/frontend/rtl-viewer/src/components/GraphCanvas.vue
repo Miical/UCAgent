@@ -1,5 +1,6 @@
 <template>
   <main class="graph-canvas" ref="canvasEl">
+    <div class="canvas-control-bar">
     <div class="canvas-tabs">
       <button
         type="button"
@@ -46,10 +47,8 @@
       </nav>
     </div>
     <div class="graph-toolbar">
-      <button type="button" @click="zoomIn">+</button>
-      <button type="button" @click="zoomOut">−</button>
-      <button type="button" @click="fitToWindow">Fit</button>
-      <button type="button" @click="resetView">Reset</button>
+      <button type="button" @click="fitToWindow">Reset</button>
+    </div>
     </div>
     <div class="svg-host" ref="svgHostEl"></div>
     <!-- Diagnostics badges overlaid on the canvas. Position-only
@@ -1171,7 +1170,6 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-2);
 }
 .svg-host {
-  /* Reserve the bottom toolbar strip so Fit keeps the drawing clear of controls. */
   width: 100%;
   height: calc(100% - 3rem);
   margin-bottom: 3rem;
@@ -1367,4 +1365,52 @@ onBeforeUnmount(() => {
   fill: none;
   stroke: var(--fg-faint);
 }
+
+
+/* Dedicated compact footer, separated from the drawing surface. */
+.canvas-control-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 8px;
+  box-sizing: border-box;
+  background: #fff;
+  border-top: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.canvas-control-bar .canvas-tabs,
+.canvas-control-bar .graph-toolbar {
+  position: static;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.canvas-control-bar .graph-toolbar { margin-left: auto; }
+.canvas-control-bar button {
+  font-size: 10px;
+  line-height: 16px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #fff;
+  color: #536171;
+  border-color: #dce2e8;
+  white-space: nowrap;
+}
+.canvas-control-bar button:hover { background: #f3f5f7; }
+.canvas-control-bar .canvas-tab.active {
+  background: #edf3ff;
+  color: #245bd6;
+  border-color: #c5d6fa;
+}
+.canvas-control-bar .scope-breadcrumb { font-size: 10px; color: #657184; }
+.svg-host { height: calc(100% - 32px); margin-bottom: 32px; }
+
 </style>

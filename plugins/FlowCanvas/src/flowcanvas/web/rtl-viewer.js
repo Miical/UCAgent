@@ -9,7 +9,7 @@
     const url='/api/chat/projects/'+encodeURIComponent(project.id)+'/rtl-view';
     try{
       const response=await fetch(url);const payload=await response.json();if(!response.ok)throw Error(payload.detail||'RTL 解析失败');
-      frame.src='/rtl-viewer/?view='+encodeURIComponent(url);frame.hidden=false;status.hidden=true;
+      frame.src='/rtl-viewer/?view='+encodeURIComponent(url)+'&reload='+Date.now();frame.hidden=false;status.hidden=true;
     }catch(e){status.textContent=e.message;frame.hidden=true;}finally{loading=false;}
   }
   function show(view){

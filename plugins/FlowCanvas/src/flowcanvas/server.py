@@ -26,11 +26,15 @@ def create_app(state_dir=None) -> FastAPI:
     service = ChatService(state_dir or os.environ.get('FLOWCANVAS_STATE_DIR',
         Path.home() / '.local/share/ucagent-flowcanvas'))
 
+    from .test_runner import TestRuns, routes as test_run_routes
+    test_runs = TestRuns()
+
     @asynccontextmanager
     async def lifespan(app):
         """Own background persistence and backend process lifetime."""
         service.flusher = asyncio.create_task(service.flush())
         yield
+        await test_runs.close()
         await service.close()
 
     app = FastAPI(title="FlowCanvas", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
@@ -46,7 +50,7 @@ def create_app(state_dir=None) -> FastAPI:
         ):
             return JSONResponse({'detail': 'Cross-origin access denied'}, status_code=403)
         response = await call_next(request)
-        if request.url.path.startswith(('/assets/', '/api/chat')):
+        if request.url.path.startswith(('/assets/', '/api/chat', '/rtl-viewer/')):
             response.headers['Cache-Control'] = 'no-store'
         return response
 
@@ -64,6 +68,9 @@ def create_app(state_dir=None) -> FastAPI:
     app.include_router(viewer_routes(service))
     from .targets import routes as target_routes
     app.include_router(target_routes(service.projects))
+    from .testcases import routes as testcase_routes
+    app.include_router(testcase_routes(service.projects))
+    app.include_router(test_run_routes(service.projects,test_runs))
     bundle = web / 'rtl-viewer'
     if (bundle / 'index.html').is_file():
         app.mount('/rtl-viewer', StaticFiles(directory=bundle, html=True), name='rtl-viewer')

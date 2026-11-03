@@ -742,15 +742,11 @@ export const useViewerStore = defineStore('viewer', {
       this.errorMeta = null
       this.selection = null
       this.selectedEdge = null
-      // Scope state is per-graph. Carrying ``rootInstancePath`` /
-      // ``flowScope`` across a model switch (or any view.json
-      // reload) leaves the canvas filtering for a path that doesn't
-      // exist in the new graph — the hier view drops the breadcrumb
-      // and renders empty, and the flow view shows
-      // ``scope X not in graph``. Reset both so the new model
-      // boots at its own top.
-      this.rootInstancePath = null
-      this.flowScope = null
+      // Open each newly loaded design at its own top-level instance.
+      const top = graph.nodes.some(node => node.id === graph.top) ? graph.top : null
+      this.rootInstancePath = top
+      this.flowScope = top
+      this.selection = top
       // Collapse state is per-graph for the same reason: an instance
       // path from the previous design either doesn't exist here or —
       // worse — exists and names something else.

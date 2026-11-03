@@ -822,3 +822,34 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 .targets-toolbar{flex-shrink:0}
 .targets-tree{flex:1;background:var(--surface);margin:0 -12px;padding:8px 12px 28px}
 :root[data-theme="light"] .targets-tree{background:#fff}
+
+/* Output and workflow are separate detail pages, including their headers. */
+.detail-pane.show-test-output > .workflow-task-heading,
+.detail-pane.show-test-output > #detail-content,
+.workflow-task-heading[hidden],#detail-content[hidden]{display:none!important}
+.test-output-panel{display:flex;flex-direction:column;gap:0;min-height:0;overflow:hidden;padding:0 14px 14px}
+.test-output-panel[hidden],.test-output-panel [hidden]{display:none!important}
+.output-run-tabs{display:flex;flex-shrink:0;gap:4px;overflow-x:auto;scrollbar-width:thin;padding:4px 0 9px;border-bottom:1px solid var(--border)}
+.output-run-tab{display:flex;align-items:center;gap:7px;flex-shrink:0;max-width:210px;padding:7px 9px;border:0;border-radius:6px;background:transparent;color:var(--text-dim);font:11px/1.4 ui-monospace,SFMono-Regular,monospace;cursor:pointer}
+.output-run-tab span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.output-run-tab:hover{background:color-mix(in srgb,var(--text) 4%,transparent)}
+.output-run-tab.active{background:color-mix(in srgb,var(--accent) 8%,var(--surface));color:var(--text)}
+.output-status-dot{width:6px;height:6px;border-radius:50%;background:#94a3b8;flex-shrink:0}
+.output-run-tab[data-status="running"] .output-status-dot,.output-run-tab[data-status="starting"] .output-status-dot{background:var(--accent)}
+.output-run-tab[data-status="failed"] .output-status-dot{background:#d56464}
+.output-run-header{display:flex;align-items:center;gap:8px;padding:15px 2px 10px;flex-shrink:0;flex-wrap:wrap}
+.output-run-title{flex:1;min-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:600}
+.output-run-status,.output-run-time{font-size:10px;color:var(--text-dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+.output-run-status[data-status="failed"]{color:#c65a5a}
+.output-run-status[data-status="running"]{color:var(--accent)}
+.output-command-details{flex-shrink:0;margin:0 2px 12px;font-size:11px;color:var(--text-dim)}
+.output-command-details summary{cursor:pointer;width:fit-content;padding:2px 0}
+.test-output-command{max-height:140px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:10px/1.6 ui-monospace,SFMono-Regular,monospace;margin:0;padding:9px;background:color-mix(in srgb,var(--text) 3%,var(--surface));border-radius:5px;color:var(--text-dim)}
+.output-terminal{display:flex;flex:1;flex-direction:column;min-height:0;overflow:hidden;border:1px solid var(--border);border-radius:8px;background:var(--surface)}
+.test-output-log{flex:1;min-height:100px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:4;font:11px/1.8 ui-monospace,SFMono-Regular,Menlo,monospace;margin:0;padding:12px;color:var(--text);user-select:text;scrollbar-width:thin}
+.test-output-log[data-empty="true"]::before{content:'暂无输出';color:var(--text-dim)}
+.test-output-log[data-empty="true"][data-running="true"]::before{content:'等待进程输出…'}
+.output-empty{display:flex;flex:1;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--text-dim);gap:10px}
+.output-empty-icon{font:24px/1.5 ui-monospace,monospace;opacity:.5}
+.output-empty strong{font-size:12px;font-weight:500;color:var(--text)}
+.output-empty p{font-size:11px;line-height:1.8;max-width:220px;margin:0}

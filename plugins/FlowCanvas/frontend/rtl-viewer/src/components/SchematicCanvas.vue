@@ -1,5 +1,6 @@
 <template>
   <main class="schematic-canvas">
+    <div class="canvas-control-bar">
     <div class="canvas-tabs">
       <button
         type="button"
@@ -20,10 +21,7 @@
       >Schematic</button>
     </div>
     <div class="graph-toolbar" v-if="hasPayload">
-      <button type="button" @click="panZoom.zoomIn">+</button>
-      <button type="button" @click="panZoom.zoomOut">−</button>
-      <button type="button" @click="panZoom.fit">Fit</button>
-      <button type="button" @click="panZoom.reset">Reset</button>
+      <button type="button" @click="panZoom.fit">Reset</button>
       <button
         type="button"
         v-if="collapsedCount > 0"
@@ -43,6 +41,7 @@
         :disabled="exporting"
         title="Download this sheet as a 2x PNG"
       >PNG</button>
+    </div>
     </div>
     <p v-if="exportError" class="sch-export-error" role="alert">
       Export failed: {{ exportError }}
@@ -920,7 +919,6 @@ onBeforeUnmount(() => {
   border-radius: var(--radius-2);
 }
 .svg-host {
-  /* Reserve the bottom toolbar strip so Fit keeps the drawing clear of controls. */
   width: 100%;
   height: calc(100% - 3rem);
   margin-bottom: 3rem;
@@ -1250,4 +1248,52 @@ onBeforeUnmount(() => {
   font-size: 0.85em;
   font-family: var(--font-mono);
 }
+
+
+/* Dedicated compact footer, separated from the drawing surface. */
+.canvas-control-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 8px;
+  box-sizing: border-box;
+  background: #fff;
+  border-top: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.canvas-control-bar .canvas-tabs,
+.canvas-control-bar .graph-toolbar {
+  position: static;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.canvas-control-bar .graph-toolbar { margin-left: auto; }
+.canvas-control-bar button {
+  font-size: 10px;
+  line-height: 16px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #fff;
+  color: #536171;
+  border-color: #dce2e8;
+  white-space: nowrap;
+}
+.canvas-control-bar button:hover { background: #f3f5f7; }
+.canvas-control-bar .canvas-tab.active {
+  background: #edf3ff;
+  color: #245bd6;
+  border-color: #c5d6fa;
+}
+.canvas-control-bar .scope-breadcrumb { font-size: 10px; color: #657184; }
+.svg-host { height: calc(100% - 32px); margin-bottom: 32px; }
+
 </style>

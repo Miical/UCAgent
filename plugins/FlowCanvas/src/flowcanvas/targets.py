@@ -79,6 +79,10 @@ def atomic(path, data):
 
 
 class Targets:
+    definition_model = Definition
+    target_model = Target
+    prefixes = {'group':'fg','point':'fp','testpoint':'tp'}
+
     def __init__(self, root):
         self.root = Path(root).resolve()
         self.path = self.root / '.flowcanvas/verification.json'
@@ -91,13 +95,13 @@ class Targets:
 
     def read(self):
         if not self.path.exists():
-            return Definition()
-        return Definition.model_validate_json(self.path.read_text())
+            return self.definition_model()
+        return self.definition_model.model_validate_json(self.path.read_text())
 
     def save(self, definition, expected_revision):
         if self.read().revision != expected_revision:
             raise ValueError('定义已更新，请重新读取后重试')
-        definition = Definition.model_validate(definition.model_dump())
+        definition = self.definition_model.model_validate(definition.model_dump())
         for target in definition.targets:
             for binding in target.bindings:
                 path = (self.root / binding.file).resolve()
@@ -244,7 +248,7 @@ class Targets:
     def create(self, kind, name, parent, expected_revision, description='', condition='', expected=''):
         with LOCK:
             data = self.read()
-            row = Target(id=new_id({'group':'fg','point':'fp','testpoint':'tp'}[kind]), kind=kind,
+            row = self.target_model(id=new_id(self.prefixes[kind]), kind=kind,
                          parent=parent or None, name=name, description=description, condition=condition, expected=expected)
             data.targets.append(row)
             self.save(data, expected_revision)
@@ -259,7 +263,7 @@ class Targets:
             target = next((n for n in data.targets if n.id == target_id), None)
             if not target:
                 raise ValueError('目标不存在')
-            replacement = Target.model_validate({**target.model_dump(), **values})
+            replacement = self.target_model.model_validate({**target.model_dump(), **values})
             data.targets[data.targets.index(target)] = replacement
             self.save(data, expected_revision)
             return replacement.model_dump()
