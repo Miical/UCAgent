@@ -39,7 +39,7 @@
       const result=await fetch(base+'/'+selected+'/output?offset='+offset);if(!result.ok)throw Error('无法读取命令输出');const data=await result.json();if(generation!==epoch)return;
       const row=data.run;title.textContent=row.name;title.title=row.name;status.dataset.status=row.status;status.textContent=labels[row.status]+(row.exit_code!==null?' · 退出码 '+row.exit_code:'');
       const seconds=Math.max(0,Math.floor((row.ended||Date.now()/1000)-row.started));time.textContent=(seconds>=60?Math.floor(seconds/60)+'分 ':'')+seconds%60+'秒';time.title='开始于 '+new Date(row.started*1000).toLocaleString();
-      command.textContent=row.command;status.title=row.error||'';
+      command.textContent=row.command;status.title=row.coverage_error||row.error||'';if(row.coverage_status)status.textContent+=' · '+({pending:'待采集',extracting:'提取覆盖率',merging:'合并覆盖率',merged:'覆盖率已累计',failed:'覆盖率处理失败',previous_batch:'历史批次'}[row.coverage_status]||row.coverage_status);
       const follow=log.scrollHeight-log.scrollTop-log.clientHeight<40;
       if(data.text)log.append(document.createTextNode(data.text));offset=data.offset;
       log.dataset.empty=String(!log.textContent);log.dataset.running=String(['starting','running'].includes(row.status));

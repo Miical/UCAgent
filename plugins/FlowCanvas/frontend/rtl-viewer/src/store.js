@@ -346,6 +346,8 @@ export const useViewerStore = defineStore('viewer', {
     // data is there (matching the graph pane's auto-tick); once the
     // user has touched the checkbox their choice sticks for the rest
     // of the session, including across model switches.
+    projectCoverageEnabled: false,
+    projectCoverageInstances: [],
     covEnabled: true,
     covEnabledTouched: false,
     // Phase 7b (rtl-buddy/rtl-buddy-sch#22): which figures the phys

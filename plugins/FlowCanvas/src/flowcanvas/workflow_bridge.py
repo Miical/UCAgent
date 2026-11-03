@@ -100,7 +100,7 @@ class WorkflowBridge:
         async def test_cases(operation: str = 'read', expected_revision: int = 0,
                              files: list[str] | None = None, name: str = '',
                              target_id: str = '', binding_id: str = '', values: dict | None = None) -> dict:
-            """Manage project test cases and source bindings. Start with guide/read; configure the shared runner command/description before import; discover returns candidates only. Inspect stimulus and run entry; exclude environment-only base tests. import requires values.selected entries with file/start/fingerprint/reason/description. Generate a source-grounded description for every imported test. configure/import/create/update/bind/accept require full access and current revision. Discovery never implies a passing test."""
+            """Manage project test cases and source bindings. Start with guide/read; configure the shared runner command/description before import; discover returns candidates only. Inspect stimulus and run entry; exclude environment-only base tests. import requires values.selected entries with file/start/fingerprint/reason/description. Generate a source-grounded description for every imported test. configure_coverage saves the optional project coverage extraction/merge configuration (executed after each run). configure/configure_coverage/import/create/update/bind/accept require full access and current revision. Discovery never implies a passing test."""
             from .testcases import execute
             root = session.get('project_root')
             if not root:

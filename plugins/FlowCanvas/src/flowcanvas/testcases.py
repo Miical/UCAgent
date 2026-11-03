@@ -39,11 +39,40 @@ class RunTemplate(BaseModel):
         return self
 
 
+class CoverageConfig(BaseModel):
+    """Declarative coverage integration; execution is not enabled by this schema."""
+    model_config = ConfigDict(extra='forbid')
+    tool: str = Field(min_length=1, max_length=100, description='覆盖率工具，例如 vcs-urg')
+    description: str = Field(min_length=1, max_length=2000, description='采集环境、版本、源码同步边界和必要前置条件')
+    artifact_path: str = Field(min_length=1, max_length=4000, description='本次运行产物路径，必须包含 {run_dir}')
+    extract_command: str = Field(min_length=1, max_length=20000, description='提取或校验本次运行覆盖率的命令')
+    merge_command: str = Field(min_length=1, max_length=20000, description='按 {inputs_manifest} 中的本批次数据库合并，输出到 {merge_dir}')
+    report_path: str = Field(min_length=1, max_length=4000, description='合并后报告路径，必须包含 {merge_dir}')
+    parser: Literal['line-coverage-json-v1'] = 'line-coverage-json-v1'
+    build_id_command: str = Field(min_length=1, max_length=20000, description='输出实际构建标识的命令，覆盖 RTL、参数和覆盖率编译配置')
+
+    @model_validator(mode='after')
+    def paths_and_merge(self):
+        if '{run_dir}' not in self.artifact_path:
+            raise ValueError('artifact_path 必须包含 {run_dir}，确保每次运行独立保存')
+        if '{merge_dir}' not in self.report_path:
+            raise ValueError('report_path 必须包含 {merge_dir}，不得覆盖单次运行产物')
+        if not all(token in self.merge_command for token in ('{inputs_manifest}', '{merge_dir}')):
+            raise ValueError('merge_command 必须使用 {inputs_manifest} 和 {merge_dir}')
+        return self
+
+
+class CoverageRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    coverage: CoverageConfig | None
+
+
 class CasesDefinition(BaseModel):
     model_config = ConfigDict(extra='forbid')
     schema_version: Literal[1] = 1
     revision: int = Field(default=0, ge=0)
     runner: RunTemplate | None = None
+    coverage: CoverageConfig | None = None
     targets: list[TestCase] = Field(default_factory=list)
 
     @model_validator(mode='after')
@@ -170,10 +199,16 @@ def execute(root, request):
     r = Request.model_validate(request) if isinstance(request, dict) else request
     store = Cases(root)
     if r.operation == 'guide':
-        return {'instructions': '先 read 获取 revision；导入前必须 configure，通过 values={command,description} 配置项目统一运行模板。command 为 bash 命令，使用 {case} 表示用例入口、{project} 表示项目根目录，入口会自动 shell 转义，不要再给占位符加引号；description 说明运行位置、依赖和源码同步边界，不写入凭据。依据项目已有脚本配置，禁止虚构运行环境。configure 后重新 read 获取 revision；discover 只返回候选，继承 uvm_test 不代表应该导入。阅读候选源码及启动配置，检查具体激励、sequence 和运行入口，只导入可独立运行且承担具体测试行为的用例。排除 base_test、抽象类和只搭建环境的基类，不要仅按名称判断。import 必须通过 values.selected 显式选择，每项包含 discover 返回的 file、start、fingerprint，以及 reason（具体激励和运行入口的依据）、description（必须根据源码生成的中文用例说明，概述验证目的、主要激励及实际检查行为，不能只复述类名或声称已经通过）；files 包含解析继承所需的基类文件，但不选中基类。无法确认时先报告，不导入。Python 按默认 pytest 文件/函数约定，一个函数一条记录，参数化不展开。import 插入稳定 ID 注释，重复导入幂等。create 创建待实现记录；inspect 查看语法节点，再 bind 用 start/fingerprint 绑定。update 仅填写已确认的名称、说明、条件、预期。accept 必须核对源码。不要修改 JSON 或从扫描推断执行通过。写操作需要完全访问。', 'schema': CasesDefinition.model_json_schema()}
+        return {'instructions': '先 read 获取 revision；导入前必须 configure，通过 values={command,description} 配置项目统一运行模板。command 为 bash 命令，使用 {case} 表示用例入口、{project} 表示项目根目录，入口会自动 shell 转义，不要再给占位符加引号；description 说明运行位置、依赖和源码同步边界，不写入凭据。依据项目已有脚本配置，禁止虚构运行环境。覆盖率另用 configure_coverage，values={coverage:配置对象或null}；先核对真实产物、工具和构建标识，按 schema 填写，无法验证时留 null，不编造命令。运行结束会按配置自动提取、校验和合并，必须用实际短用例验证接通后再声称成功。配置中 run_dir 是单次运行目录，merge_dir 是批次合并输出目录，inputs_manifest 是本批次输入数据库清单；构建版本不兼容时拒绝合并并提示开始新批次。configure 后重新 read 获取 revision；discover 只返回候选，继承 uvm_test 不代表应该导入。阅读候选源码及启动配置，检查具体激励、sequence 和运行入口，只导入可独立运行且承担具体测试行为的用例。排除 base_test、抽象类和只搭建环境的基类，不要仅按名称判断。import 必须通过 values.selected 显式选择，每项包含 discover 返回的 file、start、fingerprint，以及 reason（具体激励和运行入口的依据）、description（必须根据源码生成的中文用例说明，概述验证目的、主要激励及实际检查行为，不能只复述类名或声称已经通过）；files 包含解析继承所需的基类文件，但不选中基类。无法确认时先报告，不导入。Python 按默认 pytest 文件/函数约定，一个函数一条记录，参数化不展开。import 插入稳定 ID 注释，重复导入幂等。create 创建待实现记录；inspect 查看语法节点，再 bind 用 start/fingerprint 绑定。update 仅填写已确认的名称、说明、条件、预期。accept 必须核对源码。不要修改 JSON 或从扫描推断执行通过。写操作需要完全访问。', 'schema': CasesDefinition.model_json_schema()}
     if r.operation == 'configure':
         with LOCK:
             data=store.read(); data.runner=RunTemplate.model_validate(r.values)
+            store.save(data,r.expected_revision)
+            return store.status()
+    if r.operation == 'configure_coverage':
+        config=CoverageRequest.model_validate(r.values)
+        with LOCK:
+            data=store.read(); data.coverage=config.coverage
             store.save(data,r.expected_revision)
             return store.status()
     if r.operation == 'discover': return store.discover(r.files)

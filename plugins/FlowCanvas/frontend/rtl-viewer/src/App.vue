@@ -38,7 +38,7 @@
         <CollapsiblePanel title="Hierarchy" persist-key="hierarchy">
           <HierarchyTree ref="treeRef" />
         </CollapsiblePanel>
-        <CollapsiblePanel title="Overlays" persist-key="overlays">
+        <CollapsiblePanel title="Coverage" persist-key="overlays">
           <OverlayPanel />
         </CollapsiblePanel>
         <CollapsiblePanel
@@ -107,7 +107,7 @@ function startResize(e) {
   const startH = panelHeight.value
   const onMove = (ev) => {
     const height = startH - (ev.clientY - startY)
-    panelHeight.value = Math.min(Math.max(100, window.innerHeight - 205), Math.max(100, height))
+    panelHeight.value = Math.min(Math.max(100, window.innerHeight - 105), Math.max(100, height))
   }
   const onUp = () => {
     document.removeEventListener('mousemove', onMove)
@@ -281,7 +281,7 @@ onBeforeUnmount(() => {
 .app-body.axi-tab { display: block; overflow: auto; background: var(--panel); }
 .sidebar {
   width: 100%;
-  max-height: 45vh;
+  max-height: min(72.5vh, calc(100vh - 105px));
   flex-shrink: 0;      /* honour the width in the flex row (don't squeeze) */
   border-top: 1px solid var(--line);
   padding: 0;

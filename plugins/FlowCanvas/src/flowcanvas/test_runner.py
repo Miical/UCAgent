@@ -57,11 +57,16 @@ class TestRuns:
             if binding.file.endswith('.py'):
                 entry=binding.file+'::'+('::'.join(node['scope'].split('.'))+'::' if node['scope'] else '')+entry
             # Values are shell-quoted once by this entry point, never interpolated by the model.
-            command=template.command.replace('{case}',shlex.quote(entry)).replace('{project}',shlex.quote(str(store.root)))
             run_id=uuid.uuid4().hex; folder=self.folder(root)
+            run_dir=folder/run_id;run_dir.mkdir()
+            command=template.command.replace('{run_dir}',shlex.quote(str(run_dir))).replace('{case}',shlex.quote(entry)).replace('{project}',shlex.quote(str(store.root)))
             row=dict(id=run_id,case_id=case_id,name=case.name,entry=entry,command=command,
                      cwd=str(store.root),description=template.description,status='starting',started=time.time(),
                      ended=None,exit_code=None,source_fingerprint=node['fingerprint'])
+            row['run_dir']=str(run_dir)
+            if data.coverage:
+                from .coverage_runtime import state
+                row.update(coverage_config=data.coverage.model_dump(),coverage_epoch=state(root)['epoch'],coverage_status='pending')
             atomic(folder/(run_id+'.json'),row)
             task=asyncio.create_task(self.execute(folder,row))
             self.tasks[run_id]=task
@@ -72,12 +77,21 @@ class TestRuns:
         path=folder/(row['id']+'.json')
         try:
             with (folder/(row['id']+'.log')).open('ab',buffering=0) as log:
+                if row.get('coverage_config'):
+                    from .coverage_runtime import render
+                    row['build_id']=(await self.coverage_command(render(row['coverage_config']['build_id_command'],dict(project=row['cwd'],run_dir=row['run_dir'],case=row['entry'])),row,log)).strip()
+                    if not row['build_id']:raise ValueError('构建标识为空')
                 process=await asyncio.create_subprocess_exec('/bin/bash','-lc',row['command'],cwd=row['cwd'],
                     env=dict(os.environ,PYTHONUNBUFFERED='1',TERM='dumb'),stdout=log,stderr=asyncio.subprocess.STDOUT,start_new_session=True)
                 self.processes[row['id']]=process
                 row['status']='running';atomic(path,row)
                 row['exit_code']=await process.wait()
                 row['status']='completed' if row['exit_code']==0 else 'failed'
+                if row.get('coverage_config'):
+                    from .coverage_runtime import collect
+                    try:await collect(self,row,log)
+                    except Exception as exc:
+                        row.update(coverage_status='failed',coverage_error=str(exc));log.write(('\n[覆盖率] '+str(exc)+'\n').encode())
         except asyncio.CancelledError:
             process=self.processes.get(row['id'])
             if process and process.returncode is None:
@@ -89,8 +103,20 @@ class TestRuns:
             row['status']='interrupted'
         except Exception as exc:
             row['status']='failed';row['error']=str(exc)
+            if row.get('coverage_config'):row.update(coverage_status='failed',coverage_error=str(exc))
         finally:
             row['ended']=time.time();atomic(path,row);self.processes.pop(row['id'],None)
+
+    async def coverage_command(self,command,row,log):
+        process=await asyncio.create_subprocess_exec('/bin/bash','-lc',command,cwd=row['cwd'],
+            env=dict(os.environ,PYTHONUNBUFFERED='1'),stdout=asyncio.subprocess.PIPE,stderr=log,start_new_session=True)
+        self.processes[row['id']]=process
+        try:
+            stdout,_=await asyncio.wait_for(process.communicate(),180)
+        except asyncio.TimeoutError:
+            os.killpg(process.pid,signal.SIGKILL);await process.wait();raise ValueError('Coverage command timed out')
+        if process.returncode:raise ValueError('Coverage command failed with exit '+str(process.returncode))
+        return stdout.decode('utf-8',errors='replace')
 
     async def close(self):
         tasks=list(self.tasks.values())
@@ -106,6 +132,39 @@ def routes(projects,runner):
         return project['path']
     class RunRequest(BaseModel):
         case_id:str
+    @router.get('/{identity}/coverage')
+    def coverage(identity:str):
+        from .coverage_runtime import public
+        return public(root(identity))
+    @router.get('/{identity}/coverage/source')
+    async def coverage_source(identity:str,instance:str):
+        from .coverage_runtime import state
+        import hashlib
+        data=state(root(identity));report=data.get('report') or {}
+        row=next((n for n in report.get('instances',[]) if n['path']==instance),None)
+        if not row:raise HTTPException(404,'实例没有覆盖率源码')
+        run_id=data['runs'][0]['id']
+        if not re.fullmatch('[0-9a-f]{32}',run_id):raise HTTPException(422,'无效运行标识')
+        expected=report.get('rtl_sha256','')
+        if not re.fullmatch('[0-9a-f]{64}',expected):raise HTTPException(422,'源码指纹缺失')
+        cache=Path(root(identity))/'.flowcanvas/coverage/sources'/(expected+'.v')
+        if not cache.exists():
+            process=await asyncio.create_subprocess_exec('ssh','-T','-o','BatchMode=yes','-o','ConnectTimeout=10','redmi',
+                'cat /home/miical/eda/projects/uvm-cache/.flowcanvas/runs/'+run_id+'/Cache.v',stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
+            try:content,error=await asyncio.wait_for(process.communicate(),20)
+            except asyncio.TimeoutError:
+                process.kill();await process.wait();raise HTTPException(504,'读取构建源码超时')
+            if process.returncode or hashlib.sha256(content).hexdigest()!=expected:raise HTTPException(422,'构建源码不可用或指纹不符')
+            cache.parent.mkdir(parents=True,exist_ok=True);cache.write_bytes(content)
+        raw=cache.read_bytes()
+        if hashlib.sha256(raw).hexdigest()!=expected:raise HTTPException(422,'源码缓存指纹不符')
+        text=raw.decode();match=re.search(r'\bmodule\s+'+re.escape(row['module'])+r'\b[\s\S]*?\bendmodule\b',text)
+        if not match:raise HTTPException(422,'构建源码中找不到模块')
+        return dict(file='Cache.v',module=row['module'],content=text,line=text.count('\n',0,match.start())+1,end_line=text.count('\n',0,match.end())+1)
+    @router.post('/{identity}/coverage/reset')
+    async def clear_coverage(identity:str):
+        from .coverage_runtime import reset
+        async with runner.lock:return reset(root(identity))
     @router.get('/{identity}/test-runs')
     def runs(identity:str):return runner.list(root(identity))
     @router.post('/{identity}/test-runs')

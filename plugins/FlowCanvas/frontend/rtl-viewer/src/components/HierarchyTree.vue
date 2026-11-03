@@ -408,88 +408,11 @@ defineExpose({ focusFilter })
 /* The tree is the one sidebar panel that can be arbitrarily tall, so it
    scrolls inside a capped box — Node detail has to stay reachable
    without scrolling past a thousand instances. */
-.tree-scroll {
-  max-height: 40vh;
-  overflow: auto;
-  min-height: 0;
-}
-/* Keyboard focus only: clicking a row focuses the container too, and a
-   ring drawn around the whole panel on every click is noise. */
-.tree-scroll:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: -1px;
-}
-.tree-row {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding-top: 0.1rem;
-  padding-bottom: 0.1rem;
-  padding-right: 0.25rem;
-  cursor: pointer;
-  white-space: nowrap;
-  border-radius: var(--radius-1);
-}
-.tree-row:hover {
-  background: var(--bg);
-}
-.tree-row.is-cursor {
-  outline: 1px dashed var(--line-strong);
-  outline-offset: -1px;
-}
-.tree-row.is-selected {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-}
-.tree-row.is-dimmed .tree-inst,
-.tree-row.is-dimmed .tree-module {
-  color: var(--fg-faint);
-}
-.tree-caret {
-  flex: 0 0 auto;
-  width: 0.9rem;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--fg-muted);
-  font-size: 0.7rem;
-  line-height: 1;
-  text-align: center;
-  cursor: pointer;
-}
-.tree-caret-leaf {
-  display: inline-block;
-}
-.tree-inst {
-  font-family: var(--font-mono);
-  font-size: var(--fs-small);
-  color: var(--fg);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.tree-row.is-selected .tree-inst {
-  color: var(--accent);
-  font-weight: 600;
-}
-.tree-module {
-  font-family: var(--font-mono);
-  font-size: var(--fs-small);
-  color: var(--fg-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.tree-scope-mark {
-  flex: 0 0 auto;
-  margin-left: auto;
-  padding-left: 0.25rem;
-  font-size: var(--fs-small);
-  color: var(--accent);
-}
-.tree-row.is-scope .tree-inst {
-  font-weight: 600;
-}
 .tree-empty {
   margin: 0.4rem 0.5rem;
   font-size: var(--fs-small);
   color: var(--fg-muted);
 }
 </style>
+
+<style scoped src="./hierarchy-rows.css"></style>

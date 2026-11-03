@@ -26,3 +26,22 @@ python -m flowcanvas.test_runner --project /path/to/project --case tc_... --serv
 ```
 
 运行记录和 stdout/stderr 存在 `.flowcanvas/test-runs/`；右侧「输出」页每 500ms 增量读取，可切换历史记录。刷新不丢日志。命令退出 0 仅显示「命令完成」，不等价于测试通过。每项目最多一个运行，避免共享构建目录相互覆盖。服务退出终止本地进程组并标记中断；远程 SSH 命令是否退出取决于远端脚本，重启服务不会自动恢复或重试命令。
+
+## 项目级 coverage 配置
+
+`coverage` 与 `runner` 并列保存，默认 null（未接入），不影响测试运行。AI 通过 `test_cases(operation="configure_coverage", expected_revision=..., values={"coverage": {...}})` 配置；设置 null 清除配置。与其他写操作一致，需要完全访问和匹配 revision。
+
+配置字段为 tool、description、artifact_path、extract_command、merge_command、report_path、parser、build_id_command。artifact_path 必须包含 `{run_dir}`；合并命令必须使用 `{inputs_manifest}`（本批次输入数据库路径的 JSON 数组文件）和 `{merge_dir}`；report_path 必须位于声明的合并目录模板中。运行结束后执行提取和合并命令，命令失败或报告无效时保留上次累计结果。配置校验不等价于实际工具验证。
+
+parser 当前声明为 `line-coverage-json-v1`，目标报告格式为 `{"schema_version":1,"build_id":"...","instances":[{"path":"top.u0","module":"M","files":[{"path":"rtl/M.sv","covered_lines":[10],"uncovered_lines":[11]}]}]}`。行号从 1 开始，互不重叠，文件路径对应实际构建源码；工具原生覆盖点的合并应由工具完成，百分比不能直接相加。提取/合并脚本需将工具报告规范化为此格式；当前 VCS 适配器同时提供实例自身 covered/total 统计（使用 URG 口径，非源码行数简单相加）和 partial_lines；含部分命中点的行单列。
+
+build_id_command 必须针对实际执行位置和编译输入，不能仅使用本地 Git commit。description 记录工具版本、远程位置、同步边界和采集前置条件。未核实命令、产物或解析适配时保持 null，不填占位命令冒充可用配置。
+
+
+## uvm-cache / Redmi 已接入版本
+
+`flowcanvas.vcs_coverage` 适配远端 VCS W-2024.09-SP1，复用 `/home/miical/eda/projects/uvm-cache/build/simv`，不自动同步或重新编译。每次运行写入远端 `.flowcanvas/runs/<run_id>`；复制覆盖率静态设计数据但排除旧 testdata，采集使用独立数据库和名称。URG 只合并当前批次的独立数据库，原始产物保留。
+
+模块报告解析针对本项目每个模块一个实例的结构；不支持的多实例报告会拒绝，不能将模块合计冒充实例覆盖率。实际构建 Cache.v 的 SHA256 与本地源码比较，不匹配时在验证进度页标注远端版本。页面展示模块自身统计，不将父模块和子模块重复累计。
+
+累计状态在 `.flowcanvas/coverage/state.json`，每次合并先写独立目录再发布状态；运行 ID 去重。清空使用新 epoch，历史记录保留，旧批次迟到结果不计入。构建 ID 不兼容时拒绝混合，需清空开始新批次。当前仍维持项目级串行运行，尚未开放并行。

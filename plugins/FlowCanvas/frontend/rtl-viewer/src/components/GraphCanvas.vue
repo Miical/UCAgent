@@ -1,5 +1,6 @@
 <template>
   <main class="graph-canvas" ref="canvasEl">
+    <CoverageToolbar />
     <div class="canvas-control-bar">
     <div class="canvas-tabs">
       <button
@@ -84,6 +85,8 @@
 // layout step and so click handlers can recover the model node.
 import { computed, onMounted, ref, watch, onBeforeUnmount } from 'vue'
 import { useViewerStore } from '../store.js'
+import CoverageToolbar from './CoverageToolbar.vue'
+import { paintProjectCoverage } from '../projectCoverageTint.js'
 import { leafName } from '../instancePath.js'
 import { layoutGraph, layoutDot, clusterIdFor, hasEmbeddedDot } from '../layout/viz.js'
 import { buildBlockFlowDot } from '../layout/blockFlow.js'
@@ -588,6 +591,7 @@ function repaintOverlays() {
   const context = overlayContext()
   applyOverlays(_svgEl, graph.value, store.enabledOverlays, context)
   coverageLiveOverlay.apply(_svgEl, graph.value, store.covEnabled, context)
+  paintProjectCoverage(_svgEl, store.projectCoverageEnabled, store.projectCoverageInstances)
 }
 watch(
   () => [store.waveValuesByKey, store.hubSignalSelected],
@@ -614,7 +618,7 @@ watch(
 // paint usually happens before it arrives. Re-run the overlay layer
 // on arrival and on every toggle — no viz.js re-layout, just fills.
 watch(
-  () => [store.covEnabled, store.covByModule],
+  () => [store.covEnabled, store.covByModule, store.projectCoverageEnabled, store.projectCoverageInstances],
   () => {
     if (_svgEl && graph.value) {
       repaintOverlays()
@@ -1411,6 +1415,6 @@ onBeforeUnmount(() => {
   border-color: #c5d6fa;
 }
 .canvas-control-bar .scope-breadcrumb { font-size: 10px; color: #657184; }
-.svg-host { height: calc(100% - 32px); margin-bottom: 32px; }
+.svg-host { height: calc(100% - 60px); margin-bottom: 60px; }
 
 </style>

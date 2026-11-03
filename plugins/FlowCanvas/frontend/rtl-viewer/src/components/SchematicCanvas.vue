@@ -1,5 +1,6 @@
 <template>
   <main class="schematic-canvas">
+    <CoverageToolbar />
     <div class="canvas-control-bar">
     <div class="canvas-tabs">
       <button
@@ -354,6 +355,8 @@
 // on that computed plus a re-run, with no change to the draw path.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useViewerStore } from '../store.js'
+import CoverageToolbar from './CoverageToolbar.vue'
+import { paintProjectCoverage } from '../projectCoverageTint.js'
 import { usePanZoom } from '../composables/usePanZoom.js'
 import { registerSvgProvider, unregisterSvgProvider } from '../capture.js'
 import { token, themeVersion } from '../theme.js'
@@ -837,6 +840,11 @@ watch(
 // The capture module reads the live SVG through a getter (see
 // GraphCanvas): the element identity moves when the canvas
 // re-renders, and a function dodges that staleness.
+watch(
+  () => [model.value, store.projectCoverageEnabled, store.projectCoverageInstances],
+  () => paintProjectCoverage(svgEl.value, store.projectCoverageEnabled, store.projectCoverageInstances),
+  { flush: 'post' },
+)
 const _captureSvgProvider = () => svgEl.value
 
 onMounted(() => {
@@ -1294,6 +1302,6 @@ onBeforeUnmount(() => {
   border-color: #c5d6fa;
 }
 .canvas-control-bar .scope-breadcrumb { font-size: 10px; color: #657184; }
-.svg-host { height: calc(100% - 32px); margin-bottom: 32px; }
+.svg-host { height: calc(100% - 60px); margin-bottom: 60px; }
 
 </style>
