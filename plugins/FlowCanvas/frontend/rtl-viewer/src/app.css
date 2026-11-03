@@ -1,0 +1,105 @@
+/* Global (unscoped) SPA styles.
+ *
+ * Everything here is a *single definition* of something that used to
+ * be repeated in several components' scoped blocks:
+ *
+ *   - the document base (type, colour, surface),
+ *   - one disabled-control treatment (there were four),
+ *   - one severity colour map (it was written out twice, verbatim),
+ *   - one backpressure ramp (it was triplicated, with a colour drift).
+ *
+ * Scoped component styles must not re-state any of these. When a
+ * component needs the severity or backpressure colour it adds the
+ * shared class and sets the data attribute; the colour decision lives
+ * here and nowhere else.
+ */
+
+:root {
+  font-family: var(--font-sans);
+  color: var(--fg);
+}
+
+/* The surface is declared on ``body``, not only on ``:root``. Painting
+   it on the root alone leaves ``body`` transparent — the page still
+   *looks* right (the root's background propagates to the canvas) but
+   any element that samples ``body``'s computed background, and any
+   screenshot diff of a body-anchored region, sees ``rgba(0,0,0,0)``. */
+html,
+body {
+  background: var(--bg);
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+}
+
+code,
+pre,
+kbd,
+samp {
+  font-family: var(--font-mono);
+}
+
+/* -- one disabled-control treatment ------------------------------------
+ * Applies to every native control in the SPA. ``:disabled`` beats the
+ * component's own idle colours by virtue of being the only rule that
+ * mentions the state — no component redefines it.
+ *
+ * ``.is-busy`` is the one deliberate exception: a control that is
+ * disabled because a request is in flight (the "Open in marimo"
+ * button) keeps its own colours, dimmed, and shows a progress cursor.
+ * That is a different message from "you can't do this here". */
+button:disabled,
+select:disabled,
+input:disabled {
+  color: var(--fg-faint);
+  background: var(--panel-2);
+  border-color: var(--line);
+  cursor: not-allowed;
+}
+
+button.is-busy:disabled {
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-color: var(--accent);
+  opacity: 0.55;
+  cursor: progress;
+}
+
+/* -- one severity colour map -------------------------------------------
+ * Used by the diagnostics sidebar chips, the on-canvas badge dot, and
+ * the badge popup rows. ``severity.js`` exports the same mapping for
+ * code paths that need the value rather than the class. */
+.rb-sev[data-severity] {
+  background: var(--fg-muted);
+}
+.rb-sev[data-severity='error'] {
+  background: var(--err);
+}
+.rb-sev[data-severity='warning'] {
+  background: var(--warn);
+}
+.rb-sev[data-severity='info'] {
+  background: var(--info);
+}
+.rb-sev[data-severity='hint'] {
+  background: var(--fg-muted);
+}
+
+/* -- one backpressure ramp ---------------------------------------------
+ * ``palette.js::bpLevel`` picks the level from the percentage; the
+ * colour is decided here (text) and there (canvas strokes), both
+ * reading the same status tokens. */
+.rb-bp[data-level='lo'] {
+  color: var(--ok);
+}
+.rb-bp[data-level='mid'] {
+  color: var(--warn);
+}
+.rb-bp[data-level='hi'] {
+  color: var(--err);
+  font-weight: 600;
+}

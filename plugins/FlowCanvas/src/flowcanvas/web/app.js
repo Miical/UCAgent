@@ -22,6 +22,7 @@ for(const button of document.querySelectorAll('[data-view]')){
     document.getElementById('project-heading').textContent=button.dataset.view;
     for(const item of document.querySelectorAll('[data-view]'))item.setAttribute('aria-expanded',String(item===button&&!workspace.classList.contains('project-collapsed')));
     document.getElementById('project-content').setAttribute('aria-label',button.dataset.view+'内容');
+    document.dispatchEvent(new CustomEvent('flowcanvas-view',{detail:button.dataset.view}));
   };
 }
 for(const group of document.querySelectorAll('[role="tablist"]')){
@@ -92,6 +93,7 @@ document.querySelector('.brand-home').onclick=event=>{
     button.setAttribute('aria-expanded',String(selected&&!workspace.classList.contains('project-collapsed')));
   }
   document.dispatchEvent(new CustomEvent('flowcanvas-home'));
+  document.dispatchEvent(new CustomEvent('flowcanvas-view',{detail:'验证进度'}));
 };
 
 // Workflow navigation opens details without toggling an already visible pane.

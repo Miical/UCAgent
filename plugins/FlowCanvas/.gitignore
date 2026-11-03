@@ -1,1 +1,4 @@
 node_modules/
+frontend/rtl-viewer/node_modules/
+frontend/rtl-viewer/dist/
+src/flowcanvas/web/rtl-viewer/

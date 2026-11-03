@@ -1,0 +1,91 @@
+/* rtl-buddy-view SPA tokens — the thin layer above the vendored hub
+ * sheet (``theme.css``, owned by rtl_buddy — see docs/design-tokens.md).
+ *
+ * Only two families live here, because only two have no home in the
+ * shared sheet:
+ *
+ *   1. the seven clock-domain pastels the clock overlay assigns by
+ *      sorted-alphabetical index, and the two reset-overlay strokes;
+ *   2. the SPA's layout constants (header height, default sidebar
+ *      width), which used to be magic ``48px`` / ``280px`` literals
+ *      repeated across App.vue and AxiPerfView.vue.
+ *
+ * Everything else — surfaces, text tiers, accent, status, coverage
+ * ramp, radii, shadows, type — comes from the hub sheet. Do not
+ * redefine a token that already exists there.
+ *
+ * Structure mirrors the hub sheet: light in ``:root``, dark under
+ * ``prefers-color-scheme``, and explicit ``[data-theme]`` overrides
+ * that win in BOTH directions. ``tests/tokens.spec.js`` fails when
+ * the four blocks disagree, so the palette can't drift silently.
+ */
+
+:root {
+  /* -- layout constants ------------------------------------------------
+   * Kept in lockstep with ``src/layout/constants.js`` by
+   * ``tests/tokens.spec.js`` — the JS side needs the numbers for the
+   * sidebar drag clamp, the CSS side for ``calc(100vh - …)``. */
+  --header-h:  48px;
+  --sidebar-w: 280px;
+  --status-h:  24px;
+
+  /* -- clock-domain palette --------------------------------------------
+   * Seven pastels, assigned by sorted-alphabetical clock name in
+   * ``palette.js::buildClockPalette``. Shared by the clock overlay
+   * (inline fill) and the in-JS DOT builder (baked HTML-cell colours),
+   * which is why the palette has exactly one definition. */
+  --clk-1: #dbeafe;  /* blue   */
+  --clk-2: #dcfce7;  /* green  */
+  --clk-3: #fef9c3;  /* yellow */
+  --clk-4: #fce7f3;  /* pink   */
+  --clk-5: #ede9fe;  /* purple */
+  --clk-6: #fed7aa;  /* orange */
+  --clk-7: #cffafe;  /* cyan   */
+
+  /* -- reset overlay ----------------------------------------------------
+   * A stroke family, deliberately distinct from the clock overlay's
+   * fill family so the two read as different kinds of annotation. */
+  --reset-bind: #ea580c;  /* flop with a reset binding */
+  --reset-sync: #0d9488;  /* synchroniser-set member   */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --clk-1: #1e3a5f;
+    --clk-2: #14532d;
+    --clk-3: #4d3c0a;
+    --clk-4: #4c1d3a;
+    --clk-5: #34255e;
+    --clk-6: #4a2c12;
+    --clk-7: #0e3f47;
+
+    --reset-bind: #fb923c;
+    --reset-sync: #2dd4bf;
+  }
+}
+
+:root[data-theme='light'] {
+  --clk-1: #dbeafe;
+  --clk-2: #dcfce7;
+  --clk-3: #fef9c3;
+  --clk-4: #fce7f3;
+  --clk-5: #ede9fe;
+  --clk-6: #fed7aa;
+  --clk-7: #cffafe;
+
+  --reset-bind: #ea580c;
+  --reset-sync: #0d9488;
+}
+
+:root[data-theme='dark'] {
+  --clk-1: #1e3a5f;
+  --clk-2: #14532d;
+  --clk-3: #4d3c0a;
+  --clk-4: #4c1d3a;
+  --clk-5: #34255e;
+  --clk-6: #4a2c12;
+  --clk-7: #0e3f47;
+
+  --reset-bind: #fb923c;
+  --reset-sync: #2dd4bf;
+}

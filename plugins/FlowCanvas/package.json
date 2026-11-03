@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild frontend/markdown.js --bundle --format=esm --minify --legal-comments=eof --outfile=src/flowcanvas/web/markdown-renderer.js"
+    "build": "npm run build:markdown && npm run build:rtl",
+    "build:markdown": "esbuild frontend/markdown.js --bundle --format=esm --minify --legal-comments=eof --outfile=src/flowcanvas/web/markdown-renderer.js",
+    "build:rtl": "python3 scripts/build_rtl_viewer.py"
   },
   "dependencies": {
     "highlight.js": "11.12.0",

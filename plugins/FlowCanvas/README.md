@@ -128,3 +128,53 @@ Codex 只对本插件创建的会话 MCP 设置 `default_tools_approval_mode="ap
 旧原生线程首次恢复时只做一次旧提示词策略退役通知；之后权限切换只更新沙箱，不注入模式指令。
 
 工具发现不再依赖入口 YAML 的 selected_tools。FlowCanvas 发布实际工具清单后调用 Codex `config/mcpServer/reload`，并保存发现结果供同一对话重新连接时加载；每次执行仍检查授权与 MCP 存活状态。
+
+
+## 项目管理
+
+左侧底部的文件夹按钮浏览工作台服务器上的目录（不上传文件）。选择目录后，
+已有 `.flowcanvas/project.json` 的项目直接打开；没有该文件则先确认项目名称，
+点击“导入并打开”后创建管理文件。导入已有 RTL 时，通过 slang 扫描模块候选，选择顶层后生成依赖清单，不执行综合或仿真。
+管理文件包含 `schema_version`、`id`、`name` 和 `created_at`，不写入绝对目录。
+最近项目和当前选择保存在用户状态目录的 `projects/state.json`。
+
+新对话绑定创建时的项目目录，并作为后端工作目录。切换项目后列表仅显示该项目的
+对话和工作流，正在运行的旧对话不会被迁移或中断。尚未绑定项目的历史对话不会自动迁入。
+工作流仍使用独立运行目录，项目选择不改变现有工作流的单 RTL 输入要求。
+
+项目选择是可选的：启动时不强制弹窗；未打开项目时可直接对话。
+项目窗口提供“新建项目”，在当前浏览的父目录下创建同名文件夹并初始化管理文件；
+“不打开项目，直接对话”关闭当前项目视图，返回未绑定项目的对话。
+
+顶层输入支持模块名或文件路径筛选，候选显示文件和行号。选择后预览依赖源码；
+导入时重新解析，并将顶层、文件顺序、头文件及 include 目录保存在 `project.json` 的 `rtl` 字段，
+同时生成 `.flowcanvas/rtl.f`（相对路径以项目根目录为基准）。新建空项目无需提供顶层。
+扫描基于 pyslang 11，递归处理模块实例和 package 引用，跳过版本控制、虚拟环境等目录。
+解析错误、缺失或重名依赖阻止导入，不自动猜测实现。此入口尚未提供自定义宏和条件编译配置；
+有这些要求的项目需先补充配置支持。filelist 是静态依赖清单，不代表已经通过完整编译验证。
+
+
+## RTL 可视化
+
+“验证进度”嵌入仓库内的 rtl-buddy-sch v0.15.0 查看器源码，不使用旧工作台修改版。
+上游来源、版本及源码包 SHA-256 记录在 `frontend/rtl-viewer/UPSTREAM.json`。
+
+- Vue 组件、样式与布局：`frontend/rtl-viewer/src/`。
+- Python 解析器依赖：`rtl-buddy-sch==0.15.0`，随插件安装。
+- FlowCanvas 数据适配：`src/flowcanvas/rtl_viewer.py`。
+- 构建脚本：`scripts/build_rtl_viewer.py`。
+
+在插件目录运行 `npm run build:rtl`，安装锁定的前端依赖、执行 Vite 构建并将产物复制到
+`src/flowcanvas/web/rtl-viewer/`。产物不入 Git，打包或首次运行前必须构建；打包时静态资源随 wheel 分发。
+`npm run build` 同时构建 Markdown 和 RTL 查看器。开发时可在 `frontend/rtl-viewer/`
+运行 `npm run dev`。Python 解析通过子进程调用当前 Python 环境安装的 `rtl-buddy-sch==0.15.0`。
+不再内嵌上游 Python 解析器源码。Vue 页面移除了 Hub/WebSocket、跨应用事件同步、模型与测试列表探测、Notebook 和 AXI Performance，主题及配色由 FlowCanvas 管理。图形依赖保留 Vue、Pinia、Graphviz WASM 和 ELK；已移除 Chart.js 和 vue-chartjs。
+
+该版本的 slang 前端仍是占位实现，结构生成使用 Verible。安装
+`verible-verilog-syntax` 到 PATH 或用户状态目录的 `tools/bin/`。
+适配层读取项目 `.flowcanvas/rtl.f`，将源码路径转换成独立缓存 filelist，调用依赖包的 CLI，
+不覆盖项目原文件。上游仅支持简单源码清单，include 目录不会传入它的源级 CST 解析器；
+条件编译、复杂宏或头文件定义仍受原版解析器能力限制。此视图不运行综合或仿真。
+缓存位于用户状态目录 `rtl_views/`，源码内容或解析器版本变化后刷新会重新生成。
+查看器资源挂载于 `/rtl-viewer/`，通过 `?view=` 接入当前项目 JSON。FlowCanvas 外层
+在页面加载时自动获取结构，暂未接入覆盖率。BSD-3-Clause 和第三方声明随源码、构建产物保留。

@@ -1,0 +1,16 @@
+{
+  "repository": "https://github.com/rtl-buddy/rtl-buddy-sch",
+  "tag": "v0.15.0",
+  "archive_sha256": "17c78c9c0f528c4bbd1d49282a787f433faee7717b9e98ae9fde5131776fe7d5",
+  "frontend": "frontend/rtl-viewer",
+  "python": "External dependency: rtl-buddy-sch==0.15.0",
+  "changes": [
+    "viewer/src/App.vue: remove AXI Performance tab and panel from FlowCanvas",
+    "viewer App.vue/theme.js: remove independent theme toggle and synchronize host theme and palette",
+    "viewer/src/App.vue: remove upstream header logo, product name and design name",
+    "viewer/src/App.vue: remove redundant Design tab navigation",
+    "Trim Hub/WebSocket/event-sync, model/test discovery, notebook/AXI view and chart dependencies; load graph only through FlowCanvas view API.",
+    "Python parser is installed as pinned dependency; no vendored Python parser or PYTHONPATH override.",
+    "Remove unused diagnostics/version components and iframe branding; retain canonical license files with frontend sources."
+  ]
+}

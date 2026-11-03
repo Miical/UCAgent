@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "FlowCanvas visual verification workspace for UCAgent"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["UCAgent", "fastapi>=0.115", "uvicorn>=0.30"]
+dependencies = ["UCAgent", "fastapi>=0.115", "uvicorn>=0.30", "pyslang>=11,<12", "rtl-buddy-sch==0.15.0"]
 
 [project.scripts]
 flowcanvas = "flowcanvas.server:main"
@@ -21,4 +21,4 @@ where = ["src"]
 include = ["flowcanvas*"]
 
 [tool.setuptools.package-data]
-flowcanvas = ["web/*", "workflows/*.yaml", "workflow_catalog.yaml"]
+flowcanvas = ["web/*", "workflows/*.yaml", "workflow_catalog.yaml", "web/rtl-viewer/*", "web/rtl-viewer/assets/*"]

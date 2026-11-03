@@ -54,6 +54,8 @@ class ChatService:
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         workspace = self.root / 'workspace'
         workspace.mkdir(exist_ok=True)
+        from .projects import Projects
+        self.projects = Projects(self.root)
         self.sessions = {}
         self.jobs = set()
         self.session_backends = {}
@@ -186,7 +188,9 @@ class ChatService:
         session = {'id': uuid.uuid4().hex, 'backend': 'codex', 'title': '', 'thread': None,
                    'turn': None, 'status': 'idle', 'items': [], 'model': '', 'effort': '',
                    'revision': 0, 'updated': time.time(), 'error': '', 'usage': None,
-                   'permission_mode': 'workflow'}
+                   'permission_mode': 'workflow',
+                   'project_root': (self.projects.current or {}).get('path'),
+                   'workspace': (self.projects.current or {}).get('path', str(self.backend.workspace))}
         self.sessions[session['id']] = session
         self.save(session)
         return session
@@ -273,7 +277,7 @@ class ChatService:
             mode = session.get('permission_mode', 'workflow')
             backend = self.session_backends.get(session['id'])
             if backend is None:
-                backend = CodexBackend(self.backend.workspace, lambda event: self.event({**event, 'session_id': session['id']}))
+                backend = CodexBackend(Path(session.get('workspace') or self.backend.workspace), lambda event: self.event({**event, 'session_id': session['id']}))
                 from .workflow_bridge import WorkflowBridge
                 bridge = self.workflow_bridges.get(session['id'])
                 if bridge is None:
@@ -371,6 +375,7 @@ def routes(service):
                         'conversation_title': owner.get('title') or '新对话',
                         'model': owner.get('model'), 'effort': owner.get('effort'), 'backend': owner.get('backend')}
                        for owner in service.sessions.values()
+                       if owner.get('project_root') == (service.projects.current or {}).get('path')
                        for card in owner.get('workflow_runs', [])],
                       key=lambda card: card.get('started_at', 0), reverse=True)
 
@@ -393,7 +398,8 @@ def routes(service):
         """List lightweight session summaries without loading all messages."""
         return [{**{k: s[k] for k in ('id', 'title', 'status', 'updated', 'backend')},
                  'archived': s.get('archived', False), 'pinned': s.get('pinned', False)}
-                for s in sorted(service.sessions.values(), key=lambda s: s['updated'], reverse=True)]
+                for s in sorted(service.sessions.values(), key=lambda s: s['updated'], reverse=True)
+                if s.get('project_root') == (service.projects.current or {}).get('path')]
 
     @router.post('/sessions')
     async def create():

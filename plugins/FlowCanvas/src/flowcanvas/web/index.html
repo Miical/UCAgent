@@ -25,6 +25,7 @@
       <button class="nav-button" data-view="Bug 管理" aria-label="Bug 管理" aria-controls="project-content" title="Bug 管理"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="13" rx="5"/><path d="M9 7V5a3 3 0 0 1 6 0v2M3 9l4 2m10 0 4-2M3 15h4m10 0h4M4 21l4-3m8 0 4 3M12 8v12"/></svg><span>Bug 管理</span></button>
     </div>
     <div class="nav-bottom">
+      <button class="nav-button" id="project-open" aria-label="打开项目" title="打开项目"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Zm0 2h18"/></svg></button>
       <button class="nav-button" id="settings-toggle" aria-label="设置" title="设置与主题" aria-expanded="false" aria-controls="settings-panel">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 3-.6 2.3-2 .9L4.2 5.5 2 9.3l1.8 1.6v2.2L2 14.7l2.2 3.8 2.2-.7 2 .9L9 21h6l.6-2.3 2-.9 2.2.7 2.2-3.8-1.8-1.6v-2.2L22 9.3l-2.2-3.8-2.2.7-2-.9L15 3Z"/><circle cx="12" cy="12" r="3"/></svg>
       </button>
@@ -133,7 +134,29 @@
     <div class="settings-brand">UC<span class="brand-accent">Agent</span> FlowCanvas</div>
     <p>外观</p><div id="theme-actions"></div>
   </section>
+  <dialog id="project-dialog" class="project-dialog">
+    <header><h2 id="project-dialog-title">打开项目</h2><button id="project-close" class="icon-button" aria-label="关闭">×</button></header>
+    <p id="project-dialog-hint">选择工作台所在机器上的项目文件夹</p>
+    <div id="project-actions"><button id="project-new">新建项目</button><button id="project-without">不打开项目，直接对话</button></div>
+    <div id="project-browse">
+      <form id="project-path-form"><div class="project-path-input"><input id="project-path" aria-label="文件夹路径" placeholder="输入文件夹路径" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="project-path-suggestions"><div id="project-path-suggestions" role="listbox" aria-label="匹配文件夹" hidden></div></div><button>前往</button></form>
+      <h3 class="project-recents-heading">最近打开的项目</h3>
+      <div id="project-recents" aria-label="最近打开的项目"></div>
+    </div>
+    <div id="project-import" hidden><label for="project-name">项目名称</label><input id="project-name" maxlength="120"><p id="project-import-path"></p>
+      <div id="project-rtl-import">
+        <label for="project-top">顶层模块</label>
+        <input id="project-top" autocomplete="off" spellcheck="false" placeholder="输入模块名称或源码路径筛选" role="combobox" aria-autocomplete="list" aria-controls="project-module-options" aria-expanded="false">
+        <div id="project-module-options" role="listbox" aria-label="顶层模块候选" hidden></div>
+        <p id="project-rtl-status" role="status"></p>
+        <div id="project-filelist" aria-label="依赖文件清单"></div>
+      </div><p>将在所选目录创建 <code>.flowcanvas/project.json</code>，保存项目标识与名称。</p></div>
+    <p id="project-error" role="alert" hidden></p>
+    <footer><button id="project-back" hidden>重新选择</button><button id="project-confirm">选择此文件夹</button></footer>
+  </dialog>
   <script src="/assets/app.js"></script>
+  <script src="/assets/projects.js"></script>
+  <script src="/assets/rtl-viewer.js"></script>
   <script type="module" src="/assets/chat.js"></script>
 </body>
 </html>

@@ -58,6 +58,13 @@ def create_app(state_dir=None) -> FastAPI:
         except (ValueError, OSError):
             raise HTTPException(503, 'Workflow catalog could not be loaded') from None
 
+    from .projects import routes as project_routes
+    app.include_router(project_routes(service.projects))
+    from .rtl_viewer import routes as viewer_routes
+    app.include_router(viewer_routes(service))
+    bundle = web / 'rtl-viewer'
+    if (bundle / 'index.html').is_file():
+        app.mount('/rtl-viewer', StaticFiles(directory=bundle, html=True), name='rtl-viewer')
     app.include_router(routes(service))
     started = time.time()
     app.mount("/assets", StaticFiles(directory=web), name="flowcanvas-assets")
