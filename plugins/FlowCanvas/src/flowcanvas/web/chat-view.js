@@ -18,7 +18,9 @@ export class ConversationView {
     root.after(this.jump);
     this.quote=element('button','quote-selection','引用选中文字');this.quote.hidden=true;root.after(this.quote);
     let quoted='';
-    document.addEventListener('selectionchange',()=>{const selection=window.getSelection();quoted=selection&&root.contains(selection.anchorNode)&&root.contains(selection.focusNode)?selection.toString().trim():'';this.quote.hidden=!quoted;if(quoted&&selection.rangeCount){const rect=selection.getRangeAt(0).getBoundingClientRect();this.quote.style.left=Math.max(10,Math.min(window.innerWidth-150,rect.left))+'px';this.quote.style.top=Math.max(10,Math.min(window.innerHeight-45,rect.bottom+8))+'px';}});
+    // Only message bodies are quotable; welcome copy and UI chrome are not.
+    const messageBody=node=>{const element=node?.nodeType===Node.ELEMENT_NODE?node:node?.parentElement;const body=element?.closest('.message-content');return body&&root.contains(body)&&body.closest('.message')?body:null;};
+    document.addEventListener('selectionchange',()=>{const selection=window.getSelection();quoted=selection&&messageBody(selection.anchorNode)&&messageBody(selection.anchorNode)===messageBody(selection.focusNode)?selection.toString().trim():'';this.quote.hidden=!quoted;if(quoted&&selection.rangeCount){const rect=selection.getRangeAt(0).getBoundingClientRect();this.quote.style.left=Math.max(10,Math.min(window.innerWidth-150,rect.left))+'px';this.quote.style.top=Math.max(10,Math.min(window.innerHeight-45,rect.bottom+8))+'px';}});
     this.quote.onmousedown=event=>event.preventDefault();
     this.quote.onclick=()=>{if(quoted)root.dispatchEvent(new CustomEvent('compose-quote',{detail:quoted}));this.quote.hidden=true;window.getSelection()?.removeAllRanges();};
     root.addEventListener('scroll',()=>{this.jump.hidden=root.scrollHeight-root.scrollTop-root.clientHeight<130;});

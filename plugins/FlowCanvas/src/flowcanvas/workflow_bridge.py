@@ -68,7 +68,7 @@ class WorkflowBridge:
                         service.catalog_reconnect.add(session['id'])
                     self.active_card = result['card']['id']
                     self.host_tools = {tool.name: tool for raw in result['tools']
-                                       if (tool := Tool.model_validate(raw)).name not in {'run_workflow', 'list_workflow_runs', 'verification_targets', 'test_cases'}}
+                                       if (tool := Tool.model_validate(raw)).name not in {'run_workflow', 'list_workflow_runs', 'verification_targets', 'test_cases', 'bug_records'}}
                     session['workflow_tool_catalog'] = {'card_id': self.active_card, 'tools': result['tools']}
                     service.changed(session)
                     service.save(session)
@@ -111,12 +111,25 @@ class WorkflowBridge:
                 expected_revision=expected_revision, files=files or [], name=name,
                 target_id=target_id, binding_id=binding_id, values=values or {}))
 
+        @self.mcp.tool()
+        async def bug_records(operation: str = 'read', expected_revision: int = 0,
+                              files: list[str] | None = None, name: str = '', target_id: str = '',
+                              binding_id: str = '', values: dict | None = None) -> dict:
+            """Manage project bugs. Start with guide/read. Never treat examples or hypotheses as confirmed defects. Writes require full access and current revision."""
+            from .bugs import execute
+            root=session.get('project_root')
+            if not root: raise ValueError('当前对话未绑定项目')
+            if operation not in {'guide','read','inspect','source'} and session.get('permission_mode')!='full':
+                raise ValueError('修改 Bug 需要完全访问模式')
+            return await asyncio.to_thread(execute,root,dict(operation=operation,expected_revision=expected_revision,
+                files=files or [],name=name,target_id=target_id,binding_id=binding_id,values=values or {}))
+
         # Retain discovery across backend reconnects; invocation still checks host
         # liveness and current authorization on every call.
         cached = session.get('workflow_tool_catalog', {})
         self.active_card = cached.get('card_id')
         self.host_tools = {tool.name: tool for raw in cached.get('tools', [])
-                           if (tool := Tool.model_validate(raw)).name not in {'run_workflow', 'list_workflow_runs', 'verification_targets', 'test_cases'}}
+                           if (tool := Tool.model_validate(raw)).name not in {'run_workflow', 'list_workflow_runs', 'verification_targets', 'test_cases', 'bug_records'}}
 
     async def refresh_backend(self):
         """Reload after the lifecycle tool response has left the MCP connection."""

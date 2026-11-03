@@ -1,12 +1,14 @@
 /* Verification goals are stable records; source scans only verify their bindings. */
-function mountDefinitionPanel({view,endpoint,caseMode=false}){
+function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
   const panelView=view;
   const host=document.getElementById('project-content');
   let project=null,data=null,panel=null,active=false,query='',busy=false,searchExpanded=true,selectedTarget=null;
   const opened=new Set();
   const labels={planned:'待实现',bound:'已绑定',changed:'待核对',missing:'绑定失效',conflict:'绑定冲突',unverified:'无法校验'};
-  const kinds=caseMode?{case:['TC','测试用例']}:{group:['FG','功能组'],point:['FP','功能点'],testpoint:['TP','测试点']};
-  const rootKind=caseMode?'case':'group';
+  const kinds=bugMode?{bug:['BUG','Bug']}:caseMode?{case:['TC','测试用例']}:{group:['FG','功能组'],point:['FP','功能点'],testpoint:['TP','测试点']};
+  const rootKind=bugMode?'bug':caseMode?'case':'group';
+  const bugStatuses={unverified:'未验证',confirmed:'已确认',fixing:'修复中',resolved:'已修复'};
+  const severities={low:'低',medium:'中',high:'高',critical:'严重'};
   function el(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;}
   function button(text,fn,cls=''){const n=el('button',cls,text);n.type='button';n.onclick=fn;return n;}
   function smallAction(label,pathData,callback){
@@ -41,9 +43,15 @@ function mountDefinitionPanel({view,endpoint,caseMode=false}){
     if(!data)return;
     const {dialog,content}=modal(node?'编辑'+kinds[node.kind][1]:'新建'+kinds[kind][1]);
     const name=field(content,'名称',node?.name||'');const desc=field(content,'说明',node?.description||'',true);
-    const condition=field(content,'验证条件',node?.condition||'',true);const expected=field(content,'预期行为',node?.expected||'',true);
+    const condition=field(content,bugMode?'复现步骤':'验证条件',node?.condition||'',true);const expected=field(content,'预期行为',node?.expected||'',true);
+    let actual,evidence,bugStatus,severity;
+    if(bugMode){
+      actual=field(content,'实际表现',node?.actual||'',true);evidence=field(content,'证据',node?.evidence||'',true);
+      const choice=(label,options,value)=>{const wrap=el('label','targets-field');wrap.append(el('span','',label));const select=el('select');for(const [key,title]of Object.entries(options)){const opt=el('option','',title);opt.value=key;select.append(opt);}select.value=value;wrap.append(select);content.append(wrap);return select;};
+      bugStatus=choice('状态',node?.example?{unverified:'示例 · 未验证'}:bugStatuses,node?.status||'unverified');severity=choice('严重程度',severities,node?.severity||'medium');
+    }
     const error=el('p','targets-error');content.append(error);
-    const save=button('保存',async()=>{save.disabled=true;try{const values={description:desc.value,condition:condition.value,expected:expected.value};await api(node?{operation:'update',target_id:node.id,expected_revision:data.revision,values:{...values,name:name.value}}:{operation:'create',kind,parent,name:name.value,values,expected_revision:data.revision});if(parent)opened.add(parent);dialog.close();await refresh();}catch(e){error.textContent=e.message;save.disabled=false;}} ,'targets-primary');content.append(save);name.focus();
+    const save=button('保存',async()=>{save.disabled=true;try{const values={description:desc.value,condition:condition.value,expected:expected.value};if(bugMode)Object.assign(values,{actual:actual.value,evidence:evidence.value,status:bugStatus.value,severity:severity.value});await api(node?{operation:'update',target_id:node.id,expected_revision:data.revision,values:{...values,name:name.value}}:{operation:'create',kind,parent,name:name.value,values,expected_revision:data.revision});if(parent)opened.add(parent);dialog.close();await refresh();}catch(e){error.textContent=e.message;save.disabled=false;}} ,'targets-primary');content.append(save);name.focus();
   }
   function importer(){
     if(!data)return;
@@ -60,6 +68,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false}){
   function render(){
     const list=panel.querySelector('.targets-tree'),summary=panel.querySelector('.targets-summary');list.replaceChildren();summary.replaceChildren();
     for(const [kind,[,label]]of Object.entries(kinds))summary.append(el('span','',data.targets.filter(n=>n.kind===kind).length+' '+label));
+    if(bugMode)summary.append(el('span','',data.targets.filter(n=>!n.example&&n.status==='confirmed').length+' 已确认 · '+data.targets.filter(n=>n.example).length+' 示例'));
     const allExpanded=data.targets.length>0&&data.targets.every(node=>opened.has(node.id)||(query&&searchExpanded));
     const toggleAll=button(allExpanded?'全部折叠':'全部展开',()=>{const expanded=data.targets.every(node=>opened.has(node.id)||(query&&searchExpanded));if(expanded){opened.clear();searchExpanded=false;}else{for(const node of data.targets)opened.add(node.id);}render();},'targets-toggle-all');
     toggleAll.disabled=!data.targets.length;summary.append(toggleAll);
@@ -84,7 +93,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false}){
       const arrow=document.createElementNS('http://www.w3.org/2000/svg','svg');arrow.setAttribute('viewBox','0 0 16 16');arrow.setAttribute('aria-hidden','true');
       const arrowPath=document.createElementNS(arrow.namespaceURI,'path');arrowPath.setAttribute('d','m5 3 6 5-6 5Z');arrow.append(arrowPath);chevron.append(arrow);
       head.append(chevron,el('span','target-kind',kinds[node.kind][0]));const title=el('span','target-title',node.name);head.append(title);
-      if(report.status==='planned')head.append(el('span','target-state state-planned','待实现'));
+      if(bugMode){head.append(el('span','target-state',node.example?'示例 · 未验证':bugStatuses[node.status]));}else if(report.status==='planned')head.append(el('span','target-state state-planned','待实现'));
       else if(report.status!=='bound'){
         const warning=el('span','target-warning state-'+report.status);
         const message=[labels[report.status],...report.bindings.filter(b=>b.status!=='bound').map(b=>b.message|| (b.status==='changed'?'源码已变化，请核对定义':''))].filter(Boolean);
@@ -103,7 +112,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false}){
         }
       };
       header.onclick=event=>{if(!event.target.closest('button'))head.click();};
-      const controls=el('div','target-actions target-header-actions');controls.append(smallAction('编辑','m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z',()=>edit(node)));if(!caseMode&&node.kind!=='testpoint')controls.append(smallAction('添加'+(node.kind==='group'?'功能点':'测试点'),'M12 5v14M5 12h14',()=>edit(null,node.kind==='group'?'point':'testpoint',node.id)));
+      const controls=el('div','target-actions target-header-actions');controls.append(smallAction('编辑','m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z',()=>edit(node)));if(!caseMode&&!bugMode&&node.kind!=='testpoint')controls.append(smallAction('添加'+(node.kind==='group'?'功能点':'测试点'),'M12 5v14M5 12h14',()=>edit(null,node.kind==='group'?'point':'testpoint',node.id)));
       if(caseMode){
         const run=smallAction('运行测试用例','m8 5 11 7-11 7Z',async()=>{run.disabled=true;try{
           const response=await fetch('/api/chat/projects/'+encodeURIComponent(project.id)+'/test-runs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({case_id:node.id})});
@@ -121,7 +130,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false}){
       header.append(head,links,controls);wrapper.append(header);
       if(opened.has(node.id)||(query&&searchExpanded)){
         const body=el('div','target-card-body');
-        for(const [label,value]of [['',node.description],['条件',node.condition],['预期',node.expected]]){if(value){const p=el('p');if(label)p.append(el('strong','',label+' · '));p.append(document.createTextNode(value));body.append(p);}}
+        for(const [label,value]of [['',node.description],[bugMode?'复现步骤':'条件',node.condition],['预期',node.expected],...(bugMode?[['实际',node.actual],['证据',node.evidence],['严重程度',severities[node.severity]],['关联用例',node.case_ids.join('、')]]:[])]){if(value){const p=el('p');if(label)p.append(el('strong','',label+' · '));p.append(document.createTextNode(value));body.append(p);}}
 
         const actions=el('div','target-actions');
         if(report.status==='changed')actions.append(button('核对后确认',()=>{const {dialog,content}=modal('确认源码与目标一致');content.append(el('p','','请先查看当前源码，核对描述、验证条件和预期行为。确认仅更新代码基线，不代表仿真通过。'));const error=el('p','targets-error');content.append(error,button('已核对，确认当前版本',async()=>{try{await api({operation:'accept',target_id:node.id,expected_revision:data.revision,values:Object.fromEntries(report.bindings.map(b=>[b.id,b.fingerprint]))});dialog.close();refresh();}catch(e){error.textContent=e.message;}},'targets-primary'));}));
@@ -130,7 +139,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false}){
       return wrapper;
     }
     for(const group of data.targets.filter(n=>n.kind===rootKind&&visible.has(n.id)))list.append(card(group,0));
-    if(!list.children.length){const empty=el('div','targets-empty');empty.append(el('strong','',query?'没有匹配的'+view:'从'+view+'开始'),el('p','targets-muted',caseMode?'让 AI 检查项目并导入可独立运行的测试用例。':'功能组 → 功能点 → 测试点。可以先规划，再绑定实现代码。'));if(!query)empty.append(button(caseMode?'创建测试用例':'创建功能组',()=>edit(), 'targets-primary'),...(caseMode?[]:[button('导入已有定义',importer)]));list.append(empty);}
+    if(!list.children.length){const empty=el('div','targets-empty');empty.append(el('strong','',query?'没有匹配的'+view:'从'+view+'开始'),el('p','targets-muted',bugMode?'由 AI 整理缺陷、复现步骤和证据。尚无确认的 Bug。':caseMode?'让 AI 检查项目并导入可独立运行的测试用例。':'功能组 → 功能点 → 测试点。可以先规划，再绑定实现代码。'));if(!query)empty.append(button(bugMode?'创建 Bug':caseMode?'创建测试用例':'创建功能组',()=>edit(), 'targets-primary'),...((caseMode||bugMode)?[]:[button('导入已有定义',importer)]));list.append(empty);}
     const diagnostics=panel.querySelector('.targets-diagnostics');diagnostics.replaceChildren();for(const [file,error]of Object.entries(data.errors)){const d=el('details');d.append(el('summary','',file+' · 无法校验'),el('pre','',error));diagnostics.append(d);}
   }
   function show(view){active=view===panelView;if(panel){panel.hidden=!active;if(active)refresh();}}
@@ -149,3 +158,5 @@ function mountDefinitionPanel({view,endpoint,caseMode=false}){
 }
 mountDefinitionPanel({view:'验证目标',endpoint:'targets'});
 mountDefinitionPanel({view:'测试用例',endpoint:'testcases',caseMode:true});
+
+mountDefinitionPanel({view:'Bug 管理',endpoint:'bugs',bugMode:true});
