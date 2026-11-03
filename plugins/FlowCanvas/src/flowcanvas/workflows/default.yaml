@@ -1,0 +1,2 @@
+# Inherit the installed UCAgent default workflow without copying its stages.
+{}

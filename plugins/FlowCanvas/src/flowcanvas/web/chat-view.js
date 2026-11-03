@@ -35,7 +35,7 @@ export class ConversationView {
   }
   /** Create a stable text bubble or expandable reasoning/tool row. */
   create(item,parent){
-    const collapsible=['reasoning','tool','plan'].includes(item.kind);
+    const collapsible=['tool','plan'].includes(item.kind);
     const root=element(collapsible?'details':'article','message '+item.kind);
     const heading=element(collapsible?'summary':'div','message-label');
     const icon=element('span','activity-icon');icon.setAttribute('aria-hidden','true');
@@ -59,7 +59,7 @@ export class ConversationView {
       const copy=element('button','copy-detail','复制详情');copy.type='button';
       copy.onclick=async()=>{try{await navigator.clipboard.writeText([entry.item.input,entry.item.text].filter(Boolean).join('\n\n'));copy.textContent='已复制';}catch{copy.textContent='复制失败';}setTimeout(()=>copy.textContent='复制详情',1500);};root.append(copy);
     }
-    if(!collapsible){
+    if(!collapsible&&item.kind!=='reasoning'){
       const actions=element('div','message-actions');const copy=element('button','copy-message');
       const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 20 20');svg.setAttribute('aria-hidden','true');
       const path=document.createElementNS('http://www.w3.org/2000/svg','path');
@@ -125,22 +125,21 @@ export class ConversationView {
       }
       const live=runningStatuses.has(item.status)&&['starting','running','stopping'].includes(session.status);
       // Some backends emit reasoning lifecycle events without any public summary.
-      entry.root.hidden=item.kind==='reasoning'&&!item.text?.trim();
+      entry.root.hidden=item.kind==='reasoning'&&!live&&!item.text?.trim();
       entry.root.classList.toggle('is-running',live);
       entry.root.classList.toggle('is-error',['failed','error'].includes(item.status));
       if(item.kind!=='text'&&item.kind!=='reasoning')entry.icon.textContent=live?'':(item.kind==='tool'?(['failed','error'].includes(item.status)?'!':item.status==='interrupted'?'−':'✓'):item.kind==='reasoning'?'✧':'✦');
-      entry.title.textContent=item.kind==='reasoning'?(live?'正在思考':'思考摘要'):item.kind==='tool'?(item.title||'工具调用'):item.kind==='user'?(item.steered?'你 · 引导':'你'):item.kind==='plan'?'执行计划':'UCAgent';
+      entry.title.textContent=item.kind==='reasoning'?(item.text?.trim().replace(/\*\*/g,'').replace(/\s+/g,' ')||(live?'正在思考…':'思考摘要')):item.kind==='tool'?(item.title||'工具调用'):item.kind==='user'?(item.steered?'你 · 引导':'你'):item.kind==='plan'?'执行计划':'UCAgent';
       entry.title.title=entry.title.textContent;
-      entry.state.textContent=['tool','reasoning','plan'].includes(item.kind)?(states[item.status]||item.status):'';
+      entry.state.textContent=['tool','plan'].includes(item.kind)?(states[item.status]||item.status):'';
       entry.root.dataset.turn=turnUser||'';
-      if(item.kind==='reasoning'&&!entry.touched){if(live)entry.root.open=true;else if(wasRunning||switched)entry.root.open=false;}
       if(entry.text!==item.text||entry.input!==item.input){
         entry.text=item.text;entry.input=item.input;
         if(item.kind==='tool'){
           entry.content.replaceChildren();
           for(const [label,value]of [['输入',item.input],['输出',item.text]])if(value){const box=element('section','tool-section');box.append(element('div','tool-section-label',label),element('pre','',value));entry.content.append(box);}
           if(!item.input&&!item.text)entry.content.append(element('span','empty-output',live?'等待工具返回…':'无文本输出'));
-        }else{
+        }else if(item.kind!=='reasoning'){
           const follow=entry.content.scrollHeight-entry.content.scrollTop-entry.content.clientHeight<40;
           markdown(entry.content,item.text||'');
           if(live&&item.kind==='reasoning'&&follow)entry.content.scrollTop=entry.content.scrollHeight;
@@ -202,7 +201,7 @@ export class ConversationView {
     this.live.classList.toggle('active',active);
     this.live.classList.toggle('stopped',session.status==='interrupted');
     this.liveIcon.textContent=active?'':session.status==='error'?'!':session.status==='interrupted'?'−':'✓';
-    this.liveLabel.textContent=session.status==='stopping'?'正在停止':session.status==='starting'?'正在连接模型':session.status==='error'?'本轮未完成':session.status==='interrupted'?'已停止生成':!active?'本轮已完成':last?.kind==='tool'&&runningStatuses.has(last.status)?'正在执行工具':last?.kind==='text'?'正在回复':'正在思考';
+    this.liveLabel.textContent=session.status==='stopping'?'正在停止':session.status==='starting'?'正在连接模型':session.status==='error'?'本轮未完成':session.status==='interrupted'?'已停止生成':!active?'本轮已完成':last?.kind==='tool'&&runningStatuses.has(last.status)?'正在执行工具':last?.kind==='text'&&runningStatuses.has(last.status)?'正在回复':last?.kind==='reasoning'&&runningStatuses.has(last.status)?'正在思考':'正在处理';
     this.tick();
     if(atBottom||switched){this.root.scrollTop=this.root.scrollHeight;this.jump.hidden=true;}
   }

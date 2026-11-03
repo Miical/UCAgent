@@ -53,6 +53,7 @@
         </div>
       </header>
       <div id="connection" role="status" hidden></div>
+      <section id="workflow-run" class="workflow-run" aria-label="工作流运行" hidden></section>
       <div class="pane-body conversation" id="conversation" aria-label="对话内容"><div class="chat-welcome"><div class="welcome-mark">✦</div><h3>从一个想法开始</h3><p>与助手一起梳理你的验证思路</p></div></div>
       <div id="reconnect-notice" class="reconnect-notice" role="status" hidden>连接中断，正在自动重连；回复会在连接恢复后同步。</div>
       <div id="chat-error" class="chat-error" role="alert" hidden></div>
@@ -114,7 +115,18 @@
     </section>
     <div class="splitter" role="separator" tabindex="0" aria-label="调整对话与详情宽度" aria-orientation="vertical" aria-valuemin="40" aria-valuemax="80" aria-valuenow="70" data-split="1"></div>
     <section class="pane detail-pane" aria-label="详情区域">
-      <div class="pane-body" id="detail-content"></div>
+      <header class="pane-header workflow-detail-header"><nav class="detail-page-tabs" aria-label="详情页面"><button type="button" class="detail-page-tab active" aria-current="page">工作流</button></nav></header>
+      <div class="workflow-task-heading">
+        <div class="model-picker workflow-picker">
+          <button id="workflow-toggle" class="model-trigger session-trigger" aria-label="选择工作流" aria-haspopup="dialog" aria-expanded="false" aria-controls="workflow-popover"><span id="workflow-detail-ring" class="run-ring" style="--progress:0%" aria-label="工作流进度"></span><span class="workflow-task-text"><span id="workflow-label">工作流</span><span id="workflow-detail-status" class="workflow-task-status">选择一个工作流任务</span></span><svg class="picker-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+          <section id="workflow-popover" popover="manual" class="model-popover session-popover" role="dialog" aria-label="选择工作流" hidden>
+            <div class="picker-heading">工作流任务</div>
+            <input id="workflow-search" class="session-search" type="search" placeholder="搜索工作流…" aria-label="搜索工作流">
+            <div id="workflow-history-options" class="model-options" role="group" aria-label="工作流任务列表"></div>
+          </section>
+        </div>
+      </div>
+      <div class="pane-body" id="detail-content"><p class="workflow-detail-empty">点击顶部任务胶囊，查看工作流详情</p></div>
     </section>
   </main>
   <section class="settings-panel" id="settings-panel" aria-label="外观设置" hidden>

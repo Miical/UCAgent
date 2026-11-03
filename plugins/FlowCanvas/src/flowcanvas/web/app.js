@@ -93,3 +93,11 @@ document.querySelector('.brand-home').onclick=event=>{
   }
   document.dispatchEvent(new CustomEvent('flowcanvas-home'));
 };
+
+// Workflow navigation opens details without toggling an already visible pane.
+document.addEventListener('flowcanvas-open-workflow',()=>{
+  if(workspace.classList.contains('detail-collapsed')){
+    clearTimeout(detailMotionTimer);workspace.classList.add('detail-motion');toggleDetails(false);
+    detailMotionTimer=setTimeout(()=>workspace.classList.remove('detail-motion'),500);
+  }
+});

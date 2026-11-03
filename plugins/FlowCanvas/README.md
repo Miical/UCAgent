@@ -56,7 +56,7 @@ FlowCanvas 的会话展示记录默认保存在 `~/.local/share/ucagent-flowcanv
 ### 权限模式
 
 - **完全访问**：Codex 使用 `danger-full-access`，可以直接修改文件、执行命令；不弹出逐命令审批。
-- **工作流执行**（默认）：普通对话只读，修改和执行应交由工作流。当前工作流入口尚未接入，因此暂不执行这些操作。
+- **工作流执行**（默认）：普通对话只读，修改和执行应交由工作流。只有服务端记录的已附加工作流可以执行；文件修改通过该任务的 MCP 工具完成。
 - **只读分析**：仅阅读和分析，不修改文件、不运行构建测试、不启动工作流。
 
 权限只允许在两轮之间切换。每轮显式设置 sandbox，切换模式时重新加载原生线程配置与指导，
@@ -91,7 +91,7 @@ ucagent /absolute/path/to/workspace MyModule \
 ```
 
 输入文件为 `/absolute/path/to/workspace/MyModule/MyModule.v`，结果在该工作区的
-`summary/rtl_summary.md`。本次迁入注册和打包配置；网页“＋”的工作流启动入口尚未接入。
+`summary/rtl_summary.md`。网页“＋”支持直接运行，或附加到当前对话后发送消息执行。
 
 
 ## 维护＋号菜单
@@ -100,4 +100,31 @@ ucagent /absolute/path/to/workspace MyModule \
 每项包含 `id`、`name`、`description`、`workflow` 和 `enabled`；`id` 必须唯一，
 `workflow` 引用注册名（如 `flowcanvas:rtl-summary`），`enabled: false` 隐藏该项。
 执行逻辑仍在 `workflows/*.yaml`，菜单配置只负责展示。增加流程时先注册，再加入清单。
-后端 `/api/chat/workflows` 读取清单，前端打开＋号时刷新列表。当前仅展示，尚未接通启动。
+后端 `/api/chat/workflows` 读取清单，前端打开＋号时刷新列表。支持直接运行到新对话，以及附加到当前对话后执行。
+
+
+## 对话绑定的工作流执行
+
+附加工作流后由当前对话执行；仅菜单“直接运行”创建新的可见对话。
+没有隐藏执行对话、第二个模型执行器或后台代理。
+
+- `run_workflow(workflow_id, rtl_file, dut)` 启动 UCAgent MCP，返回卡片、任务指导和工具清单。
+- `run_workflow(card_id)` 恢复同一卡片；MCP 存活时复用，停止时在原工作目录恢复进度并重启。
+- 工作流启动后读取实际 MCP `tools/list`，发布原始名称、说明和参数结构；`ReadTextFile`、`Complete` 等直接使用原始参数，不接受额外 card_id 包装。工具绑定最近启动或恢复的卡片；不会自行启动或重启进程。
+- `list_workflow_runs()` 查看当前对话绑定的全部卡片、MCP 索引、存活状态、阶段和结果。
+
+每次启动、恢复和工具调用都检查当前对话权限及附加白名单。原生文件访问在工作流模式下只读。
+MCP 宿主进程创建后才创建卡片，记录实例 ID、PID 和所属对话。重启沿用卡片 ID，更新 MCP 实例索引。
+对话结束或 MCP 停止时未验收的卡片显示暂停；只有 UCAgent 的完成回执能将卡片标为完成。
+卡片持久保存，多次运行分别保留。停止对话不会产生后台模型工作；工作台关闭会停止其 MCP 进程。
+恢复沿用工作目录和 UCAgent 已保存的阶段检查点，不保证恢复进程死亡时尚未保存的工具内部操作。
+当前工作流输入仍限单个 RTL 文件。
+Codex 只对本插件创建的会话 MCP 设置 `default_tools_approval_mode="approve"`，授权由服务端逐次检查。
+
+菜单包含 RTL 功能简述和 UCAgent 默认验证流程。默认入口使用空覆盖配置，继承安装版本的默认阶段，不复制维护默认 YAML。默认验证流程需要完整 DUT 验证环境；当前单文件 RTL 启动适配不等价于完整环境准备。
+
+权限由运行环境执行：完全访问使用 danger-full-access；工作流执行和只读分析使用 read-only。
+工作流 MCP 仍逐次检查对话模式和附加白名单。提示词不写入随模式变化的读写/构建禁令。
+旧原生线程首次恢复时只做一次旧提示词策略退役通知；之后权限切换只更新沙箱，不注入模式指令。
+
+工具发现不再依赖入口 YAML 的 selected_tools。FlowCanvas 发布实际工具清单后调用 Codex `config/mcpServer/reload`，并保存发现结果供同一对话重新连接时加载；每次执行仍检查授权与 MCP 存活状态。

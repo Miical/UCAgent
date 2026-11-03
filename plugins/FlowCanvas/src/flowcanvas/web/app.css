@@ -355,3 +355,255 @@ body.resizing .workspace{transition:none;}
 .workflow-chip>svg{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round;}.workflow-chip>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}.workflow-chip>button{display:grid;place-items:center;flex:none;width:19px;height:19px;border:0;background:transparent;color:inherit;border-radius:5px;font-size:16px;padding:0;line-height:1;}.workflow-chip>button:hover{background:color-mix(in srgb,var(--accent) 12%,transparent);}
 button.workflow-menu-item{display:block;width:100%;text-align:left;border:0;background:transparent;color:var(--text);font:inherit;}
 button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{background:var(--surface2);}
+
+.workflow-choice{display:flex;align-items:center;gap:8px;}.workflow-attach{flex:1;min-width:0;text-align:left;border:0;background:none;color:var(--text);padding:0;font:inherit;}.workflow-direct{flex:none;border:1px solid var(--border);border-radius:7px;padding:6px 8px;background:var(--surface);color:var(--text);font-size:11px;}.workflow-choice:hover{background:var(--surface2);}
+
+
+.workflow-direct{display:grid;place-items:center;width:32px;height:32px;padding:3px;border:0;border-radius:50%;background:transparent;color:var(--text-dim);}.workflow-direct svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.4;}.workflow-direct path{fill:currentColor;stroke:none;}.workflow-direct:hover{background:color-mix(in srgb,var(--accent) 8%,transparent);color:var(--accent);}
+
+/* Workflow capsules occupy the conversation top; expanded details overlay its body. */
+.workflow-run{position:relative;z-index:8;display:flex;flex-wrap:wrap;gap:10px;padding:10px 20px 18px;flex-shrink:0;background:var(--surface);overflow:visible;}
+.workflow-run[hidden]{display:none;}
+.workflow-run::after{content:"";position:absolute;z-index:-1;pointer-events:none;left:0;right:0;top:0;height:90px;background:linear-gradient(to bottom,color-mix(in srgb,var(--surface) 75%,transparent) 55%,transparent);}
+.run-capsule{position:relative;flex:0 1 260px;min-width:190px;max-width:100%;height:58px;border:1px solid var(--border);border-radius:30px;background:var(--surface);color:var(--text);outline:none;transition:box-shadow .28s ease,border-color .28s ease;}
+.run-capsule:hover,.run-capsule:focus-within{z-index:12;border-color:color-mix(in srgb,var(--accent) 35%,var(--border));box-shadow:0 8px 24px #17253b12;}
+.run-compact{position:relative;z-index:2;display:flex;align-items:center;gap:11px;height:56px;padding:8px 14px;box-sizing:border-box;}
+.run-ring{--ring-color:var(--accent);display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:50%;font-size:9px;font-weight:600;background:radial-gradient(closest-side,var(--surface) 78%,transparent 80%),conic-gradient(var(--ring-color) var(--progress),var(--border) 0);}
+.run-capsule[data-status="paused"] .run-ring{--ring-color:#b69150;}.run-capsule[data-status="completed"] .run-ring{--ring-color:#43a17a;}
+.run-labels{display:flex;flex-direction:column;gap:3px;min-width:0;}.run-labels strong{font-size:12px;font-weight:600;}.run-labels span{font-size:11px;color:var(--muted);}.run-labels>*{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.run-expanded{position:absolute;z-index:1;left:-1px;right:-1px;top:-1px;padding:62px 16px 16px;border:1px solid var(--border);border-radius:28px;background:var(--surface);box-shadow:0 18px 45px #17253b18;opacity:0;visibility:hidden;pointer-events:none;transform:translateY(-5px) scale(.97);transform-origin:top center;max-height:min(540px,65vh);overflow:auto;transition:opacity .25s ease,transform .3s ease,visibility .25s;}
+.run-capsule:hover .run-expanded,.run-capsule:focus-within .run-expanded{opacity:1;visibility:visible;pointer-events:auto;transform:translateY(0) scale(1);}
+.run-detail-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px;}.run-status{font-size:11px;color:var(--muted);}
+.run-timeline{list-style:none;margin:0 0 16px;padding:0;}.run-timeline li{position:relative;display:flex;gap:10px;padding:0 0 17px;font-size:12px;}.run-timeline li:not(:last-child)::after{content:"";position:absolute;left:7px;top:17px;bottom:1px;width:1px;background:var(--border);}.run-stage-dot{display:grid;place-items:center;width:15px;height:15px;flex:none;border:1px solid var(--border);border-radius:50%;font-size:9px;background:var(--surface);}.run-timeline strong{display:block;font-size:11px;font-weight:500;overflow-wrap:anywhere;}.run-timeline small{display:block;font-size:10px;margin-top:3px;color:var(--muted);}.run-timeline .done .run-stage-dot{background:#43a17a;color:white;border-color:#43a17a;}.run-timeline .current .run-stage-dot{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 12%,transparent);}.run-timeline .pending{color:var(--muted);}
+.run-metadata{display:grid;grid-template-columns:54px minmax(0,1fr);gap:8px;margin:0;padding-top:12px;border-top:1px solid var(--border);font-size:10px;}.run-metadata dt{color:var(--muted);}.run-metadata dd{margin:0;overflow-wrap:anywhere;}.run-result{font-size:11px;margin-top:14px;}.run-result pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;}.run-pause{margin-top:14px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);cursor:pointer;font-size:11px;}
+@media(prefers-reduced-motion:reduce){.run-capsule,.run-expanded{transition:none;}}
+
+/* One floating horizontal ribbon; details use the top layer to escape scroll clipping. */
+.workflow-run{display:block;padding:0 0 4px;background:transparent;min-width:0;}
+.run-track{display:flex;flex-wrap:nowrap;gap:14px;overflow-x:auto;overflow-y:hidden;padding:14px 24px 22px;scrollbar-width:none;overscroll-behavior-x:contain;scroll-padding-inline:24px;}
+.run-track::-webkit-scrollbar{display:none;}
+.run-capsule{flex:0 0 248px;min-width:248px;max-width:none;box-sizing:border-box;border-color:color-mix(in srgb,var(--border) 62%,transparent);box-shadow:0 5px 14px #17253b0b,0 12px 28px #17253b08,inset 0 1px 0 #ffffff80;transition:box-shadow .25s ease,transform .25s ease,border-color .25s ease;}
+.run-capsule:hover,.run-capsule:focus-within{transform:translateY(-2px);box-shadow:0 8px 22px #17253b16,0 2px 5px #17253b06;}
+.run-scroll{position:absolute;z-index:15;top:27px;width:27px;height:27px;padding:0;display:grid;place-items:center;border:1px solid var(--border);border-radius:50%;background:var(--surface);color:var(--text);font-size:22px;line-height:1;box-shadow:0 3px 12px #17253b15;cursor:pointer;opacity:0;transition:opacity .2s;}.run-scroll[hidden]{display:none;}.workflow-run:hover .run-scroll,.workflow-run:focus-within .run-scroll{opacity:1;}.run-scroll-left{left:5px;}.run-scroll-right{right:5px;}
+.run-expanded[popover]{position:fixed;inset:auto;margin:0;padding:12px 18px 18px;box-sizing:border-box;border-radius:24px;transform:none;transition:opacity .2s ease;}
+.run-expanded[popover]:popover-open{opacity:1;visibility:visible;pointer-events:auto;transform:none;animation:run-reveal .22s ease-out;}
+.run-expanded-preview{padding:0 0 12px;height:56px;margin-bottom:5px;}
+@keyframes run-reveal{from{opacity:0;transform:translateY(4px) scale(.98)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(prefers-reduced-motion:reduce){.run-expanded[popover]:popover-open{animation:none;}.run-capsule{transition:none;}}
+
+/* Finished tasks recede visually; their details remain accessible. */
+.run-capsule[data-status="completed"]{background:color-mix(in srgb,var(--surface) 94%,var(--text) 6%);color:var(--muted);border-color:color-mix(in srgb,var(--border) 55%,transparent);box-shadow:0 3px 12px #17253b08;}
+.run-capsule[data-status="completed"] .run-ring{--ring-color:#9aa2ad;color:var(--muted);}
+.run-capsule[data-status="completed"] .run-labels strong{color:var(--muted);}
+.run-compact{cursor:pointer;}
+.workflow-detail-header{font-size:13px;font-weight:600;flex-shrink:0;}
+.workflow-detail-empty{font-size:12px;color:var(--muted);padding:10px;line-height:1.7;}
+.workflow-sidebar-detail{padding:8px 4px 20px;min-width:0;}
+.workflow-sidebar-detail .run-expanded-preview{height:auto;min-height:58px;margin-bottom:16px;cursor:default;}
+.workflow-sidebar-detail .run-labels>*{white-space:normal;overflow-wrap:anywhere;}
+.workflow-sidebar-detail .run-timeline{margin-top:20px;}
+.workflow-sidebar-detail .run-timeline li{padding-bottom:24px;}
+.workflow-sidebar-detail .run-metadata{font-size:11px;line-height:1.6;}
+
+/* Compact floating pills with a separate, lower detail popover. */
+.run-track{gap:10px;padding:10px 22px 18px;}
+.run-capsule{flex-basis:180px;min-width:180px;height:46px;border-radius:24px;box-shadow:0 3px 10px #17253b08,0 8px 20px #17253b06;}
+.run-compact{height:44px;padding:6px 12px;gap:9px;}
+.run-ring{width:24px;height:24px;background:radial-gradient(closest-side,var(--surface) 77%,transparent 80%),conic-gradient(var(--ring-color) var(--progress),var(--border) 0);}
+.run-labels{gap:2px;}.run-labels strong{font-size:11px;}.run-labels span{font-size:10px;}
+.run-capsule[data-status="completed"]{background:color-mix(in srgb,var(--surface) 98%,var(--text) 2%);color:color-mix(in srgb,var(--text) 65%,var(--surface));border-color:color-mix(in srgb,var(--border) 40%,transparent);box-shadow:0 2px 8px #17253b06,0 6px 16px #17253b04;}
+.run-capsule[data-status="completed"] .run-labels strong{color:color-mix(in srgb,var(--text) 65%,var(--surface));}
+.run-capsule[data-status="completed"] .run-labels span{color:color-mix(in srgb,var(--text) 43%,var(--surface));}
+.run-capsule[data-status="completed"] .run-ring{--ring-color:#b5bbc3;}
+.run-scroll{top:19px;width:25px;height:25px;}
+.run-expanded[popover]{padding:16px 18px 18px;border-radius:18px;border-color:color-mix(in srgb,var(--border) 65%,transparent);box-shadow:0 12px 36px #17253b16,0 3px 8px #17253b06;}
+.run-expanded-preview{height:44px;padding:0 0 10px;margin-bottom:8px;}
+
+/* Smaller task ribbon; keep the expanded details readable. */
+.run-track{gap:8px;padding:8px 20px 15px;}
+.run-capsule{flex-basis:164px;min-width:164px;height:40px;border-radius:21px;}
+.run-capsule>.run-compact{height:38px;padding:5px 10px;gap:8px;}
+.run-capsule>.run-compact .run-ring{width:20px;height:20px;}
+.run-capsule>.run-compact .run-labels{gap:1px;}
+.run-capsule>.run-compact .run-labels strong{font-size:10px;}
+.run-capsule>.run-compact .run-labels span{font-size:9px;}
+.run-scroll{top:16px;width:23px;height:23px;font-size:20px;}
+
+.workflow-detail-header{display:flex;align-items:center;gap:10px;border-bottom:0;}
+
+.run-remove{position:absolute;right:5px;top:7px;z-index:4;width:19px;height:19px;border:0;border-radius:50%;display:grid;place-items:center;padding:0;background:var(--surface);color:var(--muted);font-size:16px;line-height:1;opacity:0;pointer-events:none;transition:opacity .15s;cursor:pointer;}
+.run-capsule:hover .run-remove,.run-capsule:focus-within .run-remove{opacity:1;pointer-events:auto;}
+.run-remove:hover{background:var(--surface2);color:var(--text);}
+.run-capsule[data-status="completed"]>.run-compact{padding-right:27px;}
+
+.workflow-picker{min-width:0;width:100%;}
+#workflow-toggle{max-width:100%;}
+#workflow-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+#workflow-popover{left:auto;right:0;width:min(320px,calc(100vw - 32px));}
+.workflow-option-text{display:flex;flex-direction:column;min-width:0;gap:4px;}
+.workflow-option-text small{font-size:10px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* Top-layer picker escapes sidebar overflow and stacking contexts. */
+#workflow-popover[popover]{position:fixed;inset:auto;margin:0;box-sizing:border-box;overflow:auto;}
+#workflow-popover[popover]:popover-open{display:block;}
+
+/* Attach is an explicit hover action; the descriptive row itself is inert. */
+.workflow-choice{position:relative;align-items:flex-start;overflow:hidden;cursor:default;}
+.workflow-choice-info{flex:1;min-width:0;}
+.workflow-choice-info p{max-height:44px;overflow:hidden;line-height:1.6;}
+.workflow-choice-footer{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:flex-start;padding:16px 12px 7px;background:linear-gradient(to bottom,transparent,var(--surface2) 58%);opacity:0;transform:translateY(5px);pointer-events:none;transition:opacity .18s ease,transform .2s ease;}
+.workflow-choice:hover .workflow-choice-footer,.workflow-choice:focus-within .workflow-choice-footer{opacity:1;transform:translateY(0);pointer-events:auto;}
+.workflow-attach-action{display:flex;align-items:center;gap:5px;border:0;border-radius:5px;padding:2px 0;background:transparent;color:var(--muted);font:inherit;font-size:10px;cursor:pointer;}
+.workflow-attach-action svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;}
+.workflow-attach-action{color:color-mix(in srgb,var(--text) 42%,var(--surface));}
+.workflow-attach-action:hover{background:transparent;color:color-mix(in srgb,var(--text) 42%,var(--surface));}
+.workflow-attach-action:disabled{opacity:.45;cursor:default;}
+@media(hover:none){.workflow-choice-footer{opacity:1;transform:none;pointer-events:auto;}}
+@media(prefers-reduced-motion:reduce){.workflow-choice-footer{transition:none;}}
+
+.run-capsule[hidden]{display:none;}
+
+/* Page navigation stays above the task selector, which follows its progress ring. */
+.detail-page-tabs{display:flex;align-items:center;gap:16px;}
+.detail-page-tab{border:0;background:transparent;color:var(--muted);padding:6px 0;font:inherit;font-size:12px;cursor:pointer;}
+.detail-page-tab.active{color:var(--text);font-weight:600;}
+.workflow-task-heading{display:flex;align-items:center;gap:12px;padding:12px 22px 8px;flex-shrink:0;min-width:0;}
+.workflow-task-heading>.run-ring{width:26px;height:26px;}
+#workflow-detail-ring[data-status="completed"]{--ring-color:#b5bbc3;}
+.workflow-task-heading .workflow-picker{flex:1;min-width:0;}
+.workflow-task-heading #workflow-toggle{margin-left:-6px;padding:4px 6px;font-size:13px;}
+.workflow-task-status{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5;overflow-wrap:anywhere;}
+
+/* The entire task row is the picker trigger; chevron sits at its trailing edge. */
+.workflow-task-heading #workflow-toggle{display:flex;width:100%;max-width:100%;margin:0;padding:8px 10px;gap:12px;text-align:left;border-radius:12px;}
+.workflow-task-heading{padding:8px 12px 4px;}
+#workflow-toggle>.run-ring{width:26px;height:26px;flex:none;}
+.workflow-task-text{display:flex;flex-direction:column;flex:1;min-width:0;gap:2px;}
+.workflow-task-text #workflow-label{display:block;}
+.workflow-task-text .workflow-task-status{font-weight:400;white-space:normal;}
+#workflow-toggle>.picker-chevron{margin-left:auto;flex:none;}
+
+.workflow-info-section{margin-top:22px;font-size:11px;line-height:1.6;}
+.workflow-info-section h4{margin:0 0 10px;font-size:12px;font-weight:600;}
+.workflow-info-section p{color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere;}
+.workflow-info-section .run-metadata{border:0;padding:0;grid-template-columns:80px minmax(0,1fr);}
+.workflow-stage-info{margin:9px 0;padding:8px 10px;border-radius:9px;background:var(--surface2);}
+.workflow-stage-info summary{cursor:pointer;overflow-wrap:anywhere;}
+.workflow-stage-info .run-metadata{margin-top:10px;}
+.workflow-file-row{display:flex;flex-direction:column;margin:8px 0;overflow-wrap:anywhere;}.workflow-file-row small{color:var(--muted);font-size:10px;}
+.workflow-tool-row{display:flex;justify-content:space-between;gap:10px;padding:5px 0;overflow-wrap:anywhere;}.workflow-tool-row>span:last-child{color:var(--muted);flex-shrink:0;}
+
+.workflow-choice.can-attach{cursor:pointer;}
+
+/* Hover copy is only a hint; hit testing belongs to the whole workflow card. */
+.workflow-choice-footer,.workflow-choice:hover .workflow-choice-footer,.workflow-choice:focus-within .workflow-choice-footer{pointer-events:none;}
+.workflow-attach-action{cursor:inherit;}
+.workflow-attach-action.is-disabled{opacity:.45;}
+
+/* Dense stage timeline: dots convey completion; only the active stage needs a label. */
+.run-timeline{margin:0 0 12px;}
+.run-timeline li,.workflow-sidebar-detail .run-timeline li{align-items:flex-start;gap:9px;padding:0 0 11px;min-height:25px;box-sizing:border-box;}
+.run-timeline li>div{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 7px;min-width:0;line-height:1.45;}
+.run-timeline strong{font-size:11px;font-weight:450;}
+.run-timeline .pending strong{color:color-mix(in srgb,var(--text) 40%,var(--surface));}
+.run-timeline .current strong{color:var(--text);font-weight:600;}
+.run-timeline .done strong{color:color-mix(in srgb,var(--text) 75%,var(--surface));}
+.run-timeline .run-stage-state{display:inline;margin:0;font-size:9px;color:var(--accent);white-space:nowrap;}
+.run-stage-dot{width:12px;height:12px;margin-top:2px;font-size:8px;}
+.run-timeline li:not(:last-child)::after{left:6px;top:16px;bottom:1px;}
+.run-timeline li:last-child{padding-bottom:0;}
+.workflow-sidebar-detail .run-timeline{margin-top:12px;}
+
+/* Hover preview is a fixed window around the current stage, not a long scroll list. */
+.run-expanded[popover]{overflow:hidden;}
+.run-expanded[popover] .run-timeline>li:not(.near-current){display:none;}
+.run-expanded[popover] .run-timeline{padding:8px 6px 8px 7px;}
+.run-expanded[popover] .run-timeline.fade-top{mask-image:linear-gradient(to bottom,transparent,#000 24px);}
+.run-expanded[popover] .run-timeline.fade-bottom{mask-image:linear-gradient(to bottom,#000 calc(100% - 24px),transparent);}
+.run-expanded[popover] .run-timeline.fade-top.fade-bottom{mask-image:linear-gradient(to bottom,transparent,#000 24px,#000 calc(100% - 24px),transparent);}
+.run-expanded[popover] .run-metadata dd{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+/* Only actively executing stages breathe; paused stages remain still. */
+.run-capsule[data-status="running"] .run-timeline .current .run-stage-dot{animation:stage-breathe 2.4s ease-in-out infinite;}
+.workflow-sidebar-detail[data-status="running"] .run-timeline .current .run-stage-dot{animation:stage-breathe 2.4s ease-in-out infinite;}
+@keyframes stage-breathe{0%,100%{box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 7%,transparent);opacity:.65;}50%{box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 17%,transparent);opacity:1;}}
+@media(prefers-reduced-motion:reduce){.run-timeline .current .run-stage-dot{animation:none!important;}}
+
+/* Public reasoning summaries are inline live text, never expandable detail cards. */
+.message.reasoning{margin:8px 0 14px;padding:0;color:var(--text-dim);}
+.message.reasoning>.message-content{display:none;}
+.message.reasoning>.message-label{display:flex;align-items:center;gap:9px;margin:0;cursor:default;min-width:0;}
+.message.reasoning .activity-title{font-size:12px;font-weight:400;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:0;flex:1;}
+.message.reasoning .activity-state,.message.reasoning .activity-time{display:none;}
+.message.reasoning.is-running .activity-icon{animation:none;border:0;background:transparent;display:flex;align-items:center;justify-content:center;}
+.message.reasoning.is-running .activity-icon svg{display:block;}
+.message.reasoning.is-running>.message-label{animation:reasoning-breathe 2.3s ease-in-out infinite;}
+@keyframes reasoning-breathe{0%,100%{opacity:.48;}50%{opacity:1;}}
+@media(prefers-reduced-motion:reduce){.message.reasoning.is-running>.message-label{animation:none;}}
+
+/* Workflow details: quiet, grouped surfaces with progressively disclosed metadata. */
+.workflow-info-section{margin-top:12px;border:1px solid color-mix(in srgb,var(--border) 55%,transparent);border-radius:14px;background:var(--surface);overflow:hidden;}
+.workflow-info-section>summary{display:flex;align-items:center;gap:8px;padding:12px 14px;list-style:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--text);user-select:none;}
+.workflow-info-section>summary::-webkit-details-marker{display:none;}
+.workflow-info-section>summary::after{content:'';width:5px;height:5px;margin-left:auto;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(-45deg);transition:transform .18s ease;}
+.workflow-info-section[open]>summary::after{transform:rotate(45deg);}
+.workflow-info-section>summary:hover{background:var(--surface2);}
+.workflow-info-section>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-3px;border-radius:12px;}
+.workflow-info-body{padding:0 14px 13px;}
+.workflow-info-body>p{margin:4px 0;font-size:11px;}
+.workflow-info-body>.run-metadata{display:grid;grid-template-columns:90px minmax(0,1fr);gap:9px 12px;margin:2px 0 0;border:0;line-height:1.65;}
+.workflow-info-body>.run-metadata dt{color:var(--muted);font-size:11px;}
+.workflow-info-body>.run-metadata dd{margin:0;color:var(--text);overflow-wrap:anywhere;}
+.workflow-stage-info{margin:6px 0;padding:9px 11px;border-radius:9px;background:var(--surface2);}
+.workflow-stage-info summary{font-size:11px;line-height:1.6;overflow-wrap:anywhere;color:var(--muted);}
+.workflow-stage-info[open] summary{color:var(--text);font-weight:600;}
+.workflow-stage-info .run-metadata{margin-top:10px;gap:6px 10px;}
+.workflow-file-row{padding:9px 10px;margin:5px 0;border-radius:9px;background:var(--surface2);gap:4px;}
+.workflow-file-row>span{font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px;overflow-wrap:anywhere;}
+.workflow-file-row>small{font-size:10px;color:var(--muted);}
+.workflow-tool-chips{display:flex;flex-wrap:wrap;gap:6px;}
+.workflow-tool-row{display:inline-flex;align-items:center;gap:7px;padding:5px 9px;border-radius:8px;background:var(--surface2);font-size:10px;max-width:100%;}
+.workflow-tool-row>span:first-child{min-width:0;overflow-wrap:anywhere;}
+.workflow-tool-row>span:last-child{font-variant-numeric:tabular-nums;font-size:10px;}
+.workflow-tool-row.busy{background:color-mix(in srgb,var(--accent) 8%,var(--surface));color:var(--accent);}
+.workflow-tool-row.busy::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--accent);flex-shrink:0;}
+
+.workflow-overview{margin-top:0;margin-bottom:16px;}
+.workflow-overview>h4{margin:0;padding:12px 14px;font-size:12px;font-weight:600;}
+
+/* Give workflow content a little more space from the left divider. */
+.workflow-detail-header{padding-left:18px;}
+.workflow-detail-header .detail-page-tabs{margin-left:0;}
+.workflow-task-heading{padding-left:8px;}
+#detail-content{padding-left:14px;}
+
+.workflow-sidebar-detail .run-timeline{margin-left:10px;}
+
+.run-timeline .run-stage-duration{display:inline;margin:0;color:var(--muted);font-size:10px;font-weight:400;white-space:nowrap;font-variant-numeric:tabular-nums;}
+
+/* Fade only beneath each capsule, leaving unused ribbon space transparent. */
+.workflow-run .run-track{isolation:isolate;}
+.run-capsule{isolation:auto;}
+.run-capsule::after{content:none;}
+.run-capsule>.run-compact{background:inherit;border-radius:inherit;}
+.run-track{padding-bottom:40px;}
+/* Capsules overlay the conversation; unused space remains readable and interactive. */
+.workflow-run{height:0;min-height:0;padding:0;overflow:visible;pointer-events:none;}
+.workflow-run .run-track{width:max-content;max-width:100%;box-sizing:border-box;pointer-events:auto;}
+.workflow-run .run-scroll{pointer-events:auto;}
+.workflow-run:not([hidden])+#conversation{margin-top:0;}
+
+.run-capsule.same-conversation{border-color:color-mix(in srgb,var(--accent) 30%,var(--border));}
+
+/* Keep the composer controls on one line; attachments yield space first. */
+.composer-footer{flex-wrap:nowrap;gap:6px;}
+.composer-left{flex:1 1 220px;min-width:140px;flex-wrap:nowrap;gap:2px;}
+.composer-left>.model-picker{flex:0 0 auto;}
+.attached-workflows{flex:0 1 auto;min-width:0;flex-wrap:nowrap;}
+.workflow-chip{min-width:0;box-sizing:border-box;}
+.workflow-chip>span{min-width:0;}
+.composer-right{flex:0 1 auto;min-width:0;flex-wrap:nowrap;gap:2px;}
+.composer-right>.model-picker:has(#model-toggle){flex:0 1 auto;min-width:0;}
+#model-toggle{min-width:0;}
+#model-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#model-toggle>.picker-chevron,#model-effort-badge,#model-speed-badge,.composer-right>.send-button{flex-shrink:0;}

@@ -39,6 +39,6 @@ def workflow_menu():
             continue
         path = registered.get(item.workflow)
         exists = bool(path and path.is_file())
-        result.append({**item.model_dump(), 'registered': exists, 'can_start': False,
-                       'status': 'launch_not_connected' if exists else 'not_registered'})
+        result.append({**item.model_dump(), 'registered': exists, 'can_start': exists,
+                       'status': 'ready' if exists else 'not_registered'})
     return result

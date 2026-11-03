@@ -5,3 +5,8 @@ workflows:
     description: 阅读 RTL，简要总结设计功能
     workflow: flowcanvas:rtl-summary
     enabled: true
+  - id: default
+    name: UCAgent 默认验证流程
+    description: 完整的分阶段芯片验证流程，包含验证规划、环境搭建、测试与覆盖率分析
+    workflow: flowcanvas:default
+    enabled: true

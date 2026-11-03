@@ -19,6 +19,8 @@ class CodexBackend:
         self.lock = asyncio.Lock()
         self.tasks = []
         self.loaded = {}
+        self.mcp_url = None
+        self.workflow_instructions = None
 
     async def connect(self):
         """Initialize once; a dead process is replaced on the next user operation."""
@@ -31,7 +33,14 @@ class CodexBackend:
             args = [executable, 'app-server', '--listen', 'stdio://',
                     '-c', 'project_doc_max_bytes=0', '-c', 'features.fast_mode=true']
             # Override the entire table: CLI dotted keys do not parse TOML-quoted names.
-            args += ['-c', 'mcp_servers={}']
+            # Only our conversation-owned dispatcher or authorized workflow host is
+            # trusted here. The dispatcher enforces the live attachment whitelist;
+            # the workflow host enforces its configured tools and write scope.
+            # "never" alone rejects MCP writes instead of authorizing them.
+            mcp_config = ('mcp_servers={ucagent={url=' + json.dumps(self.mcp_url)
+                          + ', default_tools_approval_mode="approve", tool_timeout_sec=1860}}'
+                          if self.mcp_url else 'mcp_servers={}')
+            args += ['-c', mcp_config]
             config = Path(os.environ.get('CODEX_HOME', Path.home() / '.codex')) / 'config.toml'
             if config.is_file():
                 data = tomllib.loads(config.read_text())
@@ -129,20 +138,10 @@ class CodexBackend:
         await self.connect()
         if thread_id and self.loaded.get(thread_id) == mode:
             return thread_id
-        instructions = {
-            'full': 'You may edit files and execute commands to fulfill the user request. '
-                    'Full access is enabled. Do not claim a workflow ran unless it actually did. ',
-            'workflow': 'Conversation analysis is read-only. File changes and execution must be '
-                        'delegated to an attached workflow. No workflow execution tool is connected '
-                        'in this version; explain that limitation when execution is requested. '
-                        'Do not edit files, run builds or tests, or bypass this restriction with commands. ',
-            'readonly': 'Only read and analyze. Do not edit files, run builds or tests, '
-                        'or launch any workflow, including by shell commands. ',
-        }
         params = {'cwd': str(self.workspace), 'model': model,
                   'sandbox': 'danger-full-access' if mode == 'full' else 'read-only',
                   'approvalPolicy': 'never', 'developerInstructions':
-                  'You are the FlowCanvas assistant. ' + instructions[mode] + 'Answer in the user language.'}
+                  self.workflow_instructions or 'You are the FlowCanvas assistant. Use runtime sandbox information and tool responses to determine available capabilities. Answer in the user language.'}
         if thread_id:
             params.update(threadId=thread_id, excludeTurns=True)
         result = await self.request('thread/resume' if thread_id else 'thread/start', params)

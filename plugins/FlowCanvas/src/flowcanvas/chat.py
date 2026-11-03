@@ -10,6 +10,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Literal
 from .backends.codex import CodexBackend
+from .workflow_tasks import WorkflowInput, attachment
+
+
+class DirectWorkflow(WorkflowInput):
+    """Catalog input plus explicit model selection for a newly created conversation."""
+    model: str
+    effort: str
 
 ACTIVE = {'starting', 'running', 'stopping'}
 
@@ -49,6 +56,9 @@ class ChatService:
         workspace.mkdir(exist_ok=True)
         self.sessions = {}
         self.jobs = set()
+        self.session_backends = {}
+        self.workflow_bridges = {}
+        self.catalog_reconnect = set()
         self.launching = set()
         self.steering = set()
         self.dirty = set()
@@ -59,8 +69,52 @@ class ChatService:
             session = json.loads(path.read_text())
             if session['status'] in ACTIVE:
                 session.update(status='interrupted', error='Server restarted during the previous turn.')
+            for card in session.get('workflow_runs', []):
+                if card['status'] != 'completed':
+                    card.update(status='paused', alive=False, pause_reason='工作台已重启，请恢复工作流')
             session['queue_paused'] = True  # Restart never silently executes persisted requests.
             self.sessions[session['id']] = session
+            # Import pre-card-history records, including the retired worker storage.
+            # This reads historical data only; it never creates or starts a worker.
+            legacy = [session.get('workflow_run')]
+            for worker_path in (self.root / 'workflow_workers' / session['id']).glob('*.json'):
+                try:
+                    legacy.append(json.loads(worker_path.read_text()).get('workflow_run'))
+                except (OSError, ValueError):
+                    continue
+            cards = session.setdefault('workflow_runs', [])
+            existing = {card['id'] for card in cards}
+            migrated = False
+            for record in legacy:
+                if not record or not record.get('id') or not record.get('workspace') or record['id'] in existing:
+                    continue
+                card = dict(record)
+                card.pop('output', None)
+                root = Path(record['workspace']).parent
+                card.update(conversation_id=session['id'], root=str(root), alive=False,
+                            workflow_id=(session.get('attachment') or {}).get('workflow_id', 'rtl-summary'),
+                            stages=[], current_stage='', historical=True)
+                if record.get('status') != 'completed':
+                    card.update(status='paused', pause_reason='历史 MCP 服务已停止')
+                try:
+                    progress = json.loads((root / 'progress.json').read_text())
+                    card.update(stages=progress.get('stages', []), current_stage=progress.get('current_stage', ''))
+                except (OSError, ValueError):
+                    pass
+                cards.append(card)
+                existing.add(card['id'])
+                migrated = True
+            from .workflow_runtime import project_startup_stage
+            for card in cards:
+                project_startup_stage(card)
+                if 'output' in card:
+                    card.pop('output')
+                    migrated = True
+            if isinstance(session.get('workflow_run'), dict) and 'output' in session['workflow_run']:
+                session['workflow_run'].pop('output')
+                migrated = True
+            if migrated:
+                self.save(session)
 
     def save(self, session):
         """Atomically persist the UI projection without rewriting native model history."""
@@ -87,7 +141,26 @@ class ChatService:
             await asyncio.sleep(1)
             for identity in list(self.dirty):
                 self.save(self.sessions[identity])
+            for bridge in list(self.workflow_bridges.values()):
+                await bridge.runtime.inspect()
             for session in list(self.sessions.values()):
+                if session['id'] in self.catalog_reconnect and session['status'] == 'completed' and session['id'] not in self.launching:
+                    self.catalog_reconnect.discard(session['id'])
+                    bridge = self.workflow_bridges.get(session['id'])
+                    card = next((c for c in session.get('workflow_runs', []) if bridge and c['id'] == bridge.active_card), None)
+                    backend = self.session_backends.pop(session['id'], None)
+                    if backend:
+                        backend.emit = lambda event: None
+                        await backend.close()
+                    if card and card['status'] != 'completed' and session.get('permission_mode') != 'readonly' and not session.get('queue'):
+                        session.update(status='starting', turn=None, ended_at=None)
+                        self.launching.add(session['id'])
+                        self.changed(session)
+                        job = asyncio.create_task(self.run(session, Message(
+                            text='The workflow MCP tool catalog has been refreshed in this same conversation. Continue the user-requested workflow using its now-available stage tools. Inspect list_workflow_runs for the active card and resume it only if its host is stopped. Do not restart completed work.',
+                            model=session['model'], effort=session['effort'], speed=session.get('speed', 'standard'))))
+                        self.jobs.add(job)
+                        job.add_done_callback(self.jobs.discard)
                 if (session.get('queue') and not session.get('queue_paused')
                         and session['status'] not in ACTIVE and session['id'] not in self.launching
                         and session['id'] not in self.steering):
@@ -122,7 +195,7 @@ class ChatService:
         """Apply backend events only to their owning conversation and turn."""
         if event['kind'] == 'disconnected':
             for session in self.sessions.values():
-                if session['status'] in ACTIVE:
+                if session['status'] in ACTIVE and event.get('session_id') == session['id']:
                     session.update(status='error', error=event['error'], ended_at=time.time())
                     self.changed(session)
             return
@@ -144,6 +217,7 @@ class ChatService:
                     if block.get('status') in {'running', 'inProgress'}:
                         block.update(status=session['status'], ended_at=time.time())
             if session['status'] in {'interrupted', 'error'}:
+                self.catalog_reconnect.discard(session['id'])
                 for item in session['items']:
                     if item.get('status') in {'running', 'inProgress'}:
                         item['status'] = session['status']
@@ -197,17 +271,58 @@ class ChatService:
         """Open the native thread and start generation, respecting early cancellation."""
         try:
             mode = session.get('permission_mode', 'workflow')
-            session['thread'] = await self.backend.open(session['thread'], message.model, mode)
+            backend = self.session_backends.get(session['id'])
+            if backend is None:
+                backend = CodexBackend(self.backend.workspace, lambda event: self.event({**event, 'session_id': session['id']}))
+                from .workflow_bridge import WorkflowBridge
+                bridge = self.workflow_bridges.get(session['id'])
+                if bridge is None:
+                    bridge = WorkflowBridge(self, session)
+                    await bridge.start()
+                    self.workflow_bridges[session['id']] = bridge
+                backend.mcp_url = bridge.url
+                self.session_backends[session['id']] = backend
+            allowed = session.get('attachment')
+            from .catalog import workflow_menu
+            workflow_meta = next((item for item in workflow_menu() if allowed and item['id'] == allowed['workflow_id']), None)
+            backend.workflow_instructions = (
+                'You are the FlowCanvas assistant. A user-attached workflow expresses intent to use that workflow for their task. '
+                'For the next task request, use the attached workflow without requiring the user to repeat an explicit run command. '
+                'If required inputs are missing, ask only for those inputs, then call run_workflow when ready. '
+                'Do not run again for questions about results, explanations, or unrelated conversation. '
+                'run_workflow starts an MCP, not another model. Execute its returned instructions yourself in this conversation, using the separately named workflow tools (such as ReadTextFile or Complete), with their original MCP arguments. FlowCanvas binds these tools to the most recently started or resumed card. Do not pass card_id to stage tools and do not use run_workflow to execute those operations. Use list_workflow_runs to inspect bound cards, and run_workflow(card_id) to resume or restart them. Never claim success without acceptance. '
+                'You cannot modify the whitelist. Authorized workflow: ' +
+                (allowed['workflow_id'] if allowed else 'none') + '. ' +
+                ('User-attached workflow metadata: ' + json.dumps({
+                    'id': allowed['workflow_id'], 'name': workflow_meta['name'],
+                    'description': workflow_meta['description'],
+                    'required_inputs': ['rtl_file: existing RTL file path', 'dut: module name']
+                }, ensure_ascii=False) + '. ' if allowed and workflow_meta else '') +
+                'Determine available capabilities from the current runtime sandbox information and actual tool responses. '
+                'Workflow execution authorization is checked by the server. '
+                'Answer in the user language.')
+            previous_thread = session.get('thread')
+            session['thread'] = await backend.open(session['thread'], message.model, mode)
+            if previous_thread and session.get('runtime_permission_policy') != 1:
+                # One-time retirement of the old prompt policy, not a mode-specific
+                # permission grant. Future switches only change the native sandbox.
+                await backend.request('thread/inject_items', {'threadId': session['thread'], 'items': [{
+                    'type': 'message', 'role': 'developer', 'content': [{'type': 'input_text', 'text':
+                        'FlowCanvas configuration migration: earlier FlowCanvas prompt restrictions requiring workflow-only writes/builds/tests are retired. Determine capabilities from current runtime sandbox information and actual tool responses. Workflow authorization is enforced by the server. This message does not grant filesystem or tool permissions.'}]}]})
+            session['runtime_permission_policy'] = 1
             self.changed(session)
             if session['status'] == 'stopping':
                 session['status'] = 'interrupted'
                 return
-            turn = await self.backend.send(session['thread'], ('Quoted context (reference only):\n' + message.quote + '\n\nUser request:\n' if message.quote else '') + message.text, message.model, message.effort,
+            turn = await backend.send(session['thread'], ('Quoted context (reference only):\n' + message.quote + '\n\nUser request:\n' if message.quote else '') + message.text, message.model, message.effort,
                                            session.get('service_tier'), mode)
             session['turn'] = turn
             # Notifications may precede the RPC response: never overwrite terminal state.
             if session['status'] == 'stopping':
-                await self.backend.interrupt(session['thread'], turn)
+                await backend.interrupt(session['thread'], turn)
+        except asyncio.CancelledError:
+            session.update(status='interrupted', ended_at=time.time(), queue_paused=True)
+            raise
         except Exception as exc:
             session.update(status='error', error=str(exc), queue_paused=True)
         finally:
@@ -223,6 +338,10 @@ class ChatService:
             job.cancel()
         if self.jobs:
             await asyncio.gather(*self.jobs, return_exceptions=True)
+        for bridge in self.workflow_bridges.values():
+            await bridge.close()
+        for backend in self.session_backends.values():
+            await backend.close()
         await self.backend.close()
         if self.flusher:
             self.flusher.cancel()
@@ -245,6 +364,30 @@ def routes(service):
         except Exception as exc:
             raise HTTPException(503, str(exc)) from exc
 
+    @router.get('/workflow-runs')
+    async def workflow_runs():
+        """Expose workspace-wide cards to the UI without expanding model permissions."""
+        return sorted([{**card, 'conversation_id': owner['id'],
+                        'conversation_title': owner.get('title') or '新对话',
+                        'model': owner.get('model'), 'effort': owner.get('effort'), 'backend': owner.get('backend')}
+                       for owner in service.sessions.values()
+                       for card in owner.get('workflow_runs', [])],
+                      key=lambda card: card.get('started_at', 0), reverse=True)
+
+    @router.post('/sessions/{identity}/workflow-runs/{card_id}/dismiss')
+    async def dismiss_workflow(identity: str, card_id: str):
+        """Remove a completed card from the UI while retaining execution evidence."""
+        owner = service.get(identity)
+        card = next((c for c in owner.get('workflow_runs', []) if c['id'] == card_id), None)
+        if card is None:
+            raise HTTPException(404, 'Workflow card not found')
+        if card['status'] != 'completed':
+            raise HTTPException(409, 'Only completed workflow cards can be removed')
+        card['dismissed'] = True
+        service.changed(owner)
+        service.save(owner)
+        return {'removed': card_id}
+
     @router.get('/sessions')
     async def sessions():
         """List lightweight session summaries without loading all messages."""
@@ -266,8 +409,15 @@ def routes(service):
     async def delete(identity: str):
         """Permanently delete FlowCanvas history, leaving native Codex storage untouched."""
         session = service.get(identity)
-        if session['status'] in ACTIVE:
+        if session['status'] in ACTIVE or identity in service.launching:
             raise HTTPException(409, 'Stop the active turn before deleting')
+        bridge = service.workflow_bridges.pop(identity, None)
+        if bridge:
+            await bridge.close()
+        backend = service.session_backends.pop(identity, None)
+        if backend:
+            backend.emit = lambda event: None
+            await backend.close()
         (service.root / (identity + '.json')).unlink(missing_ok=True)
         service.dirty.discard(identity)
         del service.sessions[identity]
@@ -277,8 +427,15 @@ def routes(service):
     async def permissions(identity: str, settings: PermissionSettings):
         """Change policy only between turns; clients cannot mutate an executing turn."""
         session = service.get(identity)
-        if session['status'] in ACTIVE:
+        if session['status'] in ACTIVE or identity in service.launching:
             raise HTTPException(409, 'Stop the active turn before changing permissions')
+        # A loaded native thread retains its old developer instructions on resume.
+        # Reconnect cold so the persisted thread resumes with the new policy, while
+        # keeping the conversation-owned workflow hosts and cards intact.
+        backend = service.session_backends.pop(identity, None)
+        if backend:
+            backend.emit = lambda event: None
+            await backend.close()
         session['permission_mode'] = settings.mode
         service.changed(session)
         service.save(session)
@@ -296,6 +453,57 @@ def routes(service):
         service.changed(session)
         service.save(session)
         return session
+
+    @router.post('/sessions/{identity}/attachment')
+    async def attach(identity: str, value: WorkflowInput):
+        """Grant only the explicitly selected enabled workflow to this conversation."""
+        session = service.get(identity)
+        if session['status'] in ACTIVE or identity in service.launching:
+            raise HTTPException(409, 'Wait for the current task before changing attachments')
+        if session.get('permission_mode', 'workflow') == 'readonly':
+            raise HTTPException(403, 'Read-only conversations cannot attach executable workflows')
+        resolved = attachment(value)
+        backend = service.session_backends.pop(identity, None)
+        if backend:
+            backend.emit = lambda event: None
+            await backend.close()
+        bridge = service.workflow_bridges.pop(identity, None)
+        if bridge:
+            await bridge.close()
+        session['attachment'] = resolved
+        service.changed(session)
+        service.save(session)
+        return session
+
+    @router.post('/sessions/{identity}/attachment/remove')
+    async def detach(identity: str):
+        """Revoke workflow authorization without deleting its recorded result."""
+        session = service.get(identity)
+        if session['status'] in ACTIVE or identity in service.launching:
+            raise HTTPException(409, 'Stop the task before removing its workflow')
+        session.pop('attachment', None)
+        backend = service.session_backends.pop(identity, None)
+        if backend:
+            backend.emit = lambda event: None
+            await backend.close()
+        bridge = service.workflow_bridges.pop(identity, None)
+        if bridge:
+            await bridge.close()
+        service.changed(session)
+        service.save(session)
+        return session
+
+    @router.post('/workflows/direct')
+    async def direct(value: DirectWorkflow):
+        """Create a new bound conversation and immediately launch its chosen workflow."""
+        resolved = attachment(value)
+        model = next((row for row in service.catalog if row['id'] == value.model), None)
+        if not model or value.effort not in model['efforts']:
+            raise HTTPException(400, 'Select a valid model and effort')
+        session = service.create()
+        session['attachment'] = resolved
+        session['title'] = resolved['name']
+        return await send(session['id'], Message(text='Run the attached workflow and report the result in Chinese.', model=value.model, effort=value.effort))
 
     @router.post('/sessions/{identity}/messages', status_code=202)
     async def send(identity: str, message: Message):
@@ -340,7 +548,7 @@ def routes(service):
             text = ('Quoted context (reference only):\n' + message.quote + '\n\nUser request:\n' if message.quote else '') + message.text
             service.steering.add(identity)
             try:
-                await service.backend.steer(session['thread'], session['turn'], text)
+                await service.session_backends[identity].steer(session['thread'], session['turn'], text)
             except Exception as exc:
                 raise HTTPException(409, str(exc)) from exc
             finally:
@@ -365,6 +573,12 @@ def routes(service):
         """Cancel the current native turn, including requests made during startup."""
         session = service.get(identity)
         session['queue_paused'] = True
+        service.catalog_reconnect.discard(identity)
+        bridge = service.workflow_bridges.get(identity)
+        if bridge:
+            await bridge.runtime.pause()
+        if bridge and bridge.call:
+            bridge.call.cancel()
         service.changed(session)
         if session['status'] not in ACTIVE:
             return session
@@ -372,7 +586,7 @@ def routes(service):
         service.changed(session)
         if session['turn']:
             try:
-                await service.backend.interrupt(session['thread'], session['turn'])
+                await service.session_backends[identity].interrupt(session['thread'], session['turn'])
             except Exception as exc:
                 session.update(status='error', error=str(exc))
                 service.changed(session)

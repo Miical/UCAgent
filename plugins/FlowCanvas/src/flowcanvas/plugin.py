@@ -5,10 +5,12 @@ from . import __version__
 
 
 def get_plugin() -> Plugin:
-    """Expose the web application and bundled minimal RTL summary workflow."""
+    """Expose the web application and bundled workflow entries."""
     root = Path(__file__).resolve().parent
     return Plugin(name="flowcanvas", version=__version__,
                   description="Visual verification workspace", root=root,
                   assets=(root / "web",),
                   workflows=(PluginWorkflow(name="rtl-summary",
-                                            config_file=root / "workflows" / "rtl-summary.yaml"),))
+                                            config_file=root / "workflows" / "rtl-summary.yaml"),
+                             PluginWorkflow(name="default",
+                                            config_file=root / "workflows" / "default.yaml")))
