@@ -103,3 +103,25 @@ document.addEventListener('flowcanvas-open-workflow',()=>{
     detailMotionTimer=setTimeout(()=>workspace.classList.remove('detail-motion'),500);
   }
 });
+
+// Persist navigation independently from pane sizes and collapsed state.
+document.addEventListener('flowcanvas-view',event=>{
+  if(![...document.querySelectorAll('[data-view]')].some(button=>button.dataset.view===event.detail))return;
+  try{localStorage.setItem('flowcanvas.activeView',event.detail);}catch{}
+});
+try{
+  const saved=localStorage.getItem('flowcanvas.activeView');
+  const buttons=[...document.querySelectorAll('[data-view]')];
+  if(buttons.some(button=>button.dataset.view===saved)){
+    document.getElementById('project-heading').textContent=saved;
+    document.getElementById('project-content').setAttribute('aria-label',saved+'内容');
+    for(const button of buttons){
+      const selected=button.dataset.view===saved;
+      button.classList.toggle('active',selected);
+      if(selected)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');
+      button.setAttribute('aria-expanded',String(selected&&!workspace.classList.contains('project-collapsed')));
+    }
+    // Panels loaded after this script initialize from project-heading.
+    document.dispatchEvent(new CustomEvent('flowcanvas-view',{detail:saved}));
+  }
+}catch{}

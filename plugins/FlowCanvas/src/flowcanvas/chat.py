@@ -304,6 +304,7 @@ class ChatService:
                 }, ensure_ascii=False) + '. ' if allowed and workflow_meta else '') +
                 'Determine available capabilities from the current runtime sandbox information and actual tool responses. '
                 'Workflow execution authorization is checked by the server. '
+                'For verification groups, functional points, testpoints and source bindings, first call verification_targets(operation=guide) and follow that skill. Use that tool to persist definitions; do not edit the definition file directly. '
                 'Answer in the user language.')
             previous_thread = session.get('thread')
             session['thread'] = await backend.open(session['thread'], message.model, mode)

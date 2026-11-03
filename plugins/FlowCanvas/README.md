@@ -178,3 +178,31 @@ Codex 只对本插件创建的会话 MCP 设置 `default_tools_approval_mode="ap
 缓存位于用户状态目录 `rtl_views/`，源码内容或解析器版本变化后刷新会重新生成。
 查看器资源挂载于 `/rtl-viewer/`，通过 `?view=` 接入当前项目 JSON。FlowCanvas 外层
 在页面加载时自动获取结构，暂未接入覆盖率。BSD-3-Clause 和第三方声明随源码、构建产物保留。
+
+## 验证目标
+
+“验证目标”使用固定三层结构：功能组 → 功能点 → 测试点。权威文件为项目
+`.flowcanvas/verification.json`；Pydantic 模型 `flowcanvas.targets.Definition` 是 Schema
+来源，工具的 `guide` 操作同时返回 JSON Schema 和 Skill。无代码的规划可以先创建，
+描述、条件与预期行为可留空。测试用例与运行结果不混入此树。
+
+页面支持创建/编辑、按指定文件预览和导入、搜索、源码查看与绑定校验。导入会在源码
+定义前插入 `@flowcanvas id=bind_…` 注释，使用 pyslang/Python AST 获取范围，行号不作 ID。
+扫描不重建已发布的卡片；名称和说明也不会随源码扫描被覆盖。
+页面只轮询定义文件的 revision，在发布变更、打开页面或点击“核对代码”时检查绑定，
+不监听源码实时重建树。源码位置变化更新定位；内容变化需要核对确认；删除、重复标识
+或解析错误会显示失效、冲突或无法校验，不能据此声称覆盖命中或验证通过。
+
+配套 Skill：`src/flowcanvas/skills/verification-targets/SKILL.md`。
+对话 MCP 工具 `verification_targets` 提供 guide/read/inspect/source 和
+create/import/update/bind/accept。模型先读取 guide；所有修改带 expected_revision，
+由服务端校验三层关系、ID 唯一性和项目内路径。写操作目前要求完全访问模式；只读及
+工作流执行模式可查询，不因调用此工具而获得额外写权限。工具绑定会话的项目，不能
+传入任意项目路径。也可以用 `python -m flowcanvas.targets --project … --request request.json`
+调用同一实现。
+
+第一版导入约定：SV covergroup / coverpoint 或 cross / 显式普通 bins；Python class /
+函数或方法 / assert，模块函数使用文件名分组。复杂 Python 结构可显式 create + bind。
+SV 的 ignore_bins/illegal_bins 不作为正常测试点导入；bin 数组保留模板，隐式 cross
+不展开。仅为常见 UVM 注册/日志宏提供语法占位；未支持的宏或解析输入需要补齐，不能
+把源码扫描当成完整编译。移动文件尚不自动追踪，标识冲突不会自动猜测修复。

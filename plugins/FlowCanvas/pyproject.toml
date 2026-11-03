@@ -21,4 +21,4 @@ where = ["src"]
 include = ["flowcanvas*"]
 
 [tool.setuptools.package-data]
-flowcanvas = ["web/*", "workflows/*.yaml", "workflow_catalog.yaml", "web/rtl-viewer/*", "web/rtl-viewer/assets/*"]
+flowcanvas = ["web/*", "skills/verification-targets/*.md", "workflows/*.yaml", "workflow_catalog.yaml", "web/rtl-viewer/*", "web/rtl-viewer/assets/*"]

@@ -62,6 +62,8 @@ def create_app(state_dir=None) -> FastAPI:
     app.include_router(project_routes(service.projects))
     from .rtl_viewer import routes as viewer_routes
     app.include_router(viewer_routes(service))
+    from .targets import routes as target_routes
+    app.include_router(target_routes(service.projects))
     bundle = web / 'rtl-viewer'
     if (bundle / 'index.html').is_file():
         app.mount('/rtl-viewer', StaticFiles(directory=bundle, html=True), name='rtl-viewer')
