@@ -189,8 +189,9 @@ def normalize(method, params):
     if method in ('item/started', 'item/completed'):
         item = params['item']
         typ = item['type']
-        if typ == 'userMessage':
-            return None  # The accepted HTTP request already owns the user bubble.
+        if typ in {'userMessage', 'subAgentActivity'}:
+            # User bubbles are owned by HTTP; child lifecycle belongs in the agent sidebar.
+            return None
         kind = {'agentMessage': 'text', 'reasoning': 'reasoning', 'plan': 'plan'}.get(typ, 'tool')
         text = item.get('text', '')
         if typ == 'reasoning':

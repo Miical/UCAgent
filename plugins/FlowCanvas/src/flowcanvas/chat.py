@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Literal
 from .backends.codex import CodexBackend
+from .subagents import execution_active, refresh_activity, interrupt_children
 from .workflow_tasks import WorkflowInput, attachment
 
 
@@ -73,6 +74,7 @@ class ChatService:
         self.launching = set()
         self.steering = set()
         self.dirty = set()
+        self.child_checks = {}
         self.catalog = []
         self.backend = CodexBackend(workspace, self.event)
         self.flusher = None
@@ -83,6 +85,7 @@ class ChatService:
             for card in session.get('workflow_runs', []):
                 if card['status'] != 'completed':
                     card.update(status='paused', alive=False, pause_reason='工作台已重启，请恢复工作流')
+            session.update(children_running=0, children_pending=False, delegation_stopped=True)
             session['queue_paused'] = True  # Restart never silently executes persisted requests.
             self.sessions[session['id']] = session
             # Import pre-card-history records, including the retired worker storage.
@@ -132,7 +135,8 @@ class ChatService:
         if self.sessions.get(session['id']) is not session:
             return
         if session.get('ended_at') and session['status'] in {'completed', 'interrupted', 'error', 'failed'}:
-            if (session.get('attachment') or {}).get('task_only') and session.get('task_attachment_started'):
+            if ((session.get('attachment') or {}).get('task_only') and session.get('task_attachment_started')
+                    and not execution_active(session)):
                 session.pop('attachment', None)
                 session.pop('task_attachment_started', None)
             for item in reversed(session['items']):
@@ -161,10 +165,18 @@ class ChatService:
             await asyncio.sleep(1)
             for identity in list(self.dirty):
                 self.save(self.sessions[identity])
+            for session in list(self.sessions.values()):
+                previous = self.child_checks.get(session['id'])
+                if ((session.get('children_pending') or session.get('children_running'))
+                        and not session.get('delegation_stopped') and (not previous or previous.done())):
+                    job = asyncio.create_task(refresh_activity(self, session))
+                    self.child_checks[session['id']] = job
+                    self.jobs.add(job)
+                    job.add_done_callback(self.jobs.discard)
             for bridge in list(self.workflow_bridges.values()):
                 await bridge.runtime.inspect()
             for session in list(self.sessions.values()):
-                if session['id'] in self.catalog_reconnect and session['status'] == 'completed' and session['id'] not in self.launching:
+                if session['id'] in self.catalog_reconnect and session['status'] == 'completed' and session['id'] not in self.launching and not execution_active(session):
                     self.catalog_reconnect.discard(session['id'])
                     bridge = self.workflow_bridges.get(session['id'])
                     card = next((c for c in session.get('workflow_runs', []) if bridge and c['id'] == bridge.active_card), None)
@@ -233,6 +245,8 @@ class ChatService:
             session['error'] = event['error']
             if session['status'] == 'error':
                 session['queue_paused'] = True
+            if session['status'] == 'completed' and not session.get('delegation_stopped'):
+                session['children_pending'] = True
             if session['status'] not in ACTIVE:
                 session['ended_at'] = time.time()
                 for block in session['items']:
@@ -276,6 +290,7 @@ class ChatService:
     def launch(self, session, message, tier):
         """Start one accepted request after its predecessor has fully settled."""
         self.save(session)
+        session['delegation_stopped'] = False
         session.update(status='starting', error='', turn=None, model=message.model, effort=message.effort,
                        started_at=time.time(), ended_at=None, speed=message.speed, service_tier=tier)
         if not session['title']:
@@ -432,11 +447,21 @@ def routes(service):
         """Read persisted UI state without resuming or invoking the model."""
         return service.get(identity)
 
+    @router.get('/sessions/{identity}/subagents')
+    async def subagents(identity: str, selected: str | None = None):
+        """Read child conversations belonging to this session without starting a turn."""
+        from .subagents import read_agents
+        session = service.get(identity)
+        try:
+            return await read_agents(service, session, selected)
+        except RuntimeError as exc:
+            raise HTTPException(502, str(exc)) from None
+
     @router.post('/sessions/{identity}/delete')
     async def delete(identity: str):
         """Permanently delete FlowCanvas history, leaving native Codex storage untouched."""
         session = service.get(identity)
-        if session['status'] in ACTIVE or identity in service.launching:
+        if session['status'] in ACTIVE or execution_active(session) or identity in service.launching:
             raise HTTPException(409, 'Stop the active turn before deleting')
         bridge = service.workflow_bridges.pop(identity, None)
         if bridge:
@@ -454,7 +479,7 @@ def routes(service):
     async def permissions(identity: str, settings: PermissionSettings):
         """Change policy only between turns; clients cannot mutate an executing turn."""
         session = service.get(identity)
-        if session['status'] in ACTIVE or identity in service.launching:
+        if session['status'] in ACTIVE or execution_active(session) or identity in service.launching:
             raise HTTPException(409, 'Stop the active turn before changing permissions')
         # A loaded native thread retains its old developer instructions on resume.
         # Reconnect cold so the persisted thread resumes with the new policy, while
@@ -485,7 +510,7 @@ def routes(service):
     async def attach(identity: str, value: WorkflowInput):
         """Grant only the explicitly selected enabled workflow to this conversation."""
         session = service.get(identity)
-        if session['status'] in ACTIVE or identity in service.launching:
+        if session['status'] in ACTIVE or execution_active(session) or identity in service.launching:
             raise HTTPException(409, 'Wait for the current task before changing attachments')
         if session.get('permission_mode', 'workflow') == 'readonly':
             raise HTTPException(403, 'Read-only conversations cannot attach executable workflows')
@@ -506,7 +531,7 @@ def routes(service):
     async def detach(identity: str):
         """Revoke workflow authorization without deleting its recorded result."""
         session = service.get(identity)
-        if session['status'] in ACTIVE or identity in service.launching:
+        if session['status'] in ACTIVE or execution_active(session) or identity in service.launching:
             raise HTTPException(409, 'Stop the task before removing its workflow')
         session.pop('attachment', None)
         backend = service.session_backends.pop(identity, None)
@@ -600,6 +625,9 @@ def routes(service):
         """Cancel the current native turn, including requests made during startup."""
         session = service.get(identity)
         session['queue_paused'] = True
+        session['delegation_stopped'] = True
+        session['child_activity_epoch'] = session.get('child_activity_epoch', 0) + 1
+        session.update(children_running=0, children_pending=False)
         service.catalog_reconnect.discard(identity)
         bridge = service.workflow_bridges.get(identity)
         if bridge:
@@ -607,6 +635,12 @@ def routes(service):
         if bridge and bridge.call:
             bridge.call.cancel()
         service.changed(session)
+        try:
+            await interrupt_children(service, session)
+        except RuntimeError as exc:
+            service.save(session)
+            raise HTTPException(502, str(exc)) from None
+        service.save(session)
         if session['status'] not in ACTIVE:
             return session
         session['status'] = 'stopping'

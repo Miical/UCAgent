@@ -94,6 +94,7 @@ export class ConversationView {
   }
   /** Reconcile native item states; animate only actual in-flight items and turns. */
   render(session){
+    session={...session,items:session.items.filter(item=>item.title!=='subAgentActivity')};
     const atBottom=this.root.scrollHeight-this.root.scrollTop-this.root.clientHeight<100;
     const switched=this.identity!==session.id;this.session=session;
     if(switched){
@@ -209,7 +210,7 @@ export class ConversationView {
       if(completion&&entry.item.kind==='text'){
         if(!entry.completion){entry.completion=element('span','saved-turn-status');entry.heading.append(entry.completion);}
         const duration=completion.started_at&&completion.ended_at?elapsed(completion.started_at,completion.ended_at):'';
-        entry.completion.textContent='本轮已完成'+(duration?' · '+duration:'');
+        entry.completion.textContent=(entry===latestCopy&&session.children_running>0?'主对话已回复 · '+session.children_running+' 个子 Agent 执行中':'本轮已完成')+(duration?' · '+duration:'');
       }
     }
     this.live.hidden=Boolean(finalReply);

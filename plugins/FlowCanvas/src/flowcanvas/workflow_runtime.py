@@ -1,5 +1,6 @@
 """Conversation-owned MCP processes; no worker model or hidden conversation."""
 import asyncio
+from .subagents import execution_active
 import json
 from pathlib import Path
 import shutil
@@ -68,7 +69,7 @@ class WorkflowRuntime:
             project_startup_stage(card)
             if (root / 'complete.json').is_file():
                 card.update(status='completed', pause_reason='')
-            elif card['status'] != 'paused' and (not card['alive'] or self.session['status'] not in {'starting', 'running'}):
+            elif card['status'] != 'paused' and (not card['alive'] or not execution_active(self.session)):
                 card.update(status='paused', pause_reason='MCP 服务停止' if not card['alive'] else '对话已停止')
         self.update_running_time()
         if before != json.dumps(cards):
@@ -150,7 +151,7 @@ class WorkflowRuntime:
                 else:
                     card.update(status='paused', pause_reason='MCP 启动超时'); self.publish()
                     return {'card': card}
-            if self.session['status'] not in {'starting', 'running'}:
+            if not execution_active(self.session):
                 await self.pause()
                 return {'card': card}
             if card['status'] != 'completed':

@@ -1157,3 +1157,38 @@ html:not([data-theme="light"]) .ai-task-sent .ai-task-requirements{background:rg
 .ai-task-flight{box-sizing:border-box;will-change:transform,opacity;box-shadow:0 8px 32px #00000014}
 
 .ai-design-scope{font:9px/1.5 ui-monospace,monospace;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin:0 0 7px}
+
+/* Child-agent history uses the same quiet sidebar surfaces as workflow and output. */
+.subagents-panel{display:flex;flex-direction:column;padding:12px 16px;gap:10px;overflow:hidden;min-width:0}
+.subagents-panel[hidden]{display:none}
+.subagent-list{display:flex;gap:6px;overflow-x:auto;flex:none;padding:2px 0 6px;scrollbar-width:thin}
+.subagent-choice{display:flex;align-items:center;gap:6px;flex:none;max-width:240px;padding:7px 9px;border:0;border-radius:9px;background:transparent;color:var(--text-dim);font-family:inherit;font-size:11px;line-height:1.4;cursor:pointer}
+.subagent-choice>span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.subagent-choice.active,.subagent-choice:hover{background:var(--surface2);color:var(--text)}
+.subagent-choice small{white-space:nowrap;font-size:9px;color:var(--text-dim)}
+.subagent-dot{width:5px;height:5px;flex:none;border-radius:50%;background:var(--text-dim)}
+.subagent-dot.running{background:var(--accent)}
+.subagent-heading{display:flex;align-items:center;gap:8px;font-size:12px;flex:none;min-width:0}
+.subagent-heading strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.subagent-heading>span,.subagent-heading>small{font-size:10px;color:var(--text-dim)}
+.subagent-notice{font-size:11px;color:var(--text-dim);line-height:1.7;margin:8px 0}
+.subagent-transcript{flex:1;min-height:0;overflow:auto;scrollbar-width:thin;padding-right:4px}
+.subagent-message{margin:0 0 18px;font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.subagent-speaker{font-size:10px;color:var(--text-dim);margin-bottom:5px}
+.subagent-message.is-user{padding:9px 11px;border-radius:12px;background:var(--surface2)}
+.subagent-message.is-summary{color:var(--text-dim);font-size:11px}
+.subagent-tool{margin:0 0 12px;font-size:11px;color:var(--text-dim)}
+.subagent-tool summary{cursor:pointer;overflow-wrap:anywhere}
+.subagent-tool pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto;padding:8px;background:var(--surface2);border-radius:8px;font-size:10px}
+/* One agent identity row, then a compact conversation with grouped execution steps. */
+.subagents-panel{gap:6px}
+.subagent-list{padding-bottom:8px}
+.subagent-steps{margin:2px 0 16px;color:var(--text-dim);font-size:11px}
+.subagent-steps>summary{cursor:pointer;padding:5px 0;list-style:none;display:flex;align-items:center;gap:6px}
+.subagent-steps>summary::-webkit-details-marker{display:none}
+.subagent-steps>summary::before{content:'›';font-size:16px;line-height:1;transition:transform .15s}
+.subagent-steps[open]>summary::before{transform:rotate(90deg)}
+.subagent-steps>.subagent-tool{margin:6px 0 6px 5px;padding-left:12px;border-left:1px solid var(--border)}
+.subagent-transcript .markdown-body{font-size:11px;line-height:1.75}
+.subagent-transcript .markdown-body ul,.subagent-transcript .markdown-body ol{padding-left:1.3em}
+.subagent-speaker{margin-bottom:6px;font-size:10px}

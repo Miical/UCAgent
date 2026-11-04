@@ -18,10 +18,11 @@
   panel.append(tabs,header,details,terminal,empty);
   const labels={starting:'启动中',running:'运行中',completed:'已结束',failed:'运行失败',interrupted:'已中断'};
   function show(value){
-    active=value;panel.hidden=!value;document.querySelector('.detail-pane').classList.toggle('show-test-output',value);
-    document.getElementById('detail-content').hidden=value;document.querySelector('.workflow-task-heading').hidden=value;
-    const popover=document.getElementById('workflow-popover');if(value&&popover){if(popover.matches(':popover-open'))popover.hidePopover();popover.hidden=true;document.getElementById('workflow-toggle').setAttribute('aria-expanded','false');}
-    workflow.classList.toggle('active',!value);output.classList.toggle('active',value);workflow.setAttribute('aria-current',value?'false':'page');output.setAttribute('aria-current',value?'page':'false');if(value)refresh();
+    const agents=value==='agents';value=value===true;active=value;panel.hidden=!value;document.querySelector('.detail-pane').classList.toggle('show-test-output',value);
+    document.getElementById('subagents-panel').hidden=!agents;const agentTab=document.getElementById('agents-page-tab');agentTab.classList.toggle('active',agents);agentTab.setAttribute('aria-current',agents?'page':'false');
+    document.getElementById('detail-content').hidden=value||agents;document.querySelector('.workflow-task-heading').hidden=value||agents;
+    const popover=document.getElementById('workflow-popover');if((value||agents)&&popover){if(popover.matches(':popover-open'))popover.hidePopover();popover.hidden=true;document.getElementById('workflow-toggle').setAttribute('aria-expanded','false');}
+    workflow.classList.toggle('active',!value&&!agents);output.classList.toggle('active',value);workflow.setAttribute('aria-current',value||agents?'false':'page');output.setAttribute('aria-current',value?'page':'false');if(value)refresh();document.dispatchEvent(new CustomEvent('flowcanvas-detail-page',{detail:agents?'agents':value?'output':'workflow'}));
   }
   function choose(id){selected=id;offset=0;epoch++;log.textContent='';details.open=false;try{localStorage.setItem('flowcanvas.testRun.'+project.id,id);}catch{}refresh();}
   function hasRun(value){for(const n of [tabs,header,details,terminal])n.hidden=!value;empty.hidden=value;}
@@ -54,7 +55,7 @@
       if(follow)log.scrollTop=log.scrollHeight;
     }catch(e){hasRun(true);status.textContent=e.message;status.dataset.status='failed';}finally{polling=false;}
   }
-  workflow.onclick=()=>show(false);output.onclick=()=>show(true);
+  workflow.onclick=()=>show(false);output.onclick=()=>show(true);document.getElementById('agents-page-tab').onclick=()=>show('agents');
   document.addEventListener('flowcanvas-open-workflow',()=>show(false));
   document.addEventListener('flowcanvas-test-run',event=>{project=event.detail.project;choose(event.detail.run.id);document.dispatchEvent(new Event('flowcanvas-open-workflow'));show(true);});
   fetch('/api/chat/projects').then(r=>r.json()).then(state=>{project=state.current;if(project){selected=localStorage.getItem('flowcanvas.testRun.'+project.id);}}).catch(()=>{});

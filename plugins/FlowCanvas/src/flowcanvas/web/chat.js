@@ -287,8 +287,8 @@ async function configureWorkflow(item,direct){
 function error(message){$('chat-error').textContent=message||'';$('chat-error').hidden=!message;}
 /** Keep send/stop state tied to the real backend turn. */
 function controls(){
-  const running=active.has(session?.status);
-  $('send').textContent=running&&!$('message').value.trim()?'■':'↑';$('send').classList.toggle('is-stop',running);$('send').ariaLabel=running?($('message').value.trim()?'加入队列':'停止回复'):'发送消息';$('send').title=$('send').ariaLabel;
+  const running=active.has(session?.status)||session?.children_running>0;
+  $('send').textContent=running&&!$('message').value.trim()?'■':'↑';$('send').classList.toggle('is-stop',running);$('send').ariaLabel=running?($('message').value.trim()?(active.has(session?.status)?'加入队列':'发送消息'):session?.children_running>0?'停止任务':'停止回复'):'发送消息';$('send').title=$('send').ariaLabel;
   $('send').disabled=busy||session?.status==='stopping'||(!running&&(!models.length||!$('message').value.trim()));
   $('model').disabled=$('effort').disabled=$('model-toggle').disabled=running||!models.length;
   $('backend-toggle').disabled=running;
@@ -358,7 +358,7 @@ function modelSelection(){
 }
 /** Render the selected session; other active conversations keep running independently. */
 function render(data){
-  session=data;view.render(data);controls();error(data.error);paintQueue();paintAttachments();paintWorkflowRun();
+  session=data;document.dispatchEvent(new CustomEvent('flowcanvas-session',{detail:{id:data.id}}));view.render(data);controls();error(data.error);paintQueue();paintAttachments();paintWorkflowRun();
   const option=[...$('sessions').options].find(o=>o.value===data.id);
   if(option)option.textContent=data.title||'新对话';
   $('session-label').textContent=data.title||'新对话';
@@ -492,6 +492,7 @@ async function updateSession(row,changes){
 async function choose(id){
   const number=++switchNumber;
   saveDraft();saveQuote();
+  document.dispatchEvent(new CustomEvent('flowcanvas-session',{detail:{id}}));
   unsubscribe?.();selected=id;localStorage.setItem('flowcanvas.session',id);
   $('message').value=drafts.get(id)||'';quoteDraft=quotes.get(id)||[];paintQuote();resizeDraft();session=null;controls();$('reconnect-notice').hidden=true;
   const data=await request('/sessions/'+id);if(number!==switchNumber)return;
@@ -504,7 +505,7 @@ async function create(){const data=await request('/sessions',{});await list();aw
 async function send(){
   if(busy)return;busy=true;controls();error('');
   try{
-    if(active.has(session?.status)&&!$('message').value.trim()){render(await request('/sessions/'+session.id+'/stop',{}));}
+    if((active.has(session?.status)||session?.children_running>0)&&!$('message').value.trim()){render(await request('/sessions/'+session.id+'/stop',{}));}
     else{
       const text=$('message').value;if(!text.trim())return;
       if(!session)await create();
@@ -610,6 +611,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshWor
 
 /** Return home to an empty conversation while preserving existing histories and active tasks. */
 document.addEventListener('flowcanvas-home',async()=>{
+  document.dispatchEvent(new CustomEvent('flowcanvas-session',{detail:{id:null}}));
   closePicker();
   try{
     if(session&&!session.items.length&&!(session.queue||[]).length){

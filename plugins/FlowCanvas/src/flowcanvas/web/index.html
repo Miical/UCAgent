@@ -116,7 +116,7 @@
     </section>
     <div class="splitter" role="separator" tabindex="0" aria-label="调整对话与详情宽度" aria-orientation="vertical" aria-valuemin="40" aria-valuemax="80" aria-valuenow="70" data-split="1"></div>
     <section class="pane detail-pane" aria-label="详情区域">
-      <header class="pane-header workflow-detail-header"><nav class="detail-page-tabs" aria-label="详情页面"><button type="button" id="workflow-page-tab" class="detail-page-tab active" aria-current="page">工作流</button><button id="output-page-tab" type="button" class="detail-page-tab">输出</button></nav></header>
+      <header class="pane-header workflow-detail-header"><nav class="detail-page-tabs" aria-label="详情页面"><button id="agents-page-tab" type="button" class="detail-page-tab">子 Agent</button><button type="button" id="workflow-page-tab" class="detail-page-tab active" aria-current="page">工作流</button><button id="output-page-tab" type="button" class="detail-page-tab">输出</button></nav></header>
       <div class="workflow-task-heading">
         <div class="model-picker workflow-picker">
           <button id="workflow-toggle" class="model-trigger session-trigger" aria-label="选择工作流" aria-haspopup="dialog" aria-expanded="false" aria-controls="workflow-popover"><span id="workflow-detail-ring" class="run-ring" style="--progress:0%" aria-label="工作流进度"></span><span class="workflow-task-text"><span id="workflow-label">工作流</span><span id="workflow-detail-status" class="workflow-task-status">选择一个工作流任务</span></span><svg class="picker-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
@@ -127,6 +127,7 @@
           </section>
         </div>
       </div>
+      <section id="subagents-panel" class="pane-body subagents-panel" hidden></section>
       <section id="test-output-panel" class="pane-body test-output-panel" hidden></section>
       <div class="pane-body" id="detail-content"><p class="workflow-detail-empty">点击顶部任务胶囊，查看工作流详情</p></div>
     </section>
@@ -160,6 +161,7 @@
   <script type="module" src="/assets/rtl-viewer.js"></script>
   <script src="/assets/targets.js"></script>
 <script src="/assets/test-output.js"></script>
-  <script type="module" src="/assets/chat.js"></script>
+  <script type="module" src="/assets/subagents.js"></script>
+<script type="module" src="/assets/chat.js"></script>
 </body>
 </html>
