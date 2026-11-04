@@ -133,10 +133,10 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     const error=el('p','targets-error');content.append(error);
     const save=button('保存',async()=>{save.disabled=true;try{const values={description:desc.value};if(condition)Object.assign(values,{condition:condition.value,expected:expected.value});if(bugMode)Object.assign(values,{actual:actual.value,evidence:evidence.value,status:bugStatus.value,severity:severity.value});await api(node?{operation:'update',target_id:node.id,expected_revision:data.revision,values:{...values,name:name.value}}:{operation:'create',kind,parent,name:name.value,values,expected_revision:data.revision});if(parent)opened.add(parent);dialog.close();await refresh();}catch(e){error.textContent=e.message;save.disabled=false;}} ,'targets-primary');content.append(save);name.focus();
   }
-  function newCaseTask(anchor,preview=false){
+  function newCaseTask(anchor,preview=false,design=null){
     if(document.querySelector('.ai-action-dialog'))return;
     const previousFocus=document.activeElement;
-    const {dialog,content}=modal('新增测试用例',true);dialog.classList.add('ai-action-dialog','ai-task-surface');dialog.classList.toggle('is-preview',preview);
+    const {dialog,content}=modal(design?'解释设计':'新增测试用例',true);dialog.classList.add('ai-action-dialog','ai-task-surface');dialog.classList.toggle('is-preview',preview);
     let leaveTimer,closeTimer;
     const enter=()=>{clearTimeout(leaveTimer);clearTimeout(closeTimer);dialog.classList.remove('is-leaving');};
     const pin=()=>{enter();dialog.classList.remove('is-preview');};dialog.pinTask=pin;
@@ -146,9 +146,9 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     const outside=event=>{if(!dialog.contains(event.target)&&!anchor.contains(event.target))dialog.close();};
     document.addEventListener('pointerdown',outside);
     dialog.addEventListener('close',()=>{clearTimeout(leaveTimer);clearTimeout(closeTimer);anchor.removeEventListener('mouseleave',leave);anchor.removeEventListener('mouseenter',enter);document.removeEventListener('pointerdown',outside);});
-    content.append(el('p','ai-task-objective','生成可运行用例，补齐说明与源码绑定。'));
-    const workflowBadge=el('span','ai-workflow-binding','◇ 新增测试用例');
-    dialog.querySelector('header strong').after(workflowBadge);
+    content.append(el('p','ai-task-objective',design?'解释 '+design.module+' 的功能、接口及内部逻辑。':'生成可运行用例，补齐说明与源码绑定。'));
+    if(design){const scope=el('div','ai-design-scope',design.instance);scope.title=design.instance;content.append(scope);}
+    if(!design)dialog.querySelector('header strong').after(el('span','ai-workflow-binding','◇ 新增测试用例'));
     const note=field(content,'想验证什么？（可选）','',true);note.placeholder='补充要求，例如读写边界场景…';note.setAttribute('aria-label','具体要求（可选）');note.oninput=()=>{note.style.height='36px';note.style.height=Math.min(100,Math.max(36,note.scrollHeight))+'px';};
     const choice=el('input');choice.type='checkbox';choice.setAttribute('role','switch');
     const newChat=el('div','ai-action-new-chat');choice.setAttribute('aria-label','新对话');newChat.append(choice,el('span','','新对话'));
@@ -156,9 +156,9 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       start.disabled=true;start.classList.add('is-sending');start.querySelector('span').textContent='发送中';error.textContent='';
       try{
         if(!window.FlowCanvasAI)throw Error('对话服务尚未就绪，请稍后重试');
-        const text='【AI任务：新增测试用例】\n绑定工作流：generate-testcase。请先调用 run_workflow 启动已附加的工作流，再按阶段执行。\n请为当前项目新增一个可独立运行的测试用例。项目：'+project.path+'。用户补充：'+(note.value.trim()||'请检查已有测试和验证目标，选择尚未充分验证且不重复的场景。')+'。先调用 test_cases(operation=guide) 读取规范，检查现有用例、目标和运行模板；复用现有驱动，必要时补齐用例所需基础设施。实现后通过 test_cases 工具保存用例名称、具体说明和源码绑定，不能只给方案。不要修改 RTL，不要自动启动仿真；结束时汇报新增文件与未验证事项。';
-        const result=await window.FlowCanvasAI.startCase({text,current:!choice.checked,project,requirements:note.value.trim()});
-        const task={id:result.id,before:(data?.targets||[]).map(n=>n.id)};localStorage.setItem('fc-case-task:'+project.id,JSON.stringify(task));
+        const text=design?'请只读分析当前项目 '+project.path+' 中的设计，不修改文件、不运行仿真、不启动其他工作流。目标实例：'+design.instance+'；模块：'+design.module+'；源码定位：'+JSON.stringify(design.source)+ '。先读取真实源码及必要的子模块，解释模块职责、端口协议、关键数据通路、状态变化及与父子模块的关系，引用具体文件和行号。不能用模块名猜测功能；无法确定的内容明确说明。用户要求：'+(note.value.trim()||'给出简洁清晰的中文设计说明。'):'【AI任务：新增测试用例】\n绑定工作流：generate-testcase。请先调用 run_workflow 启动已附加的工作流，再按阶段执行。\n请为当前项目新增一个可独立运行的测试用例。项目：'+project.path+'。用户补充：'+(note.value.trim()||'请检查已有测试和验证目标，选择尚未充分验证且不重复的场景。')+'。先调用 test_cases(operation=guide) 读取规范，检查现有用例、目标和运行模板；复用现有驱动，必要时补齐用例所需基础设施。实现后通过 test_cases 工具保存用例名称、具体说明和源码绑定，不能只给方案。不要修改 RTL，不要自动启动仿真；结束时汇报新增文件与未验证事项。';
+        const result=await window.FlowCanvasAI.startCase({text,current:!choice.checked,project,requirements:note.value.trim(),design});
+        if(!design){const task={id:result.id,before:(data?.targets||[]).map(n=>n.id)};localStorage.setItem('fc-case-task:'+project.id,JSON.stringify(task));}
         const sourceRect=dialog.getBoundingClientRect();
         const destination=[...document.querySelectorAll('.conversation .ai-task-sent')].at(-1);
         if(destination&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
@@ -375,6 +375,24 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         selectCoverageTab(event.data.mode,event.data.instance);
       });
     }else panel.append(...content);
+    let designPreviewTimer;
+    if(caseMode)window.addEventListener('message',event=>{
+      const frame=document.querySelector('.rtl-view-panel iframe');
+      if(event.origin!==location.origin||event.source!==frame?.contentWindow||event.data?.type!=='flowcanvas-explain-design')return;
+      const d=event.data;if(typeof d.instance!=='string'||typeof d.module!=='string')return;
+      clearTimeout(designPreviewTimer);
+      const card=document.querySelector('.ai-action-dialog');
+      if(d.action==='leave'){if(card?.dataset.designInstance===d.instance)card.dispatchEvent(new Event('mouseleave'));return;}
+      if(card){
+        if(card.dataset.designInstance===d.instance){card.dispatchEvent(new Event('mouseenter'));if(d.action==='pin')card.pinTask();return;}
+        if(!card.classList.contains('is-preview'))return;
+        card.close();card.remove();
+      }
+      const r=frame.getBoundingClientRect(),point=d.rect||{};
+      const anchor={getBoundingClientRect:()=>({left:r.left+(point.left||0),right:r.left+(point.right||0),top:r.top+(point.top||0),bottom:r.top+(point.bottom||0)}),addEventListener:()=>{},removeEventListener:()=>{},contains:()=>false};
+      const open=()=>{newCaseTask(anchor,d.action!=='pin',d);const card=document.querySelector('.ai-action-dialog');if(card)card.dataset.designInstance=d.instance;};
+      if(d.action==='pin')open();else designPreviewTimer=setTimeout(open,220);
+    });
     host.append(panel);show(document.getElementById('project-heading').textContent);
   }).catch(()=>{});
 }

@@ -1,5 +1,6 @@
 /** Local Markdown pipeline: CommonMark/GFM-style blocks with escaped, highlighted code. */
 import MarkdownIt from 'markdown-it';
+import {localReference,openLocalSource} from './local-source.js';
 import taskLists from 'markdown-it-task-lists';
 import hljs from 'highlight.js/lib/core';
 import verilog from 'highlight.js/lib/languages/verilog';
@@ -29,6 +30,9 @@ const parser = new MarkdownIt({
   }
 }).use(taskLists,{enabled:false});
 
+const validateLink=parser.validateLink.bind(parser);
+parser.validateLink=url=>url.startsWith('file:')?!!localReference(url):validateLink(url);
+
 /** Produce safe HTML without enabling user-authored HTML or executable URLs. */
 export function renderMarkup(text) {return parser.render(text);}
 
@@ -38,7 +42,11 @@ export function markdown(target,text) {
   target.classList.add('markdown-body');
   // HTML is generated only by the parser with html:false and registered trusted plugins.
   target.innerHTML=renderMarkup(text);
-  for(const link of target.querySelectorAll('a')){link.target='_blank';link.rel='noopener noreferrer';}
+  for(const link of target.querySelectorAll('a')){
+    const reference=localReference(link.getAttribute('href'));
+    if(reference){link.title=reference.path+':'+reference.line;link.onclick=event=>{event.preventDefault();openLocalSource(reference);};}
+    else {link.target='_blank';link.rel='noopener noreferrer';}
+  }
   for(const image of target.querySelectorAll('img')){image.loading='lazy';image.referrerPolicy='no-referrer';}
   for(const table of target.querySelectorAll('table')){
     const wrapper=document.createElement('div');wrapper.className='markdown-table';

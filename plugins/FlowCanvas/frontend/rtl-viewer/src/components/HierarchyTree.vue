@@ -68,6 +68,7 @@
         <span v-else class="tree-caret tree-caret-leaf" aria-hidden="true"></span>
         <span class="tree-inst">{{ row.name }}</span>
         <span class="tree-module">{{ row.module }}</span>
+        <button class="tree-ai-explain" type="button" :aria-label="'AI 解释设计 '+row.module" title="AI 解释设计" @mouseenter="explainDesign(row,$event,'preview')" @mouseleave="explainDesign(row,$event,'leave')" @click.stop="explainDesign(row,$event,'pin')" @dblclick.stop @keydown.stop><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6M7 9h4M7 13h8M7 17h5"/><path class="design-ai-spark" d="m18 1 1.4 4.6L24 7l-4.6 1.4L18 13l-1.4-4.6L12 7l4.6-1.4Z"/></svg></button>
         <span
           v-if="row.id === store.rootInstancePath"
           class="tree-scope-mark"
@@ -82,6 +83,14 @@
 </template>
 
 <script setup>
+/** Ask the host to compose a task using this exact instance and source location. */
+function explainDesign(row,event,action){
+  const rect=event.currentTarget.getBoundingClientRect(),node=store.nodesById.get(row.id)
+  // Pinia source records are reactive proxies; postMessage cannot clone them.
+  const source=node?.source ? JSON.parse(JSON.stringify(node.source)) : null
+  window.parent.postMessage({type:'flowcanvas-explain-design',action,instance:row.id,module:row.module,source,rect:{left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}},location.origin)
+}
+
 // The instance-hierarchy outline — the tree every commercial viewer
 // is built around, and the SPA's biggest missing affordance.
 //
@@ -416,3 +425,15 @@ defineExpose({ focusFilter })
 </style>
 
 <style scoped src="./hierarchy-rows.css"></style>
+
+<style scoped>
+.tree-row{position:relative;padding-right:25px}
+.tree-ai-explain{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:16px;height:16px;padding:0;border:0;border-radius:3px;background:transparent;color:var(--fg-muted);opacity:0;cursor:pointer;transition:opacity .15s}
+.tree-ai-explain svg{display:block;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;overflow:visible}
+.tree-ai-explain .design-ai-spark{fill:#9466e8;stroke:#6e83f4;stroke-width:.7;transform-box:fill-box;transform-origin:center;transition:transform .25s}
+.tree-row:hover .tree-ai-explain,.tree-row:focus-within .tree-ai-explain{opacity:1}
+.tree-ai-explain:hover{color:var(--accent)}
+.tree-ai-explain:hover .design-ai-spark{transform:rotate(10deg) scale(1.1)}
+@media(hover:none){.tree-ai-explain{opacity:1}}
+@media(prefers-reduced-motion:reduce){.tree-ai-explain,.tree-ai-explain .design-ai-spark{transition:none}}
+</style>

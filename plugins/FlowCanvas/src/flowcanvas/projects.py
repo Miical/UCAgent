@@ -77,6 +77,33 @@ def routes(projects):
     def state():
         return projects.state
 
+    @router.get('/source')
+    def source(path: str):
+        """Read a text file within an opened project, resolving symlinks before access."""
+        roots = [Path(p['path']).resolve() for p in projects.state.get('recent', [])]
+        candidate = Path(path).expanduser()
+        if not candidate.is_absolute():
+            if not projects.current:
+                raise HTTPException(404, '请先打开此文件所属的项目')
+            candidate = Path(projects.current['path']) / candidate
+        candidate = candidate.resolve()
+        if not any(candidate.is_relative_to(root) for root in roots):
+            raise HTTPException(403, '此文件不在已打开的项目中，请先打开所属项目')
+        try:
+            if not candidate.is_file():
+                raise HTTPException(404, '文件不存在或已被移动')
+            with candidate.open('rb') as stream:
+                raw = stream.read(2 * 1024 * 1024 + 1)
+            if len(raw) > 2 * 1024 * 1024:
+                raise HTTPException(413, '文件超过 2 MB，暂不支持预览')
+            if b'\x00' in raw:
+                raise HTTPException(415, '此文件不是可预览的文本文件')
+            return {'file': str(candidate), 'content': raw.decode('utf-8')}
+        except UnicodeDecodeError:
+            raise HTTPException(415, '此文件不是 UTF-8 文本') from None
+        except OSError:
+            raise HTTPException(403, '无法读取此文件') from None
+
     @router.get('/folders')
     def folders(path: str = ''):
         root = projects.directory(path or str(Path.home()))

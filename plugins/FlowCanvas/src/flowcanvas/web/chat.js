@@ -622,22 +622,22 @@ document.addEventListener('flowcanvas-home',async()=>{
 /** Page actions reuse the normal conversation execution and permission endpoints. */
 window.FlowCanvasAI={
   open:async id=>{await list();await choose(id);},
-  async startCase({text,current=true,project,requirements}){
+  async startCase({text,current=true,project,requirements,design=null}){
     const model=$('model').value,effort=$('effort').value;
     if(!model)throw Error('请先选择可用模型');
     let owner=session;
     if(current){
       if(!owner)throw Error('请先打开一个对话');
       if(active.has(owner.status))throw Error('当前对话正在执行，请使用独立任务对话');
-      if(owner.permission_mode!=='full')throw Error('请先将当前对话切换为完全访问，或使用独立任务对话');
-      if(owner.attachment&&owner.attachment.workflow_id!=='generate-testcase')throw Error('当前对话已附加其他工作流，请使用独立任务对话');
+      if(!design&&owner.permission_mode!=='full')throw Error('请先将当前对话切换为完全访问，或使用独立任务对话');
+      if(owner.attachment&&(design||owner.attachment.workflow_id!=='generate-testcase'))throw Error('当前对话已附加其他工作流，请使用独立任务对话');
     }else{
       owner=await request('/sessions',{});
-      await request('/sessions/'+owner.id+'/settings',{title:'AI 新增测试用例'});
-      await request('/sessions/'+owner.id+'/permissions',{mode:'full'});
+      await request('/sessions/'+owner.id+'/settings',{title:design?'解释设计 · '+design.module:'AI 新增测试用例'});
+      await request('/sessions/'+owner.id+'/permissions',{mode:design?'readonly':'full'});
     }
-    await request('/sessions/'+owner.id+'/attachment',{workflow_id:'generate-testcase',task_only:true,rtl_file:project.rtl?.top_file?project.path+'/'+project.rtl.top_file:'',dut:project.rtl?.top||'RTL'});
-    const result=await request('/sessions/'+owner.id+'/messages',{text,model,effort,speed:speedMode,task_card:{title:'新增测试用例',workflow:'新增测试用例',project:project.name,requirements:requirements||''}});
+    if(!design)await request('/sessions/'+owner.id+'/attachment',{workflow_id:'generate-testcase',task_only:true,rtl_file:project.rtl?.top_file?project.path+'/'+project.rtl.top_file:'',dut:project.rtl?.top||'RTL'});
+    const result=await request('/sessions/'+owner.id+'/messages',{text,model,effort,speed:speedMode,task_card:{title:design?'解释设计':'新增测试用例',workflow:design?'':'新增测试用例',project:project.name,requirements:design?design.instance+(requirements?'\n'+requirements:''):requirements||''}});
     await list();await choose(owner.id);
     return result;
   }
