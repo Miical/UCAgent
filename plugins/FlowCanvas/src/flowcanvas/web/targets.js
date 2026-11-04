@@ -159,7 +159,26 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         const text='【AI任务：新增测试用例】\n绑定工作流：generate-testcase。请先调用 run_workflow 启动已附加的工作流，再按阶段执行。\n请为当前项目新增一个可独立运行的测试用例。项目：'+project.path+'。用户补充：'+(note.value.trim()||'请检查已有测试和验证目标，选择尚未充分验证且不重复的场景。')+'。先调用 test_cases(operation=guide) 读取规范，检查现有用例、目标和运行模板；复用现有驱动，必要时补齐用例所需基础设施。实现后通过 test_cases 工具保存用例名称、具体说明和源码绑定，不能只给方案。不要修改 RTL，不要自动启动仿真；结束时汇报新增文件与未验证事项。';
         const result=await window.FlowCanvasAI.startCase({text,current:!choice.checked,project,requirements:note.value.trim()});
         const task={id:result.id,before:(data?.targets||[]).map(n=>n.id)};localStorage.setItem('fc-case-task:'+project.id,JSON.stringify(task));
-        dialog.close();await updateCaseTask();
+        const sourceRect=dialog.getBoundingClientRect();
+        const destination=[...document.querySelectorAll('.conversation .ai-task-sent')].at(-1);
+        if(destination&&!matchMedia('(prefers-reduced-motion: reduce)').matches){
+          destination.scrollIntoView({block:'nearest',behavior:'instant'});
+          const targetRect=destination.getBoundingClientRect();
+          if(targetRect.width&&targetRect.height){
+            // Animate a visual copy only; the real sent message already exists in the conversation.
+            const flying=destination.cloneNode(true);flying.setAttribute('aria-hidden','true');flying.inert=true;
+            flying.classList.add('ai-task-flight');
+            Object.assign(flying.style,{position:'fixed',left:targetRect.left+'px',top:targetRect.top+'px',width:targetRect.width+'px',height:targetRect.height+'px',margin:'0',zIndex:'10000',pointerEvents:'none',transformOrigin:'top left',overflow:'hidden'});
+            document.body.append(flying);destination.style.visibility='hidden';dialog.close();
+            const dx=sourceRect.left-targetRect.left,dy=sourceRect.top-targetRect.top;
+            const animation=flying.animate([
+              {transform:`translate(${dx}px,${dy}px) scale(${sourceRect.width/targetRect.width},${sourceRect.height/targetRect.height})`,opacity:.95},
+              {transform:'translate(0,0) scale(1,1)',opacity:1}
+            ],{duration:440,easing:'cubic-bezier(.22,.8,.24,1)',fill:'forwards'});
+            animation.finished.catch(()=>{}).finally(()=>{destination.style.visibility='';flying.remove();});
+          }else dialog.close();
+        }else dialog.close();
+        await updateCaseTask();
       }catch(e){error.textContent=e.message;start.disabled=false;start.classList.remove('is-sending');start.querySelector('span').textContent='发送任务';}
     },'targets-primary');
     start.classList.add('ai-task-send');start.append(el('span','','发送任务'));

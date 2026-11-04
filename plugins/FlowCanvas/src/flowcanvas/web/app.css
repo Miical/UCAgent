@@ -1143,3 +1143,14 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 .ai-task-heading{gap:6px}
 .ai-task-heading .ai-task-run-status{position:static;margin-left:auto;flex-shrink:0;font-size:8px;line-height:16px}
 .ai-task-heading .ai-workflow-binding{flex:0 1 auto;min-width:0}
+
+.ai-action-dialog .targets-field{background:rgb(128 128 128 / 3%);border-color:rgb(128 128 128 / 10%)}
+.ai-action-dialog .targets-field:focus-within{background:rgb(128 128 128 / 2%);border-color:rgb(128 128 128 / 24%);box-shadow:none}
+html:not([data-theme="light"]) .ai-action-dialog .targets-field{background:rgb(255 255 255 / 3%);border-color:rgb(255 255 255 / 8%)}
+html:not([data-theme="light"]) .ai-action-dialog .targets-field:focus-within{background:rgb(255 255 255 / 4%);border-color:rgb(255 255 255 / 20%)}
+.ai-action-dialog .targets-field textarea,.ai-action-dialog .targets-field textarea:focus{background:transparent;box-shadow:none;outline:none}
+
+.ai-task-sent .ai-task-requirements{background:rgb(128 128 128 / 3%);border:1px solid rgb(128 128 128 / 10%);border-radius:10px}
+html:not([data-theme="light"]) .ai-task-sent .ai-task-requirements{background:rgb(255 255 255 / 3%);border-color:rgb(255 255 255 / 8%)}
+
+.ai-task-flight{box-sizing:border-box;will-change:transform,opacity;box-shadow:0 8px 32px #00000014}
