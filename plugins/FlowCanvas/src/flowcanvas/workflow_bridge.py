@@ -85,7 +85,7 @@ class WorkflowBridge:
                                        files: list[str] | None = None, kind: str = 'group',
                                        name: str = '', parent: str = '', target_id: str = '',
                                        binding_id: str = '', values: dict | None = None) -> dict:
-            """Manage the bound project's verification hierarchy and source markers. Start with guide, then read. Read/inspect/source are read-only. create/import/update/bind/accept require full access and current revision. guide returns the skill and authoritative schema."""
+            """Manage the bound project's verification hierarchy and source markers. Start with guide, then read. AI creation must begin_create before edits, update/bind the same ID and finish_create afterward. AI deletion must first read the current revision and immediately begin_delete for the user-selected ID BEFORE source inspection or scope analysis, then inspect scope/references, clean up and delete; descendants require values.cascade=true. resume_operation resumes paused work. Read/inspect/source are read-only. create/import/update/bind/accept require full access and current revision. guide returns the skill and authoritative schema."""
             from .targets import execute
             root = session.get('project_root')
             if not root:
@@ -94,13 +94,13 @@ class WorkflowBridge:
                 raise ValueError('修改验证目标和源码标识需要完全访问模式')
             return await asyncio.to_thread(execute, root, dict(operation=operation,
                 expected_revision=expected_revision,files=files or [],kind=kind,name=name,
-                parent=parent,target_id=target_id,binding_id=binding_id,values=values or {}))
+                parent=parent,target_id=target_id,binding_id=binding_id,values=values or {}), owner=session['id'])
 
         @self.mcp.tool()
         async def test_cases(operation: str = 'read', expected_revision: int = 0,
                              files: list[str] | None = None, name: str = '',
                              target_id: str = '', binding_id: str = '', values: dict | None = None) -> dict:
-            """Manage project test cases and source bindings. New authoring MUST create a placeholder before source edits, then update/bind that same ID and finish_create after valid binding. Deletion MUST begin_delete before source edits and delete afterward. resume_operation resumes a paused placeholder. Start with guide/read; configure the shared runner command/description before import; discover returns candidates only. Inspect stimulus and run entry; exclude environment-only base tests. import requires values.selected entries with file/start/fingerprint/reason/title/description. Generate a source-grounded description for every imported test. configure_coverage saves the optional project coverage extraction/merge configuration (executed after each run). configure/configure_coverage/import/create/update/delete/bind/accept require full access and current revision. Discovery never implies a passing test."""
+            """Manage project test cases and source bindings. New authoring MUST create a placeholder before source edits, then update/bind that same ID and finish_create after valid binding. Deletion MUST first read the revision and immediately begin_delete for the user-selected ID BEFORE source inspection or scope analysis, then inspect scope/references, clean up and delete. resume_operation resumes a paused placeholder. Start with guide/read; configure the shared runner command/description before import; discover returns candidates only. Inspect stimulus and run entry; exclude environment-only base tests. import requires values.selected entries with file/start/fingerprint/reason/title/description. Generate a source-grounded description for every imported test. configure_coverage saves the optional project coverage extraction/merge configuration (executed after each run). configure/configure_coverage/import/create/update/delete/bind/accept require full access and current revision. Discovery never implies a passing test."""
             from .testcases import execute
             root = session.get('project_root')
             if not root:

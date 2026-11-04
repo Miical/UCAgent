@@ -68,7 +68,7 @@ def create_app(state_dir=None) -> FastAPI:
     from .rtl_viewer import routes as viewer_routes
     app.include_router(viewer_routes(service))
     from .targets import routes as target_routes
-    app.include_router(target_routes(service.projects))
+    app.include_router(target_routes(service.projects, service.sessions))
     from .testcases import routes as testcase_routes
     app.include_router(testcase_routes(service.projects, service.sessions))
     app.include_router(test_run_routes(service.projects,test_runs))

@@ -31,6 +31,9 @@ class Target(BaseModel):
     parent: str | None = None
     name: str = Field(min_length=1, max_length=200)
     description: str = ''
+    lifecycle: Literal['ready', 'creating', 'deleting'] = 'ready'
+    operation_status: Literal['running', 'paused'] = 'paused'
+    operation_session: str = ''
     origin: Literal['manual', 'ai', 'scan'] = 'manual'
     bindings: list[Binding] = Field(default_factory=list)
 
@@ -263,6 +266,70 @@ class Targets:
             self.save(data, expected_revision)
             return row.model_dump()
 
+    def begin_create(self, kind, name, parent, revision, values, owner):
+        with LOCK:
+            data = self.read()
+            if parent and any(n.id == parent and n.lifecycle == 'deleting' for n in data.targets):
+                raise ValueError('父目标正在删除')
+            if set(values) - {'description'}: raise ValueError('新建仅接受 description')
+            row = Target(id=new_id(self.prefixes[kind]),kind=kind,name=name,parent=parent or None,
+                         **values,lifecycle='creating',operation_status='running',operation_session=owner)
+            data.targets.append(row)
+            saved = self.save(data,revision)
+            return {**row.model_dump(),'revision':saved.revision}
+
+    def operation(self, target_id, operation, revision, owner, cascade=False):
+        with LOCK:
+            data = self.read()
+            row = next((n for n in data.targets if n.id == target_id),None)
+            if row is None: raise ValueError('目标不存在')
+            affected = {target_id}
+            if operation == 'begin_delete' or (operation == 'resume_operation' and row.lifecycle == 'deleting'):
+                while True:
+                    children = {n.id for n in data.targets if n.parent in affected}
+                    if children <= affected: break
+                    affected.update(children)
+                if len(affected)>1 and not cascade: raise ValueError('需要明确 values.cascade=true')
+            if operation == 'finish_create':
+                if row.lifecycle != 'creating': raise ValueError('目标不在创建中')
+                if not row.description.strip() or self.status()['reports'][target_id]['status'] != 'bound':
+                    raise ValueError('先完成说明和有效源码绑定')
+                row.lifecycle='ready';row.operation_status='paused';row.operation_session=''
+            else:
+                if operation == 'resume_operation' and row.lifecycle == 'ready': raise ValueError('没有待恢复操作')
+                for item in data.targets:
+                    if item.id in affected:
+                        if operation == 'begin_delete': item.lifecycle='deleting'
+                        item.operation_status='running';item.operation_session=owner
+            saved=self.save(data,revision)
+            return {**row.model_dump(),'revision':saved.revision}
+
+    def reconcile_operations(self, sessions):
+        from .subagents import execution_active
+        with LOCK:
+            data=self.read();changed=False
+            for row in data.targets:
+                if row.lifecycle!='ready' and row.operation_status=='running':
+                    owner=sessions.get(row.operation_session)
+                    if not owner or not execution_active(owner):row.operation_status='paused';changed=True
+            if changed:self.save(data,data.revision)
+
+    def delete(self, target_id, expected_revision, cascade=False):
+        with LOCK:
+            data = self.read()
+            if not any(n.id == target_id for n in data.targets):
+                raise ValueError('目标不存在')
+            ids = {target_id}
+            while True:
+                descendants = {n.id for n in data.targets if n.parent in ids}
+                if descendants <= ids: break
+                ids.update(descendants)
+            if len(ids) > 1 and not cascade:
+                raise ValueError('目标含子目标，需要明确 values.cascade=true')
+            data.targets = [n for n in data.targets if n.id not in ids]
+            saved = self.save(data, expected_revision)
+            return {'deleted': sorted(ids), 'revision': saved.revision}
+
     def update(self, target_id, values, expected_revision):
         with LOCK:
             data = self.read()
@@ -359,26 +426,30 @@ class Request(BaseModel):
     values: dict = Field(default_factory=dict)
 
 
-def execute(root, request):
+def execute(root, request, owner=""):
     store = Targets(root)
     r = request if isinstance(request, Request) else Request.model_validate(request)
     if r.operation == 'read': return store.status()
     if r.operation == 'inspect': return store.inspect(r.files)
     if r.operation == 'import': return store.import_files(r.files, r.expected_revision)
+    if r.operation == 'begin_create': return store.begin_create(r.kind,r.name,r.parent,r.expected_revision,r.values,owner)
+    if r.operation in {'begin_delete','finish_create','resume_operation'}: return store.operation(r.target_id,r.operation,r.expected_revision,owner,r.values.get('cascade') is True)
     if r.operation == 'create': return store.create(r.kind,r.name,r.parent,r.expected_revision,**r.values)
+    if r.operation == 'delete': return store.delete(r.target_id,r.expected_revision,r.values.get('cascade') is True)
     if r.operation == 'update': return store.update(r.target_id,r.values,r.expected_revision)
     if r.operation == 'accept': return store.accept(r.target_id,r.expected_revision,r.values)
     if r.operation == 'bind': return store.bind(r.target_id,r.values,r.expected_revision)
     if r.operation == 'source': return store.source(r.binding_id)
-    if r.operation == 'guide': return {'skill':SKILL.read_text(), 'schema':Definition.model_json_schema()}
+    if r.operation == 'guide': return {'skill':SKILL.read_text()+'\nAI 新建先 begin_create 注册占位，再 update/bind 同一 ID，最后 finish_create。AI 删除首先 read 获取 revision 并定位指定 ID，立即 begin_delete（含子目标需 cascade=true）登记卡片；登记成功后才检查源码、共享引用和删除范围，最后清理代码并 delete。不要检查完才登记。中断后 resume_operation 恢复同一 ID。均需最新 expected_revision。'+'\n删除使用 delete(target_id, expected_revision)。含子目标时必须明确 values.cascade=true；仅删除登记定义，源码须单独核对处理，保留共享代码和历史产物。', 'schema':Definition.model_json_schema()}
     raise ValueError('未知操作')
 
 
-def routes(projects):
+def routes(projects, sessions=None):
     router = APIRouter(prefix='/api/chat/projects')
     def root(identity):
         project = next((p for p in projects.state['recent'] if p['id']==identity),None)
         if not project: raise HTTPException(404,'项目不存在')
+        if sessions is not None: Targets(project['path']).reconcile_operations(sessions)
         return project['path']
     @router.get('/{identity}/targets/revision')
     def revision(identity:str):

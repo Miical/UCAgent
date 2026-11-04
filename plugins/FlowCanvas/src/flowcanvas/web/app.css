@@ -1241,10 +1241,10 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .testcase-panel .targets-tree>.target-case[data-lifecycle="creating"]{border:0;background:color-mix(in srgb,var(--text) 2%,var(--surface));box-shadow:none}
 .testcase-panel .target-case[data-lifecycle="creating"] .target-title{color:var(--text-dim);font-weight:500}
 .case-operation-label{font-size:10px;font-weight:400;color:var(--text-dim);white-space:nowrap;margin-left:auto;padding-left:8px}
-.testcase-panel .target-case.case-operation-active::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:linear-gradient(100deg,transparent 20%,color-mix(in srgb,#9865e8 5%,transparent) 50%,transparent 80%);background-size:240% 100%;animation:case-operation-shimmer 2.6s ease-in-out infinite}
-.target-case.case-operation-active .case-operation-label::before{content:"";display:inline-block;width:4px;height:4px;margin:0 5px 2px 0;border-radius:50%;background:#9865e8;animation:fc-breathe 2s ease-in-out infinite}
+.testcase-panel .target-case.case-operation-active::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:linear-gradient(100deg,transparent 20%,color-mix(in srgb,#9865e8 5%,transparent) 50%,transparent 80%);background-size:240% 100%;animation:case-operation-shimmer 2.6s ease-in-out infinite;animation-delay:var(--operation-phase,0ms)}
+.target-card.case-operation-active>.target-header .case-operation-label::before{content:"";display:inline-block;width:4px;height:4px;margin:0 5px 2px 0;border-radius:50%;background:#9865e8;animation:fc-breathe 2s ease-in-out infinite}
 @keyframes case-operation-shimmer{from{background-position:120% 0}to{background-position:-120% 0}}
-@media(prefers-reduced-motion:reduce){.testcase-panel .targets-tree>.target-case{transition:none}.testcase-panel .target-case.case-operation-active::before,.target-case.case-operation-active .case-operation-label::before{animation:none}}
+@media(prefers-reduced-motion:reduce){.testcase-panel .targets-tree>.target-case{transition:none}.testcase-panel .target-case.case-operation-active::before,.target-card.case-operation-active>.target-header .case-operation-label::before{animation:none}}
 
 
 
@@ -1288,34 +1288,46 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
   .testcase-panel .target-case>.target-header>.target-title-sources .target-title-source:hover{opacity:1}
 }
 
-/* Functional coverage shares the compact AI surface while retaining its hierarchy. */
-.target-goal-pane .targets-tree{--goal-actions-width:48px;--goal-column-gap:8px;padding-top:6px}
-.target-goal-pane .targets-tree .target-card{position:relative;isolation:isolate;border:0;border-radius:8px;margin:0 0 2px;box-shadow:none;background:transparent}
-.target-goal-pane .targets-tree .target-card:has(>.target-card-body),
-.target-goal-pane .targets-tree .target-card:hover:not(:has(.target-card:hover)){
-  background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 3%,var(--surface)),var(--surface) 65%);
-  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text-dim) 16%,var(--surface)),0 2px 6px #16132b04;
-}
-.target-goal-pane .targets-tree .target-card:has(>.target-card-body){margin-bottom:6px}
-.target-goal-pane .targets-tree>.target-group+.target-group{margin-top:2px}
-.target-goal-pane .target-header{position:relative;min-height:28px;padding-right:6px;border-radius:8px;background:transparent;outline:0}
+/* Coverage hierarchy: compact group summary, independent point surfaces, test rows. */
+.target-goal-pane .targets-tree{--goal-actions-width:48px;--goal-column-gap:8px;padding-top:8px}
+.target-goal-pane .targets-tree .target-card{position:relative;isolation:isolate;border:0;border-radius:0;margin:0;background:transparent;box-shadow:none}
+.target-goal-pane .targets-tree>.target-group{overflow:visible;margin-bottom:12px}
+.target-goal-pane .targets-tree>.target-group+.target-group{margin-top:0}
+.target-goal-pane .target-header{position:relative;min-height:30px;padding-right:7px;background:transparent;border-radius:5px;outline:0}
 .target-goal-pane .target-header:hover,.target-goal-pane .target-header.is-selected,.target-goal-pane .target-header:focus-within{background:transparent;outline:0}
 .target-goal-pane .target-header.is-selected .target-title{color:var(--text)}
-.target-goal-pane .goal-row-heading>.target-card-head{padding:4px 4px 4px 7px;gap:7px}
-.target-goal-pane .target-header .target-kind{font-size:8px;opacity:.65}
+.target-goal-pane .goal-row-heading>.target-card-head{padding:5px 4px 5px 8px;gap:7px}
+.target-goal-pane .target-header .target-kind{font-size:8px;opacity:.45}
 .target-goal-pane .target-header .target-title{font-size:12px;line-height:1.5}
-.target-goal-pane .target-testpoint>.target-header .target-title{font-size:11px}
+.target-goal-pane .targets-tree>.target-group>.target-header{min-height:34px;border-radius:7px;background:color-mix(in srgb,var(--text-dim) 5%,var(--surface));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text-dim) 10%,var(--surface))}
+.target-goal-pane .target-group>.target-header .target-title{font-weight:650}
 .target-goal-pane .target-actions .target-icon-action{width:22px;height:22px;border-radius:4px}
-.target-goal-pane .targets-tree .target-card-body{position:relative;padding:3px 8px 10px 24px}
-.target-goal-pane .target-card-body>p{margin:0 0 4px;padding:0;font-size:11px;line-height:1.55;color:color-mix(in srgb,var(--text) 78%,var(--surface))}
+.target-goal-pane .targets-tree .target-card-body{position:relative;padding:2px 10px 7px 24px}
+.target-goal-pane .targets-tree>.target-group>.target-card-body{padding:6px 0 0 12px}
+.target-goal-pane .target-card-body>p{margin:0 0 5px;padding:0;font-size:11px;line-height:1.6;color:color-mix(in srgb,var(--text) 76%,var(--surface))}
+.target-goal-pane .target-group>.target-card-body>.case-editable-description{padding:0 8px 0 12px;color:var(--text-dim)}
 .target-goal-pane .target-card-body>.case-editable-description.is-empty{color:var(--text-dim);opacity:.6}
-.target-goal-pane .target-card-body>.target-card:first-of-type{margin-top:6px}
-.target-goal-pane .target-card-body>.target-card:last-child>.target-card-body{padding-bottom:10px}
-.target-goal-pane .target-card-body>.case-ai-mark{position:absolute;bottom:8px;left:5px;display:inline-flex;width:15px;height:15px;pointer-events:none}
+.target-goal-pane .targets-tree .target-group>.target-card-body>.target-point{margin:0 0 5px;border-radius:8px;background:var(--surface);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text-dim) 12%,var(--surface))}
+.target-goal-pane .targets-tree .target-point:has(>.target-card-body),.target-goal-pane .targets-tree .target-point:hover{background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 3%,var(--surface)),var(--surface) 65%)}
+.target-goal-pane .target-point>.target-header{min-height:32px}
+.target-goal-pane .target-point>.target-header .target-kind{display:none}
+.target-goal-pane .target-point>.target-header .target-title{font-weight:550}
+.target-goal-pane .targets-tree .target-point>.target-card-body{padding:0 8px 8px 24px}
+.target-goal-pane .targets-tree .target-testpoint>.target-header{min-height:27px}
+.target-goal-pane .target-testpoint>.target-header:hover,.target-goal-pane .target-testpoint>.target-header.is-selected{background:color-mix(in srgb,var(--text) 3%,transparent)}
+.target-goal-pane .target-testpoint>.target-header .target-title{font-size:11px;font-weight:400}
+.target-goal-pane .target-testpoint>.target-header .target-kind{display:none}
+.target-goal-pane .target-testpoint>.target-header .goal-coverage-percent{font-size:10px;color:var(--text-dim)}
+.target-goal-pane .targets-tree .target-card-body>.target-card:first-of-type{margin-top:4px}
+.target-goal-pane .targets-tree .target-card-body>.target-card:last-child>.target-card-body{padding-bottom:7px}
+.target-goal-pane .target-coverage-detail{margin:3px 0 6px;font-size:10px}
+.target-goal-pane .target-point>.target-card-body>.target-coverage-detail{margin-bottom:7px}
+.target-goal-pane .target-card-body>.case-ai-mark{display:none}
+.target-goal-pane .target-point>.target-card-body>.case-ai-mark{position:absolute;bottom:8px;left:5px;display:inline-flex;width:15px;height:15px;pointer-events:none}
 .target-goal-pane .case-ai-mark svg{width:15px;height:15px;fill:#8d73cf}
 .target-goal-pane .case-ai-mark .case-ai-satellite{fill:#79a6d7}
 .target-goal-pane .target-actions .case-ai-action:hover:enabled{background:color-mix(in srgb,var(--text) 6%,var(--surface));color:var(--text)}
-.target-goal-pane .target-card:has(>.target-header :focus-visible){outline:2px solid color-mix(in srgb,var(--accent) 50%,var(--surface));outline-offset:-2px}
+.target-goal-pane .target-header:has(:focus-visible){outline:2px solid color-mix(in srgb,var(--accent) 50%,var(--surface));outline-offset:-2px}
 @media(hover:hover){
   .target-goal-pane .target-card>.target-header>.target-header-actions>.target-icon-action{opacity:0;pointer-events:none}
   .target-goal-pane .target-card>.target-header .target-title-source{opacity:0;pointer-events:none}
@@ -1325,40 +1337,42 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
   .target-goal-pane .target-card:has(>.target-header :focus-visible)>.target-header .target-title-source{opacity:.75;pointer-events:auto}
 }
 
-/* A functional group is one surface; descendants remain compact tree rows. */
-.target-goal-pane .targets-tree .target-card-body>.target-card,
-.target-goal-pane .targets-tree .target-card-body>.target-card:has(>.target-card-body),
-.target-goal-pane .targets-tree .target-card-body>.target-card:hover:not(:has(.target-card:hover)){
-  border:0;border-radius:4px;background:transparent;box-shadow:none;margin:0;
-}
-.target-goal-pane .targets-tree .target-card-body>.target-card:first-of-type{margin-top:3px}
-.target-goal-pane .target-card-body>.target-card>.target-header:hover,
-.target-goal-pane .target-card-body>.target-card>.target-header.is-selected{background:color-mix(in srgb,var(--accent) 5%,var(--surface));border-radius:4px}
-.target-goal-pane .targets-tree .target-card-body>.target-card>.target-card-body{padding-bottom:4px}
-.target-goal-pane .target-card-body>.target-card>.target-card-body>.case-ai-mark{display:none}
-
-/* Group and point are separate surfaces, not concentric containers. */
-.target-goal-pane .targets-tree>.target-group,
-.target-goal-pane .targets-tree>.target-group:has(>.target-card-body),
-.target-goal-pane .targets-tree>.target-group:hover:not(:has(.target-card:hover)){
-  background:transparent;box-shadow:none;overflow:visible;
-}
-.target-goal-pane .targets-tree>.target-group>.target-header{border-radius:8px}
-.target-goal-pane .targets-tree>.target-group:hover>.target-header,
-.target-goal-pane .targets-tree>.target-group:has(>.target-card-body)>.target-header{
-  background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 3%,var(--surface)),var(--surface) 65%);
-  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text-dim) 16%,var(--surface));
-}
-.target-goal-pane .targets-tree>.target-group>.target-card-body{padding:5px 0 6px 14px}
-.target-goal-pane .targets-tree>.target-group>.target-card-body>.case-ai-mark{display:none}
-.target-goal-pane .targets-tree .target-group>.target-card-body>.target-point{border-radius:8px;margin:3px 0;overflow:hidden}
-.target-goal-pane .targets-tree .target-group>.target-card-body>.target-point:hover,
-.target-goal-pane .targets-tree .target-group>.target-card-body>.target-point:has(>.target-card-body){
-  background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 3%,var(--surface)),var(--surface) 65%);
-  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text-dim) 16%,var(--surface));
-}
-.target-goal-pane .target-group>.target-card-body>.target-point>.target-header{background:transparent;border-radius:8px}
-.target-goal-pane .target-group>.target-card-body>.target-point>.target-card-body{padding-bottom:10px}
-.target-goal-pane .target-group>.target-card-body>.target-point>.target-card-body>.case-ai-mark{display:inline-flex}
-
 .testcase-panel .case-editable-description.is-locked{cursor:default}
+
+.target-goal-pane .targets-tree{--goal-actions-width:80px}
+.target-goal-pane .target-header>.target-header-actions{width:80px;justify-content:flex-end;gap:4px;padding-left:6px;box-sizing:border-box}
+.target-goal-pane .target-header>.target-header-actions>.target-icon-action:last-child{margin-left:2px}
+.target-goal-pane .targets-toolbar>.case-ai-action{display:grid;place-items:center;width:30px;height:30px;padding:5px;border:0;background:transparent;color:var(--text-dim)}
+
+/* Persisted AI mutations use the same lifecycle cues as test cases. */
+.target-goal-pane .target-card.case-in-progress{border-radius:8px}
+.target-goal-pane .target-card[data-lifecycle="creating"]>.target-header{background:color-mix(in srgb,var(--accent) 3%,var(--surface))}
+.target-goal-pane .target-card.case-operation-active::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;border-radius:inherit;background:linear-gradient(100deg,transparent 20%,#9865e814 50%,transparent 80%);background-size:240% 100%;animation:case-operation-shimmer 2.6s ease-in-out infinite;animation-delay:var(--operation-phase,0ms)}
+.target-goal-pane .target-card.case-operation-active>.target-header .target-title,
+.target-goal-pane .target-card.case-operation-active>.target-header>.target-coverage-score,
+.target-goal-pane .target-card.case-operation-active>.target-card-body>.case-editable-description,
+.target-goal-pane .target-card.case-operation-active>.target-card-body>.target-coverage-detail{opacity:.55}
+.target-goal-pane .case-editable-description.is-locked{cursor:default}
+.target-goal-pane .target-card.case-in-progress>.target-header>.target-header-actions{visibility:hidden;pointer-events:none}
+@media(prefers-reduced-motion:reduce){.target-goal-pane .target-card.case-operation-active::after{animation:none}}
+
+.target-goal-pane .case-operation-label{flex-shrink:0;display:inline-flex;align-items:center;gap:0}
+
+/* Mutation locks apply to source navigation as well as editing and actions. */
+.target-card.case-in-progress>.target-header .target-title-source{visibility:hidden;pointer-events:none}
+.target-goal-pane .goal-source-link:disabled{cursor:default;pointer-events:none;text-decoration:none;color:var(--text-dim)}
+
+/* Cascaded deletion dims each descendant's content once, without extra status cues. */
+.target-goal-pane .target-card[data-lifecycle="deleting"] .target-card[data-lifecycle="deleting"]>.target-header .target-title,
+.target-goal-pane .target-card[data-lifecycle="deleting"] .target-card[data-lifecycle="deleting"]>.target-header .target-kind,
+.target-goal-pane .target-card[data-lifecycle="deleting"] .target-card[data-lifecycle="deleting"]>.target-header>.target-coverage-score,
+.target-goal-pane .target-card[data-lifecycle="deleting"] .target-card[data-lifecycle="deleting"]>.target-card-body>.case-editable-description,
+.target-goal-pane .target-card[data-lifecycle="deleting"] .target-card[data-lifecycle="deleting"]>.target-card-body>.target-coverage-detail{opacity:.55}
+
+.targets-tree .target-card.is-removing{box-sizing:border-box;overflow:hidden!important;pointer-events:none;min-height:0;will-change:height,opacity,transform}
+
+/* Content updates are localized to the changed field, independently of lifecycle. */
+.targets-tree .ai-text-updated{position:relative;isolation:isolate;border-radius:4px}
+.targets-tree .ai-text-updated::after{content:"";position:absolute;inset:-2px -3px;pointer-events:none;border-radius:inherit;background:linear-gradient(100deg,transparent 15%,#9865e826 50%,transparent 85%);background-size:220% 100%;animation:ai-text-update 2.2s ease-in-out both;animation-delay:var(--text-update-phase,0ms)}
+@keyframes ai-text-update{0%{background-position:110% 0;opacity:0}15%{opacity:1}85%{opacity:1}100%{background-position:-110% 0;opacity:0}}
+@media(prefers-reduced-motion:reduce){.targets-tree .ai-text-updated::after{animation:none;background:none}}

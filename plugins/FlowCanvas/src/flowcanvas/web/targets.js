@@ -6,6 +6,8 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
   let lineCoverage=null,inlineEditing=false;
   let runCases=new Set(),pendingRun=null,runsLoaded=false,runsChecking=false;
   const opened=new Set();
+  const localTextWrites=new Map(),textHighlights=new Map();
+  const operationAnimationStart=new Map();
   let coverageTab='functional',functionalPane=null,linePane=null,lineFrame=null,tabBar=null;
   function selectCoverageTab(mode,instance){
     if(caseMode||bugMode||!tabBar)return;
@@ -35,6 +37,28 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
   }
   async function api(request){const url='/api/chat/projects/'+encodeURIComponent(project.id)+'/'+endpoint;const response=await fetch(url,request?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)}:{});const body=await response.json();if(!response.ok)throw Error(typeof body.detail==='string'?body.detail:JSON.stringify(body.detail));return body;}
   function fail(error){panel.querySelector('.targets-error').textContent=error.message;}
+  async function animateRemovedCards(next){
+    if(!data||!active||document.hidden||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+    const remaining=new Set(next.targets.map(node=>node.id));
+    const removed=new Set(data.targets.filter(node=>!remaining.has(node.id)).map(node=>node.id));
+    if(!removed.size)return;
+    const cards=[...panel.querySelectorAll('.target-card[data-target-id]')].filter(card=>{
+      if(!removed.has(card.dataset.targetId))return false;
+      let ancestor=card.parentElement.closest('.target-card');
+      while(ancestor){if(removed.has(ancestor.dataset.targetId))return false;ancestor=ancestor.parentElement.closest('.target-card');}
+      return card.getBoundingClientRect().height>0;
+    });
+    await Promise.all(cards.map(async card=>{
+      const rect=card.getBoundingClientRect(),style=getComputedStyle(card);
+      card.inert=true;card.classList.add('is-removing');
+      const animation=card.animate([
+        {height:rect.height+'px',opacity:1,transform:'translateY(0)',marginTop:style.marginTop,marginBottom:style.marginBottom},
+        {height:rect.height+'px',opacity:0,transform:'translateY(-4px)',marginTop:style.marginTop,marginBottom:style.marginBottom,offset:.4},
+        {height:'0px',opacity:0,transform:'translateY(-4px)',marginTop:'0px',marginBottom:'0px'}
+      ],{duration:380,easing:'cubic-bezier(.22,.7,.25,1)',fill:'forwards'});
+      try{await animation.finished;}catch{}
+    }));
+  }
   async function refresh(){
     if(busy||inlineEditing)return;busy=true;
     try{
@@ -43,6 +67,19 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       if(!caseMode&&!bugMode)requests.push(fetch('/api/chat/projects/'+encodeURIComponent(project.id)+'/coverage').then(async r=>{if(!r.ok)throw Error('行覆盖率读取失败');return r.json();}));
       const results=await Promise.allSettled(requests);
       if(results[0].status==='rejected')throw results[0].reason;
+      if(inlineEditing)return;
+      await animateRemovedCards(results[0].value);
+      if(data){
+        const previous=new Map(data.targets.map(node=>[node.id,node]));
+        for(const node of results[0].value.targets){const old=previous.get(node.id);if(!old)continue;
+          for(const key of ['name','title','description','condition','expected','actual','evidence']){
+            if((old[key]||'')===(node[key]||''))continue;
+            const id=node.id+':'+key;
+            if(localTextWrites.get(id)===(node[key]||'')){localTextWrites.delete(id);continue;}
+            textHighlights.set(id,performance.now());
+          }
+        }
+      }
       data=results[0].value;
       if(results.length>1)lineCoverage=results[1].status==='fulfilled'?results[1].value:null;
       if(first)for(const n of data.targets)if(n.kind==='group')opened.add(n.id);
@@ -133,11 +170,11 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       bugStatus=choice('状态',node?.example?{unverified:'示例 · 未验证'}:bugStatuses,node?.status||'unverified');severity=choice('严重程度',severities,node?.severity||'medium');
     }
     const error=el('p','targets-error');content.append(error);
-    const save=button('保存',async()=>{save.disabled=true;try{const values={description:desc.value};if(caseTitle){if(!caseTitle.value.trim())throw Error('请填写测试用例标题');values.title=caseTitle.value.trim();}if(condition)Object.assign(values,{condition:condition.value,expected:expected.value});if(bugMode)Object.assign(values,{actual:actual.value,evidence:evidence.value,status:bugStatus.value,severity:severity.value});await api(node?{operation:'update',target_id:node.id,expected_revision:data.revision,values:{...values,name:name.value}}:{operation:'create',kind,parent,name:name.value,values,expected_revision:data.revision});if(parent)opened.add(parent);dialog.close();await refresh();}catch(e){error.textContent=e.message;save.disabled=false;}} ,'targets-primary');content.append(save);(caseTitle||name).focus();
+    const save=button('保存',async()=>{save.disabled=true;try{const values={description:desc.value};if(caseTitle){if(!caseTitle.value.trim())throw Error('请填写测试用例标题');values.title=caseTitle.value.trim();}if(condition)Object.assign(values,{condition:condition.value,expected:expected.value});if(bugMode)Object.assign(values,{actual:actual.value,evidence:evidence.value,status:bugStatus.value,severity:severity.value});await api(node?{operation:'update',target_id:node.id,expected_revision:data.revision,values:{...values,name:name.value}}:{operation:'create',kind,parent,name:name.value,values,expected_revision:data.revision});if(node){for(const [key,value] of Object.entries({...values,name:name.value}))localTextWrites.set(node.id+':'+key,value);}if(parent)opened.add(parent);dialog.close();await refresh();}catch(e){error.textContent=e.message;save.disabled=false;}} ,'targets-primary');content.append(save);(caseTitle||name).focus();
   }
   /** Edit one display field without changing the runnable symbol or source binding. */
   function editCaseText(node,key,label){
-    if(caseMode&&node.lifecycle&&node.lifecycle!=='ready')return;
+    if(!bugMode&&node.lifecycle&&node.lifecycle!=='ready')return;
     if(inlineEditing)return;inlineEditing=true;
     const single=key==='title'||key==='name';
     const revision=data.revision,original=node[key]||'',editor=el(single?'input':'textarea','case-inline-input');
@@ -156,7 +193,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       if(value===original){close();return;}
       if(single&&!value){message.textContent='标题不能为空';return;}
       saving=true;editor.disabled=true;message.textContent='';
-      try{await api({operation:'update',target_id:node.id,expected_revision:revision,values:{[key]:value}});close();await refresh();}
+      try{await api({operation:'update',target_id:node.id,expected_revision:revision,values:{[key]:value}});localTextWrites.set(node.id+':'+key,value);close();await refresh();}
       catch(error){message.textContent=error.message+'（Esc 取消后可重新编辑）';}
       finally{saving=false;editor.disabled=false;}
     };
@@ -164,11 +201,20 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     editor.onkeydown=event=>{event.stopPropagation();if(event.key==='Escape'){event.preventDefault();if(!saving){close();refresh();}}else if(event.key==='Enter'&&!event.isComposing&&(single||event.ctrlKey||event.metaKey)){event.preventDefault();save();}};
     editor.onblur=save;editor.focus();editor.select();
   }
+  function goalAction(node,kind,label,path){
+    const action=smallAction(label,path,()=>{});action.classList.add('case-ai-action');
+    const svg=action.querySelector('svg'),spark=document.createElementNS(svg.namespaceURI,'path');spark.setAttribute('d','M19 1l1.2 3.8L24 6l-3.8 1.2L19 11l-1.2-3.8L14 6l3.8-1.2Z');spark.setAttribute('class','case-ai-spark');svg.append(spark);
+    const key=kind+':'+(node?.id||'root');
+    const open=preview=>{const context={kind,instance:node?.name||'功能组',module:node?.name||'功能组',target:node?{id:node.id,kind:node.kind,name:node.name}:null};newCaseTask(action,preview,context);const card=document.querySelector('.ai-action-dialog');if(card)card.dataset.goalTask=key;};
+    let timer;action.onmouseenter=()=>{timer=setTimeout(()=>{if(action.matches(':hover'))open(true);},220);};action.onmouseleave=()=>clearTimeout(timer);
+    action.onclick=()=>{clearTimeout(timer);const card=document.querySelector('.ai-action-dialog');if(card?.dataset.goalTask===key)card.pinTask();else{card?.close();open(false);}};
+    return action;
+  }
   function newCaseTask(anchor,preview=false,design=null){
     if(document.querySelector('.ai-action-dialog'))return;
     const previousFocus=document.activeElement;
-    const goalTask=design?.kind==='functional-coverage',coverageTask=design?.kind==='line-coverage',runTask=design?.kind==='run-testcase',deleteTask=design?.kind==='delete-testcase';
-    const {dialog,content}=modal(goalTask?'分析功能覆盖率':runTask?'运行测试用例':deleteTask?'删除测试用例':coverageTask?'分析行覆盖率':design?'解释设计':'新增测试用例',true);dialog.classList.add('ai-action-dialog','ai-task-surface');dialog.classList.toggle('is-preview',preview);
+    const addGoal=design?.kind==='add-goal',deleteGoal=design?.kind==='delete-goal',goalTask=design?.kind==='functional-coverage',coverageTask=design?.kind==='line-coverage',runTask=design?.kind==='run-testcase',deleteTask=design?.kind==='delete-testcase';
+    const {dialog,content}=modal(addGoal?'新增验证目标':deleteGoal?'删除验证目标':goalTask?'分析功能覆盖率':runTask?'运行测试用例':deleteTask?'删除测试用例':coverageTask?'分析行覆盖率':design?'解释设计':'新增测试用例',true);dialog.classList.add('ai-action-dialog','ai-task-surface');dialog.classList.toggle('is-preview',preview);
     let leaveTimer,closeTimer;
     const enter=()=>{clearTimeout(leaveTimer);clearTimeout(closeTimer);dialog.classList.remove('is-leaving');};
     const pin=()=>{enter();dialog.classList.remove('is-preview');};dialog.pinTask=pin;
@@ -178,10 +224,10 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     const outside=event=>{if(!dialog.contains(event.target)&&!anchor.contains(event.target))dialog.close();};
     document.addEventListener('pointerdown',outside);
     dialog.addEventListener('close',()=>{clearTimeout(leaveTimer);clearTimeout(closeTimer);anchor.removeEventListener('mouseleave',leave);anchor.removeEventListener('mouseenter',enter);document.removeEventListener('pointerdown',outside);});
-    content.append(el('p','ai-task-objective',goalTask?'分析覆盖目标与未命中 bin，给出补测建议。':runTask?'运行用例，持续监控异常并分析结果。':deleteTask?'删除指定用例及专属代码，保留共享组件。':coverageTask?'分析 '+design.module+' 的覆盖缺口与补测方向。':design?'解释 '+design.module+' 的功能、接口及内部逻辑。':'生成可运行用例，补齐说明与源码绑定。'));
+    content.append(el('p','ai-task-objective',addGoal?'补充验证目标、说明与源码绑定。':deleteGoal?'删除选中目标及其子目标，保留无关代码。':goalTask?'分析覆盖目标与未命中 bin，给出补测建议。':runTask?'运行用例，持续监控异常并分析结果。':deleteTask?'删除指定用例及专属代码，保留共享组件。':coverageTask?'分析 '+design.module+' 的覆盖缺口与补测方向。':design?'解释 '+design.module+' 的功能、接口及内部逻辑。':'生成可运行用例，补齐说明与源码绑定。'));
     if(design){const scope=el('div','ai-design-scope',design.instance);scope.title=design.instance;content.append(scope);}
     if(!design)dialog.querySelector('header strong').after(el('span','ai-workflow-binding','◇ 新增测试用例'));
-    const note=field(content,'想验证什么？（可选）','',true);note.placeholder=goalTask?'补充关注的功能、覆盖缺口或激励场景…':runTask?'补充关注的异常或运行要求…':deleteTask?'补充删除范围或需要保留的内容…':coverageTask?'补充关注的覆盖缺口或测试场景…':design?'补充想了解的设计细节…':'补充要求，例如读写边界场景…';note.setAttribute('aria-label','具体要求（可选）');note.oninput=()=>{note.style.height='36px';note.style.height=Math.min(100,Math.max(36,note.scrollHeight))+'px';};
+    const note=field(content,'想验证什么？（可选）','',true);note.placeholder=addGoal?'补充希望覆盖的功能或场景…':deleteGoal?'补充删除范围或需要保留的内容…':goalTask?'补充关注的功能、覆盖缺口或激励场景…':runTask?'补充关注的异常或运行要求…':deleteTask?'补充删除范围或需要保留的内容…':coverageTask?'补充关注的覆盖缺口或测试场景…':design?'补充想了解的设计细节…':'补充要求，例如读写边界场景…';note.setAttribute('aria-label','具体要求（可选）');note.oninput=()=>{note.style.height='36px';note.style.height=Math.min(100,Math.max(36,note.scrollHeight))+'px';};
     const choice=el('input');choice.type='checkbox';choice.setAttribute('role','switch');
     const newChat=el('div','ai-action-new-chat');choice.setAttribute('aria-label','新对话');newChat.append(choice,el('span','','新对话'));
     const error=el('p','targets-error');error.setAttribute('role','alert');const start=button('',async()=>{
@@ -189,7 +235,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       try{
         if(!window.FlowCanvasAI)throw Error('对话服务尚未就绪，请稍后重试');
         const caseContext=design?.testcase?JSON.stringify(design.testcase):'';
-        const text=goalTask?'【AI任务：分析功能覆盖率】请只读分析项目 '+project.path+' 的验证目标：'+design.instance+'。选中目标及子目标快照：'+JSON.stringify(design.coverage)+'。先调用 verification_targets(guide/read) 读取最新定义和覆盖数据，按稳定 ID 定位目标，读取对应源码、coverpoint/bin 定义和相关测试。解释目标意图、采样条件、累计命中情况与缺口，明确区分功能组、功能点、测试点和 bin，不把命中等同于正确性通过，不把缺失或过期数据当作未命中。针对未命中项提出具体激励、边界条件和可复用的用例，引用真实源码位置。不要修改文件、运行仿真或启动工作流。用户要求：'+(note.value.trim()||'优先分析主要缺口，给出有依据的补测建议。'):runTask?'【AI任务：运行测试用例】项目：'+project.path+'；指定用例：'+caseContext+'。先用 test_cases(read) 核实 ID 与运行模板，再调用 test_case_runs(start, case_id) 一次，保存返回的 run.id。持续调用 test_case_runs(read, run_id, offset, wait_seconds=10)，用返回的 offset 增量读取，直到运行结束且日志全部读取完成。实时关注断言、UVM_ERROR/UVM_FATAL、异常退出和超时，发现异常及时汇报；不要因短暂无输出断言死锁。必须等待执行完毕后报告运行结果，分析退出码、关键日志、失败原因与覆盖率采集结果；退出码为零不等于验证通过。不要自行修改代码、重复启动或重试；如明确不可恢复可通过 stop 停止并说明原因。用户要求：'+(note.value.trim()||'监控运行，报告结果并给出分析。'):deleteTask?'【AI任务：删除测试用例】项目：'+project.path+'；仅删除指定用例：'+caseContext+'。先调用 test_cases(guide/read) 和 test_case_runs(list) 核实当前记录、源码绑定和运行状态。若该用例仍在运行则不要删除，说明原因。先调用 test_cases(begin_delete, target_id, expected_revision) 登记正在删除，再检查源码及引用，仅删除该用例专属实现和注册/导入引用，保留共享基类、驱动、环境、RTL、其他测试及历史日志。不要删除包含其他定义的整个文件。完成源码清理后使用 test_cases(delete, target_id, expected_revision) 删除对应记录；报告实际修改和无法安全删除的内容，不要启动仿真。用户要求：'+(note.value.trim()||'删除此测试用例，保留共享代码和历史运行记录。'):coverageTask?'请只读分析项目 '+project.path+' 的行覆盖率，不修改文件、不运行仿真、不启动工作流。实例：'+design.instance+'；模块：'+design.module+'；源码位置：'+JSON.stringify(design.source)+'；当前累计覆盖率快照：'+JSON.stringify(design.coverage)+'。读取真实源码和项目 .flowcanvas/coverage 下的覆盖率产物，分别说明自身与包含子模块的覆盖率，定位未覆盖和部分覆盖的代码，分析可能缺失的激励、边界条件及建议补充的测试场景。引用具体文件和行号；不要把未覆盖等同于缺陷，没有数据不能声称已覆盖，快照与产物不一致时明确说明。用户要求：'+(note.value.trim()||'优先分析主要覆盖缺口，给出可执行的补测建议。'):design?'请只读分析当前项目 '+project.path+' 中的设计，不修改文件、不运行仿真、不启动其他工作流。目标实例：'+design.instance+'；模块：'+design.module+'；源码定位：'+JSON.stringify(design.source)+ '。先读取真实源码及必要的子模块，解释模块职责、端口协议、关键数据通路、状态变化及与父子模块的关系，引用具体文件和行号。不能用模块名猜测功能；无法确定的内容明确说明。用户要求：'+(note.value.trim()||'给出简洁清晰的中文设计说明。'):'【AI任务：新增测试用例】\n绑定工作流：generate-testcase。请先调用 run_workflow 启动已附加的工作流，再按阶段执行。\n请为当前项目新增一个可独立运行的测试用例。项目：'+project.path+'。用户补充：'+(note.value.trim()||'请检查已有测试和验证目标，选择尚未充分验证且不重复的场景。')+'。先调用 test_cases(operation=guide) 读取规范，检查现有用例、目标和运行模板；复用现有驱动，必要时补齐用例所需基础设施。编写代码前必须先通过 test_cases(create) 注册占位，保存返回的用例 ID；实现后只 update/bind 同一 ID，不要另行 import。绑定有效且说明齐全后调用 finish_create 转为正式用例。中断后用 resume_operation 恢复原条目。通过 test_cases 工具保存 title（概括测试场景的中文标题）、name（代码类名或函数名）、具体说明和源码绑定，不能只给方案。不要修改 RTL，不要自动启动仿真；结束时汇报新增文件与未验证事项。';
+        const text=addGoal?'【AI任务：新增验证目标】项目：'+project.path+'；父目标：'+JSON.stringify(design.target)+'。先用 verification_targets(guide/read) 读取规范、定义和源码绑定。父目标为空时新增功能组，group 下新增功能点，point 下新增测试点；不重复已有目标。根据真实设计与验证代码写清名称和 description，编写代码前先调用 verification_targets(begin_create, kind, name, parent, expected_revision, values={description}) 注册占位，保存 ID，再 update/inspect/bind 同一 ID，最后 finish_create。不能另行 create/import 重复登记；中断时用 resume_operation 恢复原条目。必要时实现专属覆盖定义，保留共享采样逻辑，不修改 RTL，不运行仿真，不启动其他工作流。不能虚构覆盖命中。用户要求：'+(note.value.trim()||'分析当前缺口，新增有意义的验证目标并汇报修改。'):deleteGoal?'【AI任务：删除验证目标】项目：'+project.path+'；指定目标：'+JSON.stringify(design.target)+'。删除任务的第一步是登记卡片：仅调用 verification_targets(read) 获取最新 revision 并定位用户指定 ID，立即调用 verification_targets(begin_delete, target_id, expected_revision, values={cascade:true})，先让选中卡片及子目标进入删除中。登记成功后再读取 guide、检查全部子目标、源码绑定、共享引用和实际删除范围，然后清理目标专属覆盖定义和引用，不能删除共享代码、RTL、测试用例或历史运行产物；若无法安全拆分则保留相关代码并明确说明。用 verification_targets(delete, target_id, expected_revision, values={cascade:true}) 移除选中目标及其子目标，不直接修改 JSON，不运行仿真。报告删除范围和保留项。用户要求：'+(note.value.trim()||'删除此目标及其子目标，保留无关代码和历史产物。'):goalTask?'【AI任务：分析功能覆盖率】请只读分析项目 '+project.path+' 的验证目标：'+design.instance+'。选中目标及子目标快照：'+JSON.stringify(design.coverage)+'。先调用 verification_targets(guide/read) 读取最新定义和覆盖数据，按稳定 ID 定位目标，读取对应源码、coverpoint/bin 定义和相关测试。解释目标意图、采样条件、累计命中情况与缺口，明确区分功能组、功能点、测试点和 bin，不把命中等同于正确性通过，不把缺失或过期数据当作未命中。针对未命中项提出具体激励、边界条件和可复用的用例，引用真实源码位置。不要修改文件、运行仿真或启动工作流。用户要求：'+(note.value.trim()||'优先分析主要缺口，给出有依据的补测建议。'):runTask?'【AI任务：运行测试用例】项目：'+project.path+'；指定用例：'+caseContext+'。先用 test_cases(read) 核实 ID 与运行模板，再调用 test_case_runs(start, case_id) 一次，保存返回的 run.id。持续调用 test_case_runs(read, run_id, offset, wait_seconds=10)，用返回的 offset 增量读取，直到运行结束且日志全部读取完成。实时关注断言、UVM_ERROR/UVM_FATAL、异常退出和超时，发现异常及时汇报；不要因短暂无输出断言死锁。必须等待执行完毕后报告运行结果，分析退出码、关键日志、失败原因与覆盖率采集结果；退出码为零不等于验证通过。不要自行修改代码、重复启动或重试；如明确不可恢复可通过 stop 停止并说明原因。用户要求：'+(note.value.trim()||'监控运行，报告结果并给出分析。'):deleteTask?'【AI任务：删除测试用例】项目：'+project.path+'；仅删除指定用例：'+caseContext+'。删除任务的第一步是登记卡片：仅调用 test_cases(read) 获取最新 revision 并定位用户指定 ID，立即调用 test_cases(begin_delete, target_id, expected_revision)。若接口因用例正在运行而拒绝，停止删除并说明原因。登记成功后再读取 guide、检查源码绑定、共享引用和实际删除范围，仅删除该用例专属实现和注册/导入引用，保留共享基类、驱动、环境、RTL、其他测试及历史日志。不要删除包含其他定义的整个文件。完成源码清理后使用 test_cases(delete, target_id, expected_revision) 删除对应记录；报告实际修改和无法安全删除的内容，不要启动仿真。用户要求：'+(note.value.trim()||'删除此测试用例，保留共享代码和历史运行记录。'):coverageTask?'请只读分析项目 '+project.path+' 的行覆盖率，不修改文件、不运行仿真、不启动工作流。实例：'+design.instance+'；模块：'+design.module+'；源码位置：'+JSON.stringify(design.source)+'；当前累计覆盖率快照：'+JSON.stringify(design.coverage)+'。读取真实源码和项目 .flowcanvas/coverage 下的覆盖率产物，分别说明自身与包含子模块的覆盖率，定位未覆盖和部分覆盖的代码，分析可能缺失的激励、边界条件及建议补充的测试场景。引用具体文件和行号；不要把未覆盖等同于缺陷，没有数据不能声称已覆盖，快照与产物不一致时明确说明。用户要求：'+(note.value.trim()||'优先分析主要覆盖缺口，给出可执行的补测建议。'):design?'请只读分析当前项目 '+project.path+' 中的设计，不修改文件、不运行仿真、不启动其他工作流。目标实例：'+design.instance+'；模块：'+design.module+'；源码定位：'+JSON.stringify(design.source)+ '。先读取真实源码及必要的子模块，解释模块职责、端口协议、关键数据通路、状态变化及与父子模块的关系，引用具体文件和行号。不能用模块名猜测功能；无法确定的内容明确说明。用户要求：'+(note.value.trim()||'给出简洁清晰的中文设计说明。'):'【AI任务：新增测试用例】\n绑定工作流：generate-testcase。请先调用 run_workflow 启动已附加的工作流，再按阶段执行。\n请为当前项目新增一个可独立运行的测试用例。项目：'+project.path+'。用户补充：'+(note.value.trim()||'请检查已有测试和验证目标，选择尚未充分验证且不重复的场景。')+'。先调用 test_cases(operation=guide) 读取规范，检查现有用例、目标和运行模板；复用现有驱动，必要时补齐用例所需基础设施。编写代码前必须先通过 test_cases(create) 注册占位，保存返回的用例 ID；实现后只 update/bind 同一 ID，不要另行 import。绑定有效且说明齐全后调用 finish_create 转为正式用例。中断后用 resume_operation 恢复原条目。通过 test_cases 工具保存 title（概括测试场景的中文标题）、name（代码类名或函数名）、具体说明和源码绑定，不能只给方案。不要修改 RTL，不要自动启动仿真；结束时汇报新增文件与未验证事项。';
         const result=await window.FlowCanvasAI.startCase({text,current:!choice.checked,project,requirements:note.value.trim(),design});
         const sourceRect=dialog.getBoundingClientRect();
         const destination=[...document.querySelectorAll('.conversation .ai-task-sent')].at(-1);
@@ -273,8 +319,11 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     const byId=new Map(data.targets.map(n=>[n.id,n]));const visible=new Set();
     for(const n of data.targets){if(!query||[n.title,n.name,n.description,n.id,...n.bindings.map(b=>b.file)].join(' ').toLowerCase().includes(query)){let current=n;while(current){visible.add(current.id);current=byId.get(current.parent);}}}
     function card(node,depth){
+      const operationLocked=!bugMode&&!!node.lifecycle&&node.lifecycle!=='ready';
+      let inheritedDeletion=false;
+      if(node.lifecycle==='deleting'){let ancestor=byId.get(node.parent);while(ancestor){if(ancestor.lifecycle==='deleting'){inheritedDeletion=true;break;}ancestor=byId.get(ancestor.parent);}}
       const report=data.reports[node.id]||{status:'planned',bindings:[]};const children=data.targets.filter(n=>n.parent===node.id&&visible.has(n.id));
-      const wrapper=el('article','target-card target-'+node.kind);wrapper.dataset.targetId=node.id;if(caseMode&&node.lifecycle&&node.lifecycle!=='ready'){wrapper.dataset.lifecycle=node.lifecycle;wrapper.classList.add('case-in-progress');wrapper.classList.toggle('case-operation-active',node.operation_status==='running');}const head=button('',()=>{
+      const wrapper=el('article','target-card target-'+node.kind);wrapper.dataset.targetId=node.id;if(node.operation_status==='running'&&node.lifecycle&&node.lifecycle!=='ready'){if(!operationAnimationStart.has(node.id))operationAnimationStart.set(node.id,performance.now());wrapper.style.setProperty('--operation-phase',(-((performance.now()-operationAnimationStart.get(node.id))%2600))+'ms');}else operationAnimationStart.delete(node.id);if(!bugMode&&node.lifecycle&&node.lifecycle!=='ready'){wrapper.dataset.lifecycle=node.lifecycle;wrapper.classList.add('case-in-progress');wrapper.classList.toggle('case-operation-active',node.operation_status==='running'&&!inheritedDeletion);}const head=button('',()=>{
         if(inlineEditing)return;
         selectedTarget=node.id;
         for(const h of panel.querySelectorAll('.target-header.is-selected'))h.classList.remove('is-selected');
@@ -293,8 +342,8 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       const arrowPath=document.createElementNS(arrow.namespaceURI,'path');arrowPath.setAttribute('d','m5 3 6 5-6 5Z');arrow.append(arrowPath);chevron.append(arrow);
       head.append(chevron);
       if(!caseMode)head.append(el('span','target-kind',kinds[node.kind][0]));
-      const title=el('span','target-title',caseMode?(node.title||node.name):node.name);head.append(title);
-      if(!bugMode&&(!caseMode||!node.lifecycle||node.lifecycle==='ready')){
+      const title=el('span','target-title',caseMode?(node.title||node.name):node.name);title.dataset.textField=caseMode&&node.title?'title':'name';head.append(title);
+      if(!bugMode&&(!node.lifecycle||node.lifecycle==='ready')){
         let clickTimer;title.title='双击修改标题';
         title.onclick=event=>{event.stopPropagation();clearTimeout(clickTimer);clickTimer=setTimeout(()=>head.click(),450);};
         title.ondblclick=event=>{event.preventDefault();event.stopPropagation();clearTimeout(clickTimer);if(node.lifecycle!=='deleting')editCaseText(node,caseMode?'title':'name',title);};
@@ -310,9 +359,9 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         }
         head.append(badge);
       }
-      if(caseMode&&node.lifecycle&&node.lifecycle!=='ready'){const label=(node.lifecycle==='creating'?'创建':'删除')+(node.operation_status==='running'?'中':'已暂停');head.append(el('span','case-operation-label',label));}
-      if(bugMode){head.append(el('span','target-state',node.example?'示例 · 未验证':bugStatuses[node.status]));}else if(report.status==='planned'&&(!caseMode||!node.lifecycle||node.lifecycle==='ready'))head.append(el('span','target-state state-planned','待实现'));
-      else if(report.status!=='bound'&&!(caseMode&&node.lifecycle==='creating')){
+      if(!bugMode&&node.lifecycle&&node.lifecycle!=='ready'&&!inheritedDeletion){const label=(node.lifecycle==='creating'?'创建':'删除')+(node.operation_status==='running'?'中':'已暂停');head.append(el('span','case-operation-label',label));}
+      if(bugMode){head.append(el('span','target-state',node.example?'示例 · 未验证':bugStatuses[node.status]));}else if(report.status==='planned'&&(!node.lifecycle||node.lifecycle==='ready'))head.append(el('span','target-state state-planned','待实现'));
+      else if(report.status!=='bound'&&!operationLocked){
         const warning=el('span','target-warning state-'+report.status);
         const message=[labels[report.status],...report.bindings.filter(b=>b.status!=='bound').map(b=>b.message|| (b.status==='changed'?'源码已变化，请核对定义':''))].filter(Boolean);
         warning.title=[...new Set(message)].join(' · ');warning.setAttribute('role','img');warning.setAttribute('aria-label',warning.title);
@@ -322,7 +371,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       const header=el('div','target-header'+(selectedTarget===node.id?' is-selected':''));
       head.title=caseMode?[node.title,node.name].filter(Boolean).join(' · '):node.name;
       head.onkeydown=event=>{
-        if(!bugMode&&(!caseMode||!node.lifecycle||node.lifecycle==='ready')&&event.key==='F2'){event.preventDefault();if(node.lifecycle!=='deleting')editCaseText(node,caseMode?'title':'name',title);return;}
+        if(!bugMode&&(!node.lifecycle||node.lifecycle==='ready')&&event.key==='F2'){event.preventDefault();if(node.lifecycle!=='deleting')editCaseText(node,caseMode?'title':'name',title);return;}
         if(event.key==='ArrowDown'||event.key==='ArrowUp'){
           event.preventDefault();const rows=[...panel.querySelectorAll('.target-card-head')],index=rows.indexOf(head);
           rows[Math.max(0,Math.min(rows.length-1,index+(event.key==='ArrowDown'?1:-1)))]?.focus();
@@ -331,8 +380,8 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         }
       };
       header.onclick=event=>{if(!event.target.closest('button'))head.click();};
-      const controls=el('div','target-actions target-header-actions');if(bugMode)controls.append(smallAction('编辑','m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z',()=>edit(node)));if(!caseMode&&!bugMode&&node.kind!=='testpoint')controls.append(smallAction('添加'+(node.kind==='group'?'功能点':'测试点'),'M12 5v14M5 12h14',()=>edit(null,node.kind==='group'?'point':'testpoint',node.id)));
-      if(!caseMode&&!bugMode){
+      const controls=el('div','target-actions target-header-actions');if(bugMode)controls.append(smallAction('编辑','m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z',()=>edit(node)));if(!caseMode&&!bugMode&&(!node.lifecycle||node.lifecycle==='ready')){if(node.kind!=='testpoint')controls.append(goalAction(node,'add-goal','AI 新增'+(node.kind==='group'?'功能点':'测试点'),'M10 5v14M3 12h14'));controls.append(goalAction(node,'delete-goal','AI 删除验证目标','M4 7h12M6 7v13h9V7M8 7V4h5M9 10v7m3-7v7'));}
+      if(!caseMode&&!bugMode&&(!node.lifecycle||node.lifecycle==='ready')){
         const ai=smallAction('AI 分析功能覆盖率','M4 17V9m5 8V5m5 12v-5M3 21h16',()=>{});ai.classList.add('case-ai-action');
         const svg=ai.querySelector('svg'),spark=document.createElementNS(svg.namespaceURI,'path');spark.setAttribute('d','M19 1l1.2 3.8L24 6l-3.8 1.2L19 11l-1.2-3.8L14 6l3.8-1.2Z');spark.setAttribute('class','case-ai-spark');svg.append(spark);
         const key='functional-coverage:'+node.id;
@@ -343,7 +392,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
           newCaseTask(ai,preview,context);const card=document.querySelector('.ai-action-dialog');if(card)card.dataset.goalTask=key;
         };
         let timer;ai.onmouseenter=()=>{timer=setTimeout(()=>{if(ai.matches(':hover'))open(true);},220);};ai.onmouseleave=()=>clearTimeout(timer);
-        ai.onclick=()=>{clearTimeout(timer);const card=document.querySelector('.ai-action-dialog');if(card?.dataset.goalTask===key)card.pinTask();else{card?.close();open(false);}};controls.append(ai);
+        ai.onclick=()=>{clearTimeout(timer);const card=document.querySelector('.ai-action-dialog');if(card?.dataset.goalTask===key)card.pinTask();else{card?.close();open(false);}};controls.prepend(ai);
       }
       if(caseMode&&(!node.lifecycle||node.lifecycle==='ready')){
         const run=smallAction('运行测试用例','m8 5 11 7-11 7Z',async()=>{if(pendingRun!==null||runCases.size)return;pendingRun=node.id;paintRunButtons();try{
@@ -368,7 +417,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       const links=el('div','target-title-sources');
       for(const binding of (caseMode||bugMode?report.bindings:[])){
         const label=binding.file.split('/').at(-1)+(binding.line?':'+binding.line+'–'+binding.end_line:'');
-        const b=button(label,()=>source(binding),'target-source target-title-source');b.disabled=!binding.line;
+        const b=button(label,()=>{if(!operationLocked)source(binding);},'target-source target-title-source');b.disabled=operationLocked||!binding.line;
         b.title=binding.file+(binding.message?' · '+binding.message:' · 查看源码');b.setAttribute('aria-label','查看源码 '+binding.file+(binding.line?' 第 '+binding.line+' 行':''));links.append(b);
       }
       if(!caseMode&&!bugMode){
@@ -379,10 +428,10 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       if(opened.has(node.id)||(query&&searchExpanded)){
         const body=el('div','target-card-body');
         if(!bugMode){
-          const description=el('p','case-editable-description'+(node.description?'':' is-empty'),node.description||'双击添加说明');description.title='双击修改说明';description.tabIndex=0;
+          const description=el('p','case-editable-description'+(node.description?'':' is-empty'),node.description||'双击添加说明');description.dataset.textField='description';description.title='双击修改说明';description.tabIndex=0;
           description.ondblclick=event=>{event.preventDefault();event.stopPropagation();editCaseText(node,'description',description);};
           description.onkeydown=event=>{if(event.key==='Enter'||event.key==='F2'){event.preventDefault();editCaseText(node,'description',description);}};
-          if(caseMode&&node.lifecycle&&node.lifecycle!=='ready'){
+          if(!bugMode&&node.lifecycle&&node.lifecycle!=='ready'){
             description.ondblclick=null;description.onkeydown=null;description.removeAttribute('tabindex');description.removeAttribute('title');description.classList.add('is-locked');
             if(!node.description)description.textContent='';
           }
@@ -391,7 +440,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
           mark.innerHTML='<svg viewBox="0 0 20 20"><path d="M9 2.5 11 7l4.5 2-4.5 2L9 15.5 7 11 2.5 9 7 7Z"/><path class="case-ai-satellite" d="m15.5 12 1 2.5 2.5 1-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1Z"/></svg>';
           body.append(mark);
         }else{
-          for(const [label,value]of [['',node.description],...(bugMode?[['复现步骤',node.condition],['预期',node.expected],['实际',node.actual],['证据',node.evidence],['严重程度',severities[node.severity]],['关联用例',node.case_ids.join('、')]]:[])]){if(value){const p=el('p');if(label)p.append(el('strong','',label+' · '));p.append(document.createTextNode(value));body.append(p);}}
+          for(const [label,value]of [['',node.description],...(bugMode?[['复现步骤',node.condition],['预期',node.expected],['实际',node.actual],['证据',node.evidence],['严重程度',severities[node.severity]],['关联用例',node.case_ids.join('、')]]:[])]){if(value){const p=el('p');p.dataset.textField=({'':'description','复现步骤':'condition','预期':'expected','实际':'actual','证据':'evidence'})[label]||'';if(label)p.append(el('strong','',label+' · '));p.append(document.createTextNode(value));body.append(p);}}
         }
 
         if(!caseMode&&!bugMode){
@@ -401,8 +450,8 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
             for(const binding of report.bindings){
               const observation=c.status==='available'?c.rows.find(row=>row.binding_id===binding.id):null;
               const path=observation?.source_path||[binding.scope,binding.symbol].filter(Boolean).join('.')||binding.file;
-              const context=binding.line?button(path,()=>source(binding),'target-coverage-context goal-source-link'):el('div','target-coverage-context',path);
-              if(binding.line){context.title='查看源码';context.setAttribute('aria-label','查看 '+path+' 的源码');}
+              const context=binding.line?button(path,()=>{if(!operationLocked)source(binding);},'target-coverage-context goal-source-link'):el('div','target-coverage-context',path);
+              if(binding.line){context.disabled=operationLocked;context.title=operationLocked?'AI 操作尚未完成':'查看源码';context.setAttribute('aria-label',operationLocked?path+'，AI 操作中不可打开':'查看 '+path+' 的源码');}
               detail.append(context);
             }
             if(node.kind==='testpoint'&&c.status==='available'){
@@ -417,9 +466,23 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
           }
         }
         const actions=el('div','target-actions');
-        if(report.status==='changed')actions.append(button('核对后确认',()=>{const {dialog,content}=modal('确认源码与目标一致');content.append(el('p','','请先查看当前源码，核对说明与实际实现。确认仅更新代码基线，不代表仿真通过。'));const error=el('p','targets-error');content.append(error,button('已核对，确认当前版本',async()=>{try{await api({operation:'accept',target_id:node.id,expected_revision:data.revision,values:Object.fromEntries(report.bindings.map(b=>[b.id,b.fingerprint]))});dialog.close();refresh();}catch(e){error.textContent=e.message;}},'targets-primary'));}));
+        if(bugMode&&report.status==='changed'&&!operationLocked)actions.append(button('核对后确认',()=>{const {dialog,content}=modal('确认源码与目标一致');content.append(el('p','','请先查看当前源码，核对说明与实际实现。确认仅更新代码基线，不代表仿真通过。'));const error=el('p','targets-error');content.append(error,button('已核对，确认当前版本',async()=>{try{await api({operation:'accept',target_id:node.id,expected_revision:data.revision,values:Object.fromEntries(report.bindings.map(b=>[b.id,b.fingerprint]))});dialog.close();refresh();}catch(e){error.textContent=e.message;}},'targets-primary'));}));
         if(actions.children.length)body.append(actions);for(const child of children)body.append(card(child,depth+1));wrapper.append(body);
       }else if(children.length){head.title=children.length+' 个子目标';}
+      for(const label of wrapper.querySelectorAll('[data-text-field]')){
+        if(label.closest('[data-target-id]')!==wrapper)continue;
+        const id=node.id+':'+label.dataset.textField,started=textHighlights.get(id);
+        if(started===undefined)continue;
+        const elapsed=performance.now()-started;
+        if(elapsed>=2200){textHighlights.delete(id);continue;}
+        label.classList.add('ai-text-updated');label.style.setProperty('--text-update-phase',-elapsed+'ms');
+        // Remove the animation even while this panel is hidden: display toggles
+        // otherwise restart a completed CSS animation on the retained node.
+        setTimeout(()=>{
+          label.classList.remove('ai-text-updated');label.style.removeProperty('--text-update-phase');
+          if(textHighlights.get(id)===started)textHighlights.delete(id);
+        },Math.max(0,2200-elapsed));
+      }
       return wrapper;
     }
     for(const group of data.targets.filter(n=>n.kind===rootKind&&visible.has(n.id)))list.append(card(group,0));
@@ -430,13 +493,14 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
   document.addEventListener('flowcanvas-view',e=>show(e.detail));
   // Watch published metadata only; never scan source files on a timer.
   let checking=false;
-  setInterval(async()=>{if(!active||!data||busy||checking||document.hidden)return;checking=true;try{const response=await fetch('/api/chat/projects/'+encodeURIComponent(project.id)+'/'+endpoint+'/revision');if(response.ok){const next=await response.json();if(next.revision!==data.revision||(!caseMode&&!bugMode&&next.coverage_revision!==data.coverage?.revision))await refresh();}}catch{}finally{checking=false;}},caseMode?1000:3000);
+  setInterval(async()=>{if(!active||!data||busy||checking||document.hidden)return;checking=true;try{const response=await fetch('/api/chat/projects/'+encodeURIComponent(project.id)+'/'+endpoint+'/revision');if(response.ok){const next=await response.json();if(next.revision!==data.revision||(!caseMode&&!bugMode&&next.coverage_revision!==data.coverage?.revision))await refresh();}}catch{}finally{checking=false;}},!bugMode?1000:3000);
   fetch('/api/chat/projects').then(r=>r.json()).then(state=>{
     project=state.current;if(!project)return;panel=el('section','targets-panel'+(caseMode?' testcase-panel':''));panel.hidden=true;
     const toolbar=el('div','targets-toolbar');const search=el('input','targets-search');search.placeholder='筛选'+view+'…  /';search.setAttribute('aria-label','搜索'+view);search.oninput=()=>{query=search.value.trim().toLowerCase();searchExpanded=true;if(data)render();};
     search.onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();search.value='';query='';if(data)render();}else if(event.key==='ArrowDown'){event.preventDefault();panel.querySelector('.target-card-head')?.focus();}};
     document.addEventListener('keydown',event=>{if(active&&event.key==='/'&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.target.closest('input,textarea,select,[contenteditable="true"],dialog')){event.preventDefault();search.focus();}});
     toolbar.append(search);
+    if(!caseMode&&!bugMode)toolbar.append(goalAction(null,'add-goal','AI 新增功能组','M10 5v14M3 12h14'));
     if(caseMode){const add=button('',()=>newCaseTask(add),'ai-case-add');add.title='AI 新增测试用例';add.setAttribute('aria-label','AI 新增测试用例');add.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="case-ai-spark" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#4285ff"/><stop offset=".55" stop-color="#9164ec"/><stop offset="1" stop-color="#df77ba"/></linearGradient></defs><path d="M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M8 14h8m-4-4v8"/><path class="ai-colored-spark" d="M18 2l1.2 3.8L23 7l-3.8 1.2L18 12l-1.2-3.8L13 7l3.8-1.2Z" fill="url(#case-ai-spark)" stroke="url(#case-ai-spark)"/></svg>';let previewTimer;add.onmouseenter=()=>{clearTimeout(previewTimer);previewTimer=setTimeout(()=>{if(add.matches(':hover'))newCaseTask(add,true);},220);};add.onmouseleave=()=>clearTimeout(previewTimer);add.onclick=()=>{clearTimeout(previewTimer);const card=document.querySelector('.ai-action-dialog');if(card)card.pinTask();else newCaseTask(add);};toolbar.append(add);}
 
     const content=[toolbar,el('div','targets-summary'),el('p','targets-error'),el('div','targets-diagnostics'),el('div','targets-tree')];
