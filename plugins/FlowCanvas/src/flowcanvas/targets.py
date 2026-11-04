@@ -31,8 +31,6 @@ class Target(BaseModel):
     parent: str | None = None
     name: str = Field(min_length=1, max_length=200)
     description: str = ''
-    condition: str = ''
-    expected: str = ''
     origin: Literal['manual', 'ai', 'scan'] = 'manual'
     bindings: list[Binding] = Field(default_factory=list)
 
@@ -141,7 +139,7 @@ class Targets:
                     else:
                         node = found[0]
                         record.update(status='bound' if node['fingerprint'] == binding.fingerprint else 'changed',
-                                      line=node['line'], end_line=node['end_line'], symbol=node['name'],
+                                      line=node['line'], end_line=node['end_line'], symbol=node['name'], scope=node['scope'],
                                       fingerprint=node['fingerprint'])
                 records.append(record)
             state = 'planned' if not records else next((v for v in ('conflict', 'unverified', 'missing', 'changed')
@@ -251,11 +249,14 @@ class Targets:
                 raise
             return self.status()
 
-    def create(self, kind, name, parent, expected_revision, description='', condition='', expected=''):
+    def create(self, kind, name, parent, expected_revision, description='', **details):
+        allowed = {'condition', 'expected'} if self.target_model is not Target else set()
+        if set(details) - allowed:
+            raise ValueError('不支持的字段：'+', '.join(sorted(set(details)-allowed)))
         with LOCK:
             data = self.read()
             row = self.target_model(id=new_id(self.prefixes[kind]), kind=kind,
-                         parent=parent or None, name=name, description=description, condition=condition, expected=expected)
+                         parent=parent or None, name=name, description=description, **details)
             data.targets.append(row)
             self.save(data, expected_revision)
             return row.model_dump()
@@ -263,9 +264,9 @@ class Targets:
     def update(self, target_id, values, expected_revision):
         with LOCK:
             data = self.read()
-            allowed = {'name', 'description', 'condition', 'expected'}
+            allowed = {'name', 'description'} | ({'condition', 'expected'} if self.target_model is not Target else set())
             if set(values) - allowed:
-                raise ValueError('仅可更新名称、说明、验证条件和预期行为')
+                raise ValueError('不支持的字段：'+', '.join(sorted(set(values)-allowed)))
             target = next((n for n in data.targets if n.id == target_id), None)
             if not target:
                 raise ValueError('目标不存在')

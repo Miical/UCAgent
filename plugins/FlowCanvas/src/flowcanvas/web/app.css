@@ -878,7 +878,7 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 .target-goal-pane[hidden],.target-line-pane[hidden]{display:none}
 
 .target-coverage-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:18px 0 12px;flex-shrink:0}
-.coverage-overview-item{display:flex;align-items:center;gap:10px;min-width:0;padding:4px;border:0;background:none;color:var(--text);text-align:left;cursor:pointer;border-radius:8px}
+.coverage-overview-item{display:flex;align-items:flex-start;gap:10px;min-width:0;padding:4px;border:0;background:none;color:var(--text);text-align:left;cursor:pointer;border-radius:8px}
 .coverage-overview-item:hover{background:color-mix(in srgb,var(--accent) 4%,transparent)}
 .coverage-overview-ring{position:relative;display:grid;place-items:center;width:64px;height:64px;flex-shrink:0}
 .coverage-overview-ring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
@@ -887,20 +887,22 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 .coverage-ring-fill{stroke:var(--accent);stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;transition:stroke-dashoffset .45s ease}
 [data-metric="line"] .coverage-ring-fill{stroke:#36b37e}
 .coverage-ring-value{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
-.coverage-overview-text{display:flex;flex-direction:column;gap:5px;min-width:0}
+.coverage-overview-text{display:flex;flex-direction:column;gap:5px;min-width:0;padding-top:6px}
 .coverage-overview-label{font-size:12px;font-weight:500;white-space:nowrap}
 .coverage-overview-count{font-size:10px;color:var(--text-dim);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .target-coverage-overview{container-type:inline-size}
-@container(max-width:340px){.coverage-overview-item{flex-direction:column;gap:6px;text-align:center}.coverage-overview-ring{width:58px;height:58px}.coverage-overview-text{gap:3px}}
+@container(max-width:340px){.coverage-overview-item{flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;text-align:center}.coverage-overview-ring{width:58px;height:58px}.coverage-overview-text{gap:3px;padding-top:0}}
 @media(prefers-reduced-motion:reduce){.coverage-ring-fill{transition:none}}
 
 /* Keep coverage controls quiet; detailed results belong beside the rings. */
 .coverage-tabs-panel .targets-summary{flex-wrap:nowrap;gap:6px}
 .coverage-tabs-panel .targets-summary>span{white-space:nowrap;font-weight:400}
 .coverage-tabs-panel .targets-summary>span+span::before{content:'·';margin-right:6px;opacity:.5}
-.target-coverage-overview{position:relative;grid-template-columns:repeat(2,minmax(0,1fr)) 24px;column-gap:12px}
+.target-coverage-overview{position:relative;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:12px;row-gap:4px;padding-top:8px}
 .coverage-overview-extra{font-size:10px;color:var(--text-dim);font-variant-numeric:tabular-nums}
-.coverage-overview-menu{position:relative;align-self:start;grid-column:3;grid-row:1;margin-top:4px;z-index:3}
+.coverage-overview-actions{grid-column:1/-1;display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.coverage-shared-runs{font-size:10px;color:var(--text-dim);font-variant-numeric:tabular-nums}
+.coverage-overview-menu{position:relative;z-index:3}
 .coverage-overview-menu summary{display:grid;place-items:center;width:24px;height:24px;list-style:none;cursor:pointer;color:var(--text-dim);border-radius:4px;font-size:18px}
 .coverage-overview-menu summary::-webkit-details-marker{display:none}
 .coverage-overview-menu summary:hover{background:var(--surface2)}
@@ -909,3 +911,35 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 .coverage-tabs-panel .targets-summary{padding-top:0;padding-bottom:7px}
 .coverage-tabs-panel .targets-summary>span,.coverage-tabs-panel .targets-toggle-all{font-family:inherit;font-size:9px;font-weight:400}
 .coverage-tabs-panel .targets-toolbar{margin-bottom:9px}
+
+/* Goal hierarchy: aligned coverage column and quiet inline source actions. */
+.target-goal-pane .targets-tree{padding-top:6px;--goal-actions-width:48px;--goal-column-gap:10px}
+.target-goal-pane .target-header{display:grid;grid-template-columns:minmax(0,1fr) 78px var(--goal-actions-width);column-gap:var(--goal-column-gap);min-height:30px;margin:0}
+.target-goal-pane .goal-row-heading{display:flex;align-items:center;min-width:0;overflow:hidden}
+.target-goal-pane .goal-row-heading>.target-card-head{flex:0 1 auto;width:auto;min-width:0;padding:5px 4px 5px 8px;gap:6px}
+.target-goal-pane .target-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;letter-spacing:0;font-size:12px;font-weight:500}
+.target-goal-pane .target-group>.target-header .target-title{font-weight:650}
+.target-goal-pane .target-testpoint>.target-header .target-title{font-size:11px;font-weight:400}
+.target-goal-pane .target-kind{font-size:8px;opacity:.45;padding:0;letter-spacing:0}
+.target-goal-pane .target-title-sources{flex:0 1 auto;margin-left:8px;padding:0}
+.target-goal-pane .target-title-source{font-size:9px}
+.target-goal-pane .target-header:hover .target-title-source,.target-goal-pane .target-header:focus-within .target-title-source{opacity:.75;pointer-events:auto}
+.target-goal-pane .target-header>.target-coverage-score{display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:3px 6px;margin:0;text-align:right;font-size:10px;line-height:1.4}
+.goal-coverage-percent{font-size:11px;color:var(--text);font-weight:500}
+.goal-coverage-count{font-size:9px;color:var(--text-dim)}
+.goal-coverage-meter{grid-column:1/-1;height:2px;border-radius:2px;background:color-mix(in srgb,var(--text) 7%,var(--surface));overflow:hidden}
+.goal-coverage-meter::before{content:'';display:block;width:var(--coverage);height:100%;background:#36b37e;border-radius:inherit}
+.target-goal-pane .target-header>.target-header-actions{margin:0;width:48px;gap:0}
+.target-goal-pane .targets-tree>.target-group+.target-group{margin-top:10px}
+.target-goal-pane .targets-tree .target-card-body{padding:0 0 2px 14px}
+.target-goal-pane .target-card-body>p{margin:3px 10px 5px 20px;font-size:10px;color:var(--text-dim);line-height:1.65}
+.target-goal-pane .target-coverage-detail{margin:4px 10px 6px 20px;padding:0;font-size:10px}
+.target-goal-pane .target-coverage-context{font-size:9px;overflow-wrap:anywhere;opacity:.65}
+.target-goal-pane .target-testpoint>.target-card-body>.target-coverage-detail{margin-right:calc(var(--goal-actions-width) + var(--goal-column-gap))}
+.target-goal-pane .target-coverage-bin{font-size:10px;padding:2px 0;max-width:none}
+.target-goal-pane .target-coverage-bin>span:last-child{flex-shrink:0;text-align:right}
+.target-goal-pane .target-header.is-selected{outline:0;background:color-mix(in srgb,var(--accent) 7%,var(--surface))}
+.target-goal-pane .target-header:hover{background:color-mix(in srgb,var(--accent) 4%,var(--surface))}
+
+.target-goal-pane .goal-source-link{display:block;max-width:100%;padding:0;border:0;background:none;color:var(--text-dim);font-family:ui-monospace,SFMono-Regular,monospace;text-align:left;cursor:pointer;line-height:1.6}
+.target-goal-pane .goal-source-link:hover{opacity:1;color:var(--accent);text-decoration:underline;text-underline-offset:3px}

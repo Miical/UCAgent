@@ -79,7 +79,8 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       card.querySelector('.coverage-overview-count').textContent=available?covered+' / '+total+' '+metric.unit:'暂无有效数据';
       const points=(data?.targets||[]).filter(n=>n.kind==='testpoint').map(coverageFor);
       const reached=points.filter(c=>c.status==='available'&&c.total>0&&c.covered===c.total).length;
-      card.querySelector('.coverage-overview-extra').textContent=metric.mode==='functional'?reached+'/'+points.length+' 测试点达标':(lineCoverage?.runs?.length||0)+' 次累计';
+      card.querySelector('.coverage-overview-extra').textContent=metric.mode==='functional'?reached+'/'+points.length+' 测试点达标':'';
+      card.querySelector('.coverage-overview-extra').hidden=metric.mode!=='functional';
       card.setAttribute('aria-label',metric.label+'，'+(available?percent.toFixed(1)+'%，'+covered+'/'+total:'暂无有效数据')+'，点击查看明细');
     }
     let menu=host.querySelector('.coverage-overview-menu');
@@ -90,11 +91,13 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         if(!confirm('清空行覆盖率和功能覆盖率的本轮累计？历史运行和日志会保留。'))return;
         try{const response=await fetch('/api/chat/projects/'+encodeURIComponent(project.id)+'/coverage/reset',{method:'POST'});if(!response.ok)throw Error('清空失败');await refresh();if(lineFrame?.src)lineFrame.contentWindow.location.reload();}catch(e){fail(e);}
       },'coverage-menu-reset');
-      menu.append(trigger,reset);host.append(menu);
+      menu.append(trigger,reset);const actions=el('div','coverage-overview-actions');actions.append(el('span','coverage-shared-runs'),menu);host.prepend(actions);
       menu.addEventListener('focusout',()=>setTimeout(()=>{if(!menu.contains(document.activeElement))menu.open=false;},0));
       menu.addEventListener('keydown',event=>{if(event.key==='Escape'){menu.open=false;trigger.focus();}});
     }
-    menu.querySelector('button').disabled=!(lineCoverage?.runs?.length||data?.coverage?.runs);
+    const runs=lineCoverage?.runs?.length??data?.coverage?.runs??0;
+    host.querySelector('.coverage-shared-runs').textContent='累计 '+runs+' 次';
+    menu.querySelector('button').disabled=!runs;
   }
   function modal(title){const dialog=el('dialog','targets-dialog');const heading=el('header');heading.append(el('strong','',title),button('×',()=>dialog.close(),'targets-close'));const content=el('div','targets-dialog-content');dialog.append(heading,content);document.body.append(dialog);dialog.addEventListener('close',()=>dialog.remove());dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});dialog.showModal();return {dialog,content};}
   function field(parent,label,value='',multi=false){const wrapper=el('label','targets-field');wrapper.append(el('span','',label));const input=el(multi?'textarea':'input');input.value=value;if(multi)input.rows=3;wrapper.append(input);parent.append(wrapper);return input;}
@@ -120,7 +123,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     if(!data)return;
     const {dialog,content}=modal(node?'编辑'+kinds[node.kind][1]:'新建'+kinds[kind][1]);
     const name=field(content,'名称',node?.name||'');const desc=field(content,'说明',node?.description||'',true);
-    const condition=field(content,bugMode?'复现步骤':'验证条件',node?.condition||'',true);const expected=field(content,'预期行为',node?.expected||'',true);
+    const condition=(caseMode||bugMode)?field(content,bugMode?'复现步骤':'验证条件',node?.condition||'',true):null;const expected=(caseMode||bugMode)?field(content,'预期行为',node?.expected||'',true):null;
     let actual,evidence,bugStatus,severity;
     if(bugMode){
       actual=field(content,'实际表现',node?.actual||'',true);evidence=field(content,'证据',node?.evidence||'',true);
@@ -128,7 +131,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       bugStatus=choice('状态',node?.example?{unverified:'示例 · 未验证'}:bugStatuses,node?.status||'unverified');severity=choice('严重程度',severities,node?.severity||'medium');
     }
     const error=el('p','targets-error');content.append(error);
-    const save=button('保存',async()=>{save.disabled=true;try{const values={description:desc.value,condition:condition.value,expected:expected.value};if(bugMode)Object.assign(values,{actual:actual.value,evidence:evidence.value,status:bugStatus.value,severity:severity.value});await api(node?{operation:'update',target_id:node.id,expected_revision:data.revision,values:{...values,name:name.value}}:{operation:'create',kind,parent,name:name.value,values,expected_revision:data.revision});if(parent)opened.add(parent);dialog.close();await refresh();}catch(e){error.textContent=e.message;save.disabled=false;}} ,'targets-primary');content.append(save);name.focus();
+    const save=button('保存',async()=>{save.disabled=true;try{const values={description:desc.value};if(condition)Object.assign(values,{condition:condition.value,expected:expected.value});if(bugMode)Object.assign(values,{actual:actual.value,evidence:evidence.value,status:bugStatus.value,severity:severity.value});await api(node?{operation:'update',target_id:node.id,expected_revision:data.revision,values:{...values,name:name.value}}:{operation:'create',kind,parent,name:name.value,values,expected_revision:data.revision});if(parent)opened.add(parent);dialog.close();await refresh();}catch(e){error.textContent=e.message;save.disabled=false;}} ,'targets-primary');content.append(save);name.focus();
   }
   function importer(){
     if(!data)return;
@@ -181,6 +184,10 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         const text=c.status==='conflict'?'多实例冲突':c.status==='stale'?'数据已过期':c.total?((c.covered/c.total*100).toFixed(1)+'% · '+c.covered+'/'+c.total):'无数据';
         const badge=el('span','target-coverage-score'+(c.total&&c.status!=='stale'?' has-data':''),text);
         badge.title=c.status==='conflict'?'同一定义对应多个运行实例，请拆分后重新导入':c.status==='stale'?'源码与采集时不同，请重新构建并开始新累计':'该目标唯一实例的累计 bin 命中，不代表正确性检查通过';
+        if(c.status==='available'&&c.total){
+          badge.replaceChildren(el('span','goal-coverage-percent',(100*c.covered/c.total).toFixed(1)+'%'),el('span','goal-coverage-count',c.covered+'/'+c.total));
+          const meter=el('span','goal-coverage-meter');meter.setAttribute('aria-hidden','true');meter.style.setProperty('--coverage',Math.min(100,100*c.covered/c.total)+'%');badge.append(meter);
+        }
         head.append(badge);
       }
       if(bugMode){head.append(el('span','target-state',node.example?'示例 · 未验证':bugStatuses[node.status]));}else if(report.status==='planned')head.append(el('span','target-state state-planned','待实现'));
@@ -212,28 +219,39 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         run.disabled=!data.runner;if(!data.runner)run.title='请让 AI 配置项目运行模板';controls.append(run);
       }
       const links=el('div','target-title-sources');
-      for(const binding of report.bindings){
+      for(const binding of (caseMode||bugMode?report.bindings:[])){
         const label=binding.file.split('/').at(-1)+(binding.line?':'+binding.line+'–'+binding.end_line:'');
         const b=button(label,()=>source(binding),'target-source target-title-source');b.disabled=!binding.line;
         b.title=binding.file+(binding.message?' · '+binding.message:' · 查看源码');b.setAttribute('aria-label','查看源码 '+binding.file+(binding.line?' 第 '+binding.line+' 行':''));links.append(b);
       }
-      header.append(head,links,controls);wrapper.append(header);
+      if(!caseMode&&!bugMode){
+        const score=head.querySelector('.target-coverage-score'),heading=el('div','goal-row-heading');
+        heading.append(head,links);header.append(heading,score,controls);
+      }else header.append(head,links,controls);
+      wrapper.append(header);
       if(opened.has(node.id)||(query&&searchExpanded)){
         const body=el('div','target-card-body');
-        for(const [label,value]of [['',node.description],[bugMode?'复现步骤':'条件',node.condition],['预期',node.expected],...(bugMode?[['实际',node.actual],['证据',node.evidence],['严重程度',severities[node.severity]],['关联用例',node.case_ids.join('、')]]:[])]){if(value){const p=el('p');if(label)p.append(el('strong','',label+' · '));p.append(document.createTextNode(value));body.append(p);}}
+        for(const [label,value]of [['',node.description],...((caseMode||bugMode)?[[bugMode?'复现步骤':'条件',node.condition],['预期',node.expected]]:[]),...(bugMode?[['实际',node.actual],['证据',node.evidence],['严重程度',severities[node.severity]],['关联用例',node.case_ids.join('、')]]:[])]){if(value){const p=el('p');if(label)p.append(el('strong','',label+' · '));p.append(document.createTextNode(value));body.append(p);}}
 
         if(!caseMode&&!bugMode){
           const c=coverageFor(node);
-          if(c.rows.length&&c.status!=='stale'){
+          if(report.bindings.length){
             const detail=el('div','target-coverage-detail');
-            detail.append(el('div','target-coverage-context',c.rows[0].instance));
-            if(node.kind==='testpoint'){
+            for(const binding of report.bindings){
+              const observation=c.status==='available'?c.rows.find(row=>row.binding_id===binding.id):null;
+              const path=observation?.source_path||[binding.scope,binding.symbol].filter(Boolean).join('.')||binding.file;
+              const context=binding.line?button(path,()=>source(binding),'target-coverage-context goal-source-link'):el('div','target-coverage-context',path);
+              if(binding.line){context.title='查看源码';context.setAttribute('aria-label','查看 '+path+' 的源码');}
+              detail.append(context);
+            }
+            if(node.kind==='testpoint'&&c.status==='available'){
               for(const row of c.rows)for(const bin of row.bins){
                 const item=el('div','target-coverage-bin');
-                item.append(el('span','',bin.name),el('span',bin.hits>=bin.goal?'is-hit':'',bin.hits+' / '+bin.goal+' 次'+(bin.hits>=bin.goal?' · 已命中':' · 未达标')));
+                const hit=bin.hits>=bin.goal;const label=bin.goal===1?(hit?'已命中':'未命中'):bin.hits+' / '+bin.goal+' 次'+(hit?' · 已达标':' · 未达标');
+                item.append(el('span','',bin.name),el('span',hit?'is-hit':'',label));
                 detail.append(item);
               }
-            }else detail.append(el('span','',c.covered+' / '+c.total+' 个 bin 达标（含自动组合）'));
+            }
             body.append(detail);
           }
         }

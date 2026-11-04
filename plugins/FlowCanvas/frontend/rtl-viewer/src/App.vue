@@ -167,7 +167,7 @@ const onGlobalKeydown = makeGlobalKeydownHandler({
 onMounted(() => {
   document.addEventListener('dragover', onDragOver)
   document.addEventListener('drop', onDrop)
-  document.addEventListener('keydown', onGlobalKeydown)
+  if (!coverageOnly) document.addEventListener('keydown', onGlobalKeydown)
   // Watch for OS colour-scheme flips and ``data-theme`` pins so the
   // canvas — whose colours are baked, not inherited — redraws.
   initTheme()

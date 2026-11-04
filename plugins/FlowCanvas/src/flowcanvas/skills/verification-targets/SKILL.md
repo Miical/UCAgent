@@ -15,12 +15,12 @@ description: 在 FlowCanvas 中规划、导入和维护功能组、功能点、�
 - 功能点 point：可说明的行为或观察维度，唯一父级为 group，ID 前缀 fp。
 - 测试点 testpoint：具体条件下应验证的行为，唯一父级为 point，ID 前缀 tp。
 - 测试用例独立于这三层。存在定义不代表已经覆盖，绑定代码不代表验证通过。
-- 名称与父级是必需信息；description、condition、expected 缺失时留空，不编造。
+- 名称与父级是必需信息；只保留 description 一个说明文本字段，缺失时留空，不编造。按需在说明中表达具体场景与验证行为，不要求固定小标题或套话。
 - 工具分配 ID；不使用行号、名称派生 ID，不直接编辑 JSON。
 
 ## 从头创建
 
-调用 `create`，顺序为组、点、测试点；每次写入带最新 expected_revision。提供 kind/name/parent，说明和条件放在 values 内。无代码的目标是待实现，不得伪造绑定。
+调用 `create`，顺序为组、点、测试点；每次写入带最新 expected_revision。提供 kind/name/parent，说明放在 values.description 内。无代码的目标是待实现，不得伪造绑定。
 
 实现代码后先 `inspect` 指定相对路径 files。用返回的 start 和 fingerprint 调用 `bind`，values 包含 file/start/fingerprint/role。role 可选 definition、stimulus、check、coverage、rtl。每个位置分配独立 bind ID，目标可以关联多处代码。只有得到绑定成功的返回才能声称已关联。
 
@@ -40,7 +40,7 @@ Python 默认映射：class → group，方法/模块函数 → point，assert �
 
 保存源码后调用 read 重新校验，不实时增删卡片。bound 表示源码与上次确认版本一致；changed 表示已改变需核对；missing 表示标识/定义消失；conflict 表示重复或类型不符；unverified 表示无法解析，不能使用旧位置。扫描不修改目标名和层级。
 
-内容 changed 时，通过 source 阅读当前完整代码，核对/更新说明和条件后，调用 accept，values 为 `{绑定ID: read返回的fingerprint}`。不能批量盲目 accept 来隐藏警告。重复 ID、解析失败先修复源码再校验。移动文件时目前需人工/AI明确修复绑定，不自动猜测位置。
+内容 changed 时，通过 source 阅读当前完整代码，核对/更新说明后，调用 accept，values 为 `{绑定ID: read返回的fingerprint}`。不能批量盲目 accept 来隐藏警告。重复 ID、解析失败先修复源码再校验。移动文件时目前需人工/AI明确修复绑定，不自动猜测位置。
 
 ## 边界
 

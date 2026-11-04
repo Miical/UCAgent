@@ -92,7 +92,10 @@ def project(root, definition, parsed, binding_reports):
                         covered=sum(b['hits']>=b['goal'] for b in bins); total=len(bins)
                     else:
                         bins=point['bins'];covered=point['covered'];total=point['total']
-                    matches.append(dict(instance=group['instance'],
+                    source_path=group['instance']
+                    if kind!='CovergroupDeclaration': source_path+='.'+point['name']
+                    if kind in {'CoverageBins','BinsSelection'}: source_path+='.'+clean(node['name'])
+                    matches.append(dict(instance=group['instance'],binding_id=binding.id,source_path=source_path,
                                         point=point['name'],covered=covered,total=total,bins=bins))
         # Deduplicate multiple bindings to the same coverage observation.
         matches=list({(m['instance'],m['point']):m for m in matches}.values())
