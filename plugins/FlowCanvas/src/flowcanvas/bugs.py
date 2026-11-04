@@ -11,6 +11,8 @@ class Bug(TestCase):
     kind: Literal['bug'] = 'bug'
     status: Literal['unverified','confirmed','fixing','resolved'] = 'unverified'
     severity: Literal['low','medium','high','critical'] = 'medium'
+    condition: str = ''
+    expected: str = ''
     actual: str = ''
     evidence: str = ''
     case_ids: list[str] = Field(default_factory=list)

@@ -1440,3 +1440,46 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 
 .target-goal-pane .goal-row-heading>.target-card-head{max-width:72%;flex-shrink:0}
 .target-goal-pane .goal-row-heading>.target-title-sources{flex:1;min-width:0;margin-left:10px}
+
+/* Bug triage: compact issue rows and a structured evidence sheet. */
+.bug-panel .targets-tree>.target-bug{position:relative;margin:0 0 5px;border:0;border-radius:8px;background:transparent;box-shadow:none}
+.bug-panel .targets-tree>.target-bug:hover,.bug-panel .targets-tree>.target-bug:has(>.target-card-body){background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 3%,var(--surface)),var(--surface) 65%);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text-dim) 15%,var(--surface))}
+.bug-panel .target-header{min-height:32px;position:relative;padding-right:5px;margin:0}
+.bug-panel .target-header:hover,.bug-panel .target-header.is-selected,.bug-panel .target-header:focus-within{background:transparent;outline:0}
+.bug-panel .target-header>.target-card-head{flex:1;max-width:none;padding:6px 5px 6px 8px;background:transparent;gap:8px}
+.bug-panel .target-title,.bug-panel .target-header.is-selected .target-title{font-size:12px;font-weight:550;color:var(--text)}
+.bug-panel .bug-severity{font-size:9px;font-weight:500;color:var(--text-dim);white-space:nowrap}
+.bug-panel [data-severity="high"] .bug-severity{color:#b47c37}
+.bug-panel [data-severity="critical"] .bug-severity{color:#c65d60}
+.bug-panel .target-state{font-size:9px;font-weight:400;margin-left:2px}
+.bug-panel [data-bug-status="resolved"]>.target-header .target-state{color:#379d78}
+.bug-panel .target-title-sources{flex:0 1 auto;max-width:22%;margin-left:8px}
+.bug-panel .targets-tree .target-card-body{padding:3px 14px 12px 25px}
+.bug-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;min-width:0}
+.bug-detail-field{min-width:0}
+.bug-field-description,.bug-field-condition,.bug-field-evidence,.bug-field-related{grid-column:1/-1}
+.bug-field-label{display:block;font-size:9px;color:var(--text-dim);margin-bottom:3px}
+.bug-detail-field>p{margin:0;font-size:11px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text)}
+.bug-editable{cursor:text;min-height:1.65em}
+.bug-field-evidence>p,.bug-field-related>p{font-family:ui-monospace,SFMono-Regular,monospace;font-size:10px;color:var(--text-dim)}
+.bug-field-evidence>p:not(:empty){padding:7px 9px;border-radius:5px;background:color-mix(in srgb,var(--text) 3%,var(--surface));max-height:220px;overflow:auto}
+.bug-panel .target-actions .target-icon-action{width:22px;height:22px}
+@media(hover:hover){
+.bug-panel .target-bug:not(:hover)>.target-header .target-icon-action,.bug-panel .target-bug:not(:hover)>.target-header .target-title-source{opacity:0;pointer-events:none}
+.bug-panel .target-bug:hover>.target-header .target-icon-action,.bug-panel .target-bug:has(:focus-visible)>.target-header .target-icon-action{opacity:1;pointer-events:auto}
+.bug-panel .target-bug:hover>.target-header .target-title-source,.bug-panel .target-bug:has(:focus-visible)>.target-header .target-title-source{opacity:.75;pointer-events:auto}
+}
+
+.detail-page-tabs button{font-size:11px}
+
+.detail-page-tabs button{font-size:10px}
+/* Bug entries use the same compact geometry as test-case entries. */
+.bug-panel .targets-tree{padding:6px 12px 24px}
+.bug-panel .targets-tree>.target-bug{margin:0 0 2px}
+.bug-panel .targets-tree>.target-bug:has(>.target-card-body){margin-bottom:6px}
+.bug-panel .targets-tree .target-header{min-height:28px;margin:0;padding:0}
+.bug-panel .target-header>.target-card-head{padding:4px 4px 4px 7px;gap:7px}
+.bug-panel .targets-tree .target-title{font-size:12px;font-weight:550;line-height:1.5;letter-spacing:0}
+.bug-panel .targets-tree .target-card-body{padding:2px 12px 10px 24px}
+.bug-panel .targets-tree .target-card-body>.bug-editable{margin:0;padding:0;font-size:11px;line-height:1.55;min-height:1.55em}
+.bug-panel .target-header>.target-header-actions{margin:0 4px 0 auto;gap:2px}
