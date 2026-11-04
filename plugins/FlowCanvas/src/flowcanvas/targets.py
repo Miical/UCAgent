@@ -250,7 +250,9 @@ class Targets:
             return self.status()
 
     def create(self, kind, name, parent, expected_revision, description='', **details):
-        allowed = {'condition', 'expected'} if self.target_model is not Target else set()
+        allowed = {'condition', 'expected'} & self.target_model.model_fields.keys()
+        if 'title' in self.target_model.model_fields:
+            allowed.add('title')
         if set(details) - allowed:
             raise ValueError('不支持的字段：'+', '.join(sorted(set(details)-allowed)))
         with LOCK:
@@ -264,7 +266,9 @@ class Targets:
     def update(self, target_id, values, expected_revision):
         with LOCK:
             data = self.read()
-            allowed = {'name', 'description'} | ({'condition', 'expected'} if self.target_model is not Target else set())
+            allowed = {'name', 'description'} | ({'condition', 'expected'} & self.target_model.model_fields.keys())
+            if 'title' in self.target_model.model_fields:
+                allowed.add('title')
             if set(values) - allowed:
                 raise ValueError('不支持的字段：'+', '.join(sorted(set(values)-allowed)))
             target = next((n for n in data.targets if n.id == target_id), None)

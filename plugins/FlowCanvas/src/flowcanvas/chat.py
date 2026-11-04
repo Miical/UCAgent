@@ -137,6 +137,10 @@ class ChatService:
         if session.get('ended_at') and session['status'] in {'completed', 'interrupted', 'error', 'failed'}:
             if ((session.get('attachment') or {}).get('task_only') and session.get('task_attachment_started')
                     and not execution_active(session)):
+                workflow_id = session['attachment']['workflow_id']
+                for card in session.get('workflow_runs', []):
+                    if card['workflow_id'] == workflow_id:
+                        card['authorized'] = True
                 session.pop('attachment', None)
                 session.pop('task_attachment_started', None)
             for item in reversed(session['items']):
@@ -533,7 +537,10 @@ def routes(service):
         session = service.get(identity)
         if session['status'] in ACTIVE or execution_active(session) or identity in service.launching:
             raise HTTPException(409, 'Stop the task before removing its workflow')
-        session.pop('attachment', None)
+        removed = session.pop('attachment', None)
+        for card in session.get('workflow_runs', []):
+            if not removed or card['workflow_id'] == removed['workflow_id']:
+                card['authorized'] = False
         backend = service.session_backends.pop(identity, None)
         if backend:
             backend.emit = lambda event: None

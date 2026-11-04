@@ -35,7 +35,10 @@ def main():
         stats = agent.status_info()
         tui = {'mission': task_data.get('mission_name'),
                'changed_files': [{'mtime': mtime, 'file': filename} for _, mtime, filename in agent.pdb.api_changed_files()[:5]],
-               'tools': [{'name': name, 'count': count, 'busy': busy} for name, count, busy in agent.pdb.api_tool_status()],
+               # TUI is_hot includes recently finished calls; only is_busy means executing.
+               'tools': [{'name': tool.name, 'count': tool.call_count,
+                          'busy': tool.is_busy() and not all(stage['completed'] for stage in stages)}
+                         for tool in agent.test_tools],
                'runtime': {key: stats[key] for key in ('Run Time', 'Idle', 'Interaction Mode') if key in stats}}
         current = agent.stage_manager.get_current_stage()
         temporary = root / 'progress.tmp'

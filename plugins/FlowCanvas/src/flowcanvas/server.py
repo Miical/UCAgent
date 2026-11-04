@@ -28,6 +28,7 @@ def create_app(state_dir=None) -> FastAPI:
 
     from .test_runner import TestRuns, routes as test_run_routes
     test_runs = TestRuns()
+    service.test_runs = test_runs
 
     @asynccontextmanager
     async def lifespan(app):
@@ -69,7 +70,7 @@ def create_app(state_dir=None) -> FastAPI:
     from .targets import routes as target_routes
     app.include_router(target_routes(service.projects))
     from .testcases import routes as testcase_routes
-    app.include_router(testcase_routes(service.projects))
+    app.include_router(testcase_routes(service.projects, service.sessions))
     app.include_router(test_run_routes(service.projects,test_runs))
     from .bugs import routes as bug_routes
     app.include_router(bug_routes(service.projects))

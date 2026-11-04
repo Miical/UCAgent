@@ -115,7 +115,7 @@ function paintWorkflowDetail(){
       for(const file of run.tui.changed_files||[]){const row=document.createElement('div');row.className='workflow-file-row';row.append(make('span',file.file),make('small',new Date(file.mtime*1000).toLocaleString()));files.append(row);}
       const tools=section('工具调用',true);tools.classList.add('workflow-tool-chips');
       if(!run.tui.tools?.length)tools.append(make('p','暂无工具调用'));
-      for(const tool of run.tui.tools||[]){const row=document.createElement('div');row.className='workflow-tool-row';row.classList.toggle('busy',Boolean(tool.busy));row.append(make('span',tool.name),make('span',(tool.busy?'执行中 · ':'')+tool.count+' 次'));tools.append(row);}
+      for(const tool of run.tui.tools||[]){const busy=run.status==='running'&&Boolean(tool.busy);const row=document.createElement('div');row.className='workflow-tool-row';row.classList.toggle('busy',busy);row.append(make('span',tool.name),make('span',(busy?'执行中 · ':'')+tool.count+' 次'));tools.append(row);}
     }
   }
   if(previousDetail?.dataset.cardId===selectedWorkflowCard){
@@ -357,7 +357,13 @@ function modelSelection(){
   efforts(preference?.effort);
 }
 /** Render the selected session; other active conversations keep running independently. */
+const seenAITestRuns=new Map();
 function render(data){
+  const aiRun=data.ai_test_run;
+  if(seenAITestRuns.has(data.id)&&aiRun?.run?.id&&aiRun.project&&seenAITestRuns.get(data.id)!==aiRun.run.id){
+    document.dispatchEvent(new CustomEvent('flowcanvas-test-run',{detail:aiRun}));
+  }
+  seenAITestRuns.set(data.id,aiRun?.run?.id||null);
   session=data;document.dispatchEvent(new CustomEvent('flowcanvas-session',{detail:{id:data.id}}));view.render(data);controls();error(data.error);paintQueue();paintAttachments();paintWorkflowRun();
   const option=[...$('sessions').options].find(o=>o.value===data.id);
   if(option)option.textContent=data.title||'新对话';
@@ -626,18 +632,19 @@ window.FlowCanvasAI={
   open:async id=>{await list();await choose(id);},
   async startCase({text,current=true,project,requirements,design=null}){
     const model=$('model').value,effort=$('effort').value;
-    const taskTitle=design?.kind==='line-coverage'?'分析行覆盖率':design?'解释设计':'新增测试用例';
+    const caseAction=['run-testcase','delete-testcase'].includes(design?.kind);
+    const taskTitle=design?.kind==='run-testcase'?'运行测试用例':design?.kind==='delete-testcase'?'删除测试用例':design?.kind==='line-coverage'?'分析行覆盖率':design?'解释设计':'新增测试用例';
     if(!model)throw Error('请先选择可用模型');
     let owner=session;
     if(current){
       if(!owner)throw Error('请先打开一个对话');
       if(active.has(owner.status))throw Error('当前对话正在执行，请使用独立任务对话');
-      if(!design&&owner.permission_mode!=='full')throw Error('请先将当前对话切换为完全访问，或使用独立任务对话');
+      if((!design||caseAction)&&owner.permission_mode!=='full')throw Error('请先将当前对话切换为完全访问，或使用独立任务对话');
       if(owner.attachment&&(design||owner.attachment.workflow_id!=='generate-testcase'))throw Error('当前对话已附加其他工作流，请使用独立任务对话');
     }else{
       owner=await request('/sessions',{});
       await request('/sessions/'+owner.id+'/settings',{title:design?taskTitle+' · '+design.module:'AI 新增测试用例'});
-      await request('/sessions/'+owner.id+'/permissions',{mode:design?'readonly':'full'});
+      await request('/sessions/'+owner.id+'/permissions',{mode:design&&!caseAction?'readonly':'full'});
     }
     if(!design)await request('/sessions/'+owner.id+'/attachment',{workflow_id:'generate-testcase',task_only:true,rtl_file:project.rtl?.top_file?project.path+'/'+project.rtl.top_file:'',dut:project.rtl?.top||'RTL'});
     const result=await request('/sessions/'+owner.id+'/messages',{text,model,effort,speed:speedMode,task_card:{title:taskTitle,workflow:design?'':'新增测试用例',project:project.name,requirements:design?design.instance+(requirements?'\n'+requirements:''):requirements||''}});

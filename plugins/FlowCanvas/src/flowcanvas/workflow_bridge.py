@@ -68,7 +68,7 @@ class WorkflowBridge:
                         service.catalog_reconnect.add(session['id'])
                     self.active_card = result['card']['id']
                     self.host_tools = {tool.name: tool for raw in result['tools']
-                                       if (tool := Tool.model_validate(raw)).name not in {'run_workflow', 'list_workflow_runs', 'verification_targets', 'test_cases', 'bug_records'}}
+                                       if (tool := Tool.model_validate(raw)).name not in {'run_workflow', 'list_workflow_runs', 'verification_targets', 'test_cases', 'test_case_runs', 'bug_records'}}
                     session['workflow_tool_catalog'] = {'card_id': self.active_card, 'tools': result['tools']}
                     service.changed(session)
                     service.save(session)
@@ -100,7 +100,7 @@ class WorkflowBridge:
         async def test_cases(operation: str = 'read', expected_revision: int = 0,
                              files: list[str] | None = None, name: str = '',
                              target_id: str = '', binding_id: str = '', values: dict | None = None) -> dict:
-            """Manage project test cases and source bindings. Start with guide/read; configure the shared runner command/description before import; discover returns candidates only. Inspect stimulus and run entry; exclude environment-only base tests. import requires values.selected entries with file/start/fingerprint/reason/description. Generate a source-grounded description for every imported test. configure_coverage saves the optional project coverage extraction/merge configuration (executed after each run). configure/configure_coverage/import/create/update/bind/accept require full access and current revision. Discovery never implies a passing test."""
+            """Manage project test cases and source bindings. New authoring MUST create a placeholder before source edits, then update/bind that same ID and finish_create after valid binding. Deletion MUST begin_delete before source edits and delete afterward. resume_operation resumes a paused placeholder. Start with guide/read; configure the shared runner command/description before import; discover returns candidates only. Inspect stimulus and run entry; exclude environment-only base tests. import requires values.selected entries with file/start/fingerprint/reason/title/description. Generate a source-grounded description for every imported test. configure_coverage saves the optional project coverage extraction/merge configuration (executed after each run). configure/configure_coverage/import/create/update/delete/bind/accept require full access and current revision. Discovery never implies a passing test."""
             from .testcases import execute
             root = session.get('project_root')
             if not root:
@@ -109,7 +109,39 @@ class WorkflowBridge:
                 raise ValueError('修改测试用例和源码标识需要完全访问模式')
             return await asyncio.to_thread(execute, root, dict(operation=operation,
                 expected_revision=expected_revision, files=files or [], name=name,
-                target_id=target_id, binding_id=binding_id, values=values or {}))
+                target_id=target_id, binding_id=binding_id, values=values or {}), owner=session['id'])
+
+        @self.mcp.tool()
+        async def test_case_runs(operation: str = 'list', case_id: str = '', run_id: str = '',
+                                 offset: int = 0, wait_seconds: int = 10) -> dict:
+            """Run and monitor a case through the shared runner. start(case_id) returns run.id; read(run_id, offset) returns new text and next offset, waiting at most 10 seconds for output. Continue read until terminal status and no unread output, then analyze exit code, assertions, errors and coverage_status. Never restart just to poll. stop(run_id) interrupts this run. list/read are read-only; start/stop require full access."""
+            root = session.get('project_root')
+            if not root:
+                raise ValueError('当前对话未绑定项目')
+            if operation not in {'list', 'read', 'start', 'stop'}:
+                raise ValueError('operation 必须为 list/read/start/stop')
+            if operation in {'start', 'stop'} and session.get('permission_mode') != 'full':
+                raise ValueError('运行或停止测试用例需要完全访问模式')
+            runner = service.test_runs
+            if operation == 'list':
+                return {'runs': runner.list(root)}
+            if operation == 'start':
+                run = await runner.start(root, case_id)
+                project = next((row for row in service.projects.state['recent'] if row['path'] == root), None)
+                session['ai_test_run'] = {'run': run, 'project': project}
+                service.changed(session)
+                service.save(session)
+                return {'run': run, 'offset': 0}
+            if operation == 'stop':
+                return await runner.stop(root, run_id)
+            if not 0 <= wait_seconds <= 10:
+                raise ValueError('wait_seconds 必须在 0 到 10 秒之间')
+            deadline = asyncio.get_running_loop().time() + wait_seconds
+            while True:
+                result = runner.output(root, run_id, offset)
+                if result['text'] or result['run']['status'] not in {'starting', 'running'} or asyncio.get_running_loop().time() >= deadline:
+                    return result
+                await asyncio.sleep(.25)
 
         @self.mcp.tool()
         async def bug_records(operation: str = 'read', expected_revision: int = 0,
@@ -129,7 +161,7 @@ class WorkflowBridge:
         cached = session.get('workflow_tool_catalog', {})
         self.active_card = cached.get('card_id')
         self.host_tools = {tool.name: tool for raw in cached.get('tools', [])
-                           if (tool := Tool.model_validate(raw)).name not in {'run_workflow', 'list_workflow_runs', 'verification_targets', 'test_cases', 'bug_records'}}
+                           if (tool := Tool.model_validate(raw)).name not in {'run_workflow', 'list_workflow_runs', 'verification_targets', 'test_cases', 'test_case_runs', 'bug_records'}}
 
     async def refresh_backend(self):
         """Reload after the lifecycle tool response has left the MCP connection."""

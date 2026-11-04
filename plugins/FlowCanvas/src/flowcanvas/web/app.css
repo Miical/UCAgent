@@ -1192,3 +1192,98 @@ html:not([data-theme="light"]) .ai-task-sent .ai-task-requirements{background:rg
 .subagent-transcript .markdown-body{font-size:11px;line-height:1.75}
 .subagent-transcript .markdown-body ul,.subagent-transcript .markdown-body ol{padding-left:1.3em}
 .subagent-speaker{margin-bottom:6px;font-size:10px}
+
+/* Test-case display fields edit in place; execution identifiers remain read-only. */
+.target-case .target-header{position:relative}
+.case-editable-description{cursor:text;white-space:pre-wrap}
+.case-editable-description.is-empty{color:var(--text-dim);font-size:11px}
+.case-inline-editor{min-width:0;margin:4px 0}
+.case-inline-editor.is-title{position:absolute;z-index:2;margin:0}
+.case-inline-input{display:block;box-sizing:border-box;width:100%;padding:5px 7px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font:inherit;font-size:12px;line-height:1.6;outline:none}
+.case-inline-input:focus{border-color:color-mix(in srgb,var(--text-dim) 50%,var(--border));box-shadow:0 0 0 2px #8080800a}
+textarea.case-inline-input{min-height:72px;resize:vertical}
+.case-inline-error{display:block;background:var(--surface);color:var(--danger,#b84a4a);font-size:10px;line-height:1.5}
+
+.target-icon-action.case-ai-action svg{width:16px;height:16px;overflow:visible}
+.target-icon-action .case-ai-spark{fill:#9865e8;stroke:#9865e8;stroke-width:.6;transform-box:fill-box;transform-origin:center;transition:transform .3s cubic-bezier(.2,.8,.2,1)}
+.target-icon-action.case-ai-action:hover:enabled .case-ai-spark{transform:rotate(10deg) scale(1.1)}
+@media(prefers-reduced-motion:reduce){.target-icon-action.case-ai-action .case-ai-spark{transition:none;transform:none}}
+
+.target-actions .target-icon-action.is-case-running{opacity:1;cursor:default;position:relative}
+.target-icon-action.is-case-running svg{visibility:hidden}
+.target-icon-action.is-case-running::after{content:"";position:absolute;width:12px;height:12px;border:1.5px solid var(--border);border-top-color:var(--text-dim);border-radius:50%;animation:case-run-spin .8s linear infinite}
+@keyframes case-run-spin{to{transform:rotate(360deg)}}
+
+/* Compact case list; expanded entries use a single subtle frame. */
+.testcase-panel .targets-tree{background:var(--surface);padding:6px 12px 24px}
+.testcase-panel .targets-tree>.target-case{position:relative;isolation:isolate;margin:0 0 2px;border:0;border-radius:8px;background:transparent;box-shadow:none}
+.testcase-panel .targets-tree .target-header{position:relative;min-height:28px;margin:0;padding:0;border-radius:4px;background:transparent;outline:0}
+.testcase-panel .targets-tree .target-header:hover{background:transparent}
+.testcase-panel .targets-tree .target-header.is-selected{background:transparent;outline:0}
+.testcase-panel .targets-tree .target-header:focus-within{outline:0}
+.testcase-panel .targets-tree>.target-case:has(:focus-visible){outline:2px solid color-mix(in srgb,var(--accent) 50%,var(--surface));outline-offset:-2px}
+.testcase-panel .targets-tree .target-header.is-selected .target-title{color:var(--text);font-weight:550}
+.testcase-panel .target-header>.target-card-head{flex:0 1 auto;max-width:72%;padding:4px 4px 4px 7px;gap:7px;min-width:0;background:transparent}
+.testcase-panel .targets-tree .target-title{font-size:12px;font-weight:550;line-height:1.5;letter-spacing:0}
+.testcase-panel .targets-tree .target-kind{display:none}
+.testcase-panel .target-header>.target-title-sources{flex:1;min-width:0;margin-left:10px;padding:0}
+.testcase-panel .target-header>.target-header-actions{margin:0 4px 0 auto;gap:2px}
+.testcase-panel .target-actions .target-icon-action{width:22px;height:22px;border-radius:4px}
+.testcase-panel .target-header:hover .target-icon-action,.testcase-panel .target-header:focus-within .target-icon-action{opacity:1}
+.testcase-panel .target-actions .target-icon-action:disabled:not(.is-case-running){opacity:.25;cursor:default}
+.testcase-panel .targets-tree .target-card-body{position:relative;padding:3px 12px 8px 24px}
+
+.testcase-panel .targets-tree .target-card-body>p{margin:0;padding:0;font-size:11px;line-height:1.55}
+.testcase-panel .targets-tree .target-card-body>.test-case-code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:10px;color:var(--text-dim);margin:4px 0 0;overflow-wrap:anywhere;opacity:.8}
+.testcase-panel .targets-tree .target-card-body>.case-editable-description{color:color-mix(in srgb,var(--text) 78%,var(--surface))}
+.testcase-panel .targets-tree .target-card-body>.case-editable-description.is-empty{color:var(--text-dim);opacity:.6}
+/* Animate the whole persisted operation surface, not just its heading. */
+.testcase-panel .targets-tree>.target-case[data-lifecycle="creating"]{border:0;background:color-mix(in srgb,var(--text) 2%,var(--surface));box-shadow:none}
+.testcase-panel .target-case[data-lifecycle="creating"] .target-title{color:var(--text-dim);font-weight:500}
+.case-operation-label{font-size:10px;font-weight:400;color:var(--text-dim);white-space:nowrap;margin-left:auto;padding-left:8px}
+.testcase-panel .target-case.case-operation-active::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:linear-gradient(100deg,transparent 20%,color-mix(in srgb,#9865e8 5%,transparent) 50%,transparent 80%);background-size:240% 100%;animation:case-operation-shimmer 2.6s ease-in-out infinite}
+.target-case.case-operation-active .case-operation-label::before{content:"";display:inline-block;width:4px;height:4px;margin:0 5px 2px 0;border-radius:50%;background:#9865e8;animation:fc-breathe 2s ease-in-out infinite}
+@keyframes case-operation-shimmer{from{background-position:120% 0}to{background-position:-120% 0}}
+@media(prefers-reduced-motion:reduce){.testcase-panel .targets-tree>.target-case{transition:none}.testcase-panel .target-case.case-operation-active::before,.target-case.case-operation-active .case-operation-label::before{animation:none}}
+
+
+
+/* Hover previews the same surface that remains mounted when expanded. */
+.testcase-panel .targets-tree>.target-case:hover,
+.testcase-panel .targets-tree>.target-case:has(>.target-card-body){background:color-mix(in srgb,var(--text) 2.5%,var(--surface));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text) 10%,var(--surface))}
+.testcase-panel .targets-tree>.target-case:has(>.target-card-body){margin-bottom:6px}
+.testcase-panel .targets-tree>.target-case:has(>.target-card-body)>.target-header{border-radius:8px 8px 0 0}
+.testcase-panel .targets-tree>.target-case:has(>.target-card-body)>.target-header.is-selected{background:transparent}
+.testcase-panel .targets-tree>.target-case:has(>.target-card-body)>.target-card-body{padding-top:2px;padding-bottom:10px}
+.testcase-panel .targets-tree>.target-case[data-lifecycle="creating"]:hover,
+.testcase-panel .targets-tree>.target-case[data-lifecycle="creating"]:has(>.target-card-body){background:color-mix(in srgb,var(--text) 2.5%,var(--surface));box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text) 10%,var(--surface))}
+
+.testcase-panel .target-actions .case-ai-action:hover:enabled{background:color-mix(in srgb,var(--text) 6%,var(--surface));color:var(--text)}
+
+/* A small luminous identity, rather than a colored container. */
+.testcase-panel .case-ai-mark{display:inline-flex;align-items:center;justify-content:center;flex:0 0 18px;width:18px;height:18px;border-radius:6px;background:linear-gradient(140deg,#8e80e915,#699ce510);box-shadow:inset 0 0 0 1px #9b8cda12}
+.testcase-panel .case-ai-mark svg{width:15px;height:15px;fill:#8d73cf}
+.testcase-panel .case-ai-mark .case-ai-satellite{fill:#79a6d7}
+.testcase-panel .targets-tree>.target-case:hover,
+.testcase-panel .targets-tree>.target-case:has(>.target-card-body){background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 3%,var(--surface)),var(--surface) 65%);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text-dim) 16%,var(--surface)),0 2px 6px #16132b04}
+.testcase-panel .targets-tree>.target-case[data-lifecycle="creating"]:hover,
+.testcase-panel .targets-tree>.target-case[data-lifecycle="creating"]:has(>.target-card-body){background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 3%,var(--surface)),var(--surface) 65%);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text-dim) 16%,var(--surface)),0 2px 6px #16132b04}
+
+.testcase-panel .target-card-body>.case-ai-mark{position:absolute;left:5px;bottom:8px;width:15px;height:15px;background:none;box-shadow:none}
+
+/* Active mutations soften content without dimming controls or the progress cue. */
+.testcase-panel .target-case.case-operation-active .target-title,
+.testcase-panel .target-case.case-operation-active .target-title-sources,
+.testcase-panel .target-case.case-operation-active .case-editable-description,
+.testcase-panel .target-case.case-operation-active .test-case-code{opacity:.55}
+
+/* The full case surface owns hover actions; pointer focus does not pin them. */
+@media(hover:hover){
+  .testcase-panel .target-case:not(:hover)>.target-header>.target-header-actions>.target-icon-action{opacity:0;pointer-events:none}
+  .testcase-panel .target-case:not(:hover)>.target-header>.target-title-sources .target-title-source{opacity:0;pointer-events:none}
+  .testcase-panel .target-case:hover>.target-header>.target-header-actions>.target-icon-action,
+  .testcase-panel .target-case:has(:focus-visible)>.target-header>.target-header-actions>.target-icon-action{opacity:1;pointer-events:auto}
+  .testcase-panel .target-case:hover>.target-header>.target-title-sources .target-title-source,
+  .testcase-panel .target-case:has(:focus-visible)>.target-header>.target-title-sources .target-title-source{opacity:.75;pointer-events:auto}
+  .testcase-panel .target-case>.target-header>.target-title-sources .target-title-source:hover{opacity:1}
+}

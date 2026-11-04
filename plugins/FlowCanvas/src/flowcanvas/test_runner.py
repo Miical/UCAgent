@@ -39,6 +39,32 @@ class TestRuns:
             rows.append(row)
         return sorted(rows,key=lambda r:r['started'],reverse=True)
 
+    def output(self, root, run_id, offset=0):
+        """Read a bounded UTF-8 log chunk belonging to this project run."""
+        if not re.fullmatch('[0-9a-f]{32}', run_id) or offset < 0:
+            raise ValueError('无效运行或偏移量')
+        folder = self.folder(root); meta = folder / (run_id + '.json')
+        if not meta.is_file():
+            raise ValueError('运行不存在')
+        row = json.loads(meta.read_text()); log = folder / (run_id + '.log')
+        text = ''; next_offset = offset
+        if log.exists():
+            with log.open('rb') as stream:
+                stream.seek(offset); chunk = stream.read(65536)
+            decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
+            text = decoder.decode(chunk, final=row['status'] not in {'starting', 'running'})
+            next_offset += len(chunk) - len(decoder.getstate()[0])
+        return dict(run=row, text=text, offset=next_offset)
+
+    async def stop(self, root, run_id):
+        """Cancel only a verified run in the bound project, retaining logs and history."""
+        self.output(root, run_id)
+        task = self.tasks.get(run_id)
+        if task:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        return self.output(root, run_id)
+
     async def start(self, root, case_id):
         async with self.lock:
             store=Cases(root); data=store.read()
@@ -48,6 +74,7 @@ class TestRuns:
                 raise ValueError('本项目已有命令运行中，请等待完成，避免覆盖共享构建和日志')
             case=next((n for n in data.targets if n.id==case_id),None)
             if not case: raise ValueError('测试用例不存在')
+            if case.lifecycle != 'ready': raise ValueError('用例正在创建或删除，尚不可运行')
             binding=next((b for b in case.bindings if b.role=='definition'),None)
             if not binding: raise ValueError('测试用例尚未绑定源码')
             matches=[n for n in inventory(store.file(binding.file))['nodes'] if n['id']==binding.id]
@@ -60,7 +87,7 @@ class TestRuns:
             run_id=uuid.uuid4().hex; folder=self.folder(root)
             run_dir=folder/run_id;run_dir.mkdir()
             command=template.command.replace('{run_dir}',shlex.quote(str(run_dir))).replace('{case}',shlex.quote(entry)).replace('{project}',shlex.quote(str(store.root)))
-            row=dict(id=run_id,case_id=case_id,name=case.name,entry=entry,command=command,
+            row=dict(id=run_id,case_id=case_id,name=case.title or case.name,entry=entry,command=command,
                      cwd=str(store.root),description=template.description,status='starting',started=time.time(),
                      ended=None,exit_code=None,source_fingerprint=node['fingerprint'])
             row['run_dir']=str(run_dir)
@@ -173,17 +200,9 @@ def routes(projects,runner):
         except (ValueError,OSError,SyntaxError) as exc:raise HTTPException(422,str(exc)) from None
     @router.get('/{identity}/test-runs/{run_id}/output')
     def output(identity:str,run_id:str,offset:int=0):
-        if not re.fullmatch('[0-9a-f]{32}',run_id) or offset<0:raise HTTPException(400,'无效运行或偏移量')
-        folder=runner.folder(root(identity));meta=folder/(run_id+'.json')
-        if not meta.is_file():raise HTTPException(404,'运行不存在')
-        row=json.loads(meta.read_text());log=folder/(run_id+'.log');text='';next_offset=offset
-        if log.exists():
-            with log.open('rb') as stream:
-                stream.seek(offset);chunk=stream.read(65536)
-            decoder=codecs.getincrementaldecoder('utf-8')(errors='replace')
-            text=decoder.decode(chunk,final=row['status'] not in {'starting','running'})
-            next_offset+=len(chunk)-len(decoder.getstate()[0])
-        return dict(run=row,text=text,offset=next_offset)
+        try: return runner.output(root(identity), run_id, offset)
+        except ValueError as exc: raise HTTPException(400, str(exc)) from None
+
     return router
 
 

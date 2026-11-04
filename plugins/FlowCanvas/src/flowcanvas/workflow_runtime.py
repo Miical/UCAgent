@@ -71,6 +71,9 @@ class WorkflowRuntime:
                 card.update(status='completed', pause_reason='')
             elif card['status'] != 'paused' and (not card['alive'] or not execution_active(self.session)):
                 card.update(status='paused', pause_reason='MCP 服务停止' if not card['alive'] else '对话已停止')
+            if card['status'] == 'completed' or not card['alive']:
+                for tool in (card.get('tui') or {}).get('tools', []):
+                    tool['busy'] = False
         self.update_running_time()
         if before != json.dumps(cards):
             self.publish()
@@ -102,8 +105,12 @@ class WorkflowRuntime:
                 raise ValueError('Card does not belong to this conversation')
             identity = card['workflow_id'] if card else workflow_id
             allowed = self.session.get('attachment')
-            if self.session.get('permission_mode', 'workflow') == 'readonly' or not allowed or allowed['workflow_id'] != identity:
+            attached = bool(allowed and allowed['workflow_id'] == identity)
+            card_grant = bool(card and card.get('authorized') is True)
+            if self.session.get('permission_mode', 'workflow') == 'readonly' or not (attached or card_grant):
                 raise ValueError('This workflow is not authorized in the current conversation')
+            if card and attached:
+                card['authorized'] = True
             await self.inspect()
             if card and card['status'] == 'completed' and not tool_name:
                 return {'card': card, 'accepted': True}
@@ -118,7 +125,7 @@ class WorkflowRuntime:
                 config = next(w.config_file for w in get_plugin().workflows if w.name == identity)
                 (root / 'request.json').write_text(json.dumps({'dut': dut, 'rtl': str(relative), 'config': str(config)}))
                 card = {'id': root.name, 'conversation_id': self.session['id'], 'workflow_id': identity,
-                        'name': spec['name'], 'root': str(root), 'workspace': str(root / 'workspace'),
+                        'authorized': True, 'name': spec['name'], 'root': str(root), 'workspace': str(root / 'workspace'),
                         'status': 'starting', 'stages': [], 'current_stage': '', 'started_at': time.time()}
             root = Path(card['root'])
             proc = self.processes.get(card['id'])
