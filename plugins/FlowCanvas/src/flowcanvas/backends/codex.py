@@ -116,8 +116,8 @@ class CodexBackend:
                 process.terminate()
             await process.wait()
 
-    async def models(self):
-        """Return the actual account catalog, including reasoning capabilities."""
+    async def models(self, workspace=None, refresh=False):
+        """Return Codex's account-wide catalog; its model API has no directory parameter."""
         await self.connect()
         models, cursor = [], None
         while True:
@@ -167,6 +167,30 @@ class CodexBackend:
     async def interrupt(self, thread_id, turn_id):
         """Cancel only the requested native turn."""
         await self.request('turn/interrupt', {'threadId': thread_id, 'turnId': turn_id})
+
+    async def reload_tools(self):
+        """Refresh the native MCP catalog while retaining the current thread."""
+        await self.request('config/mcpServer/reload', None)
+
+    async def agents(self, thread, selected=None, include_messages=True):
+        """Read only native descendants of the requested parent thread."""
+        from ..subagents import read_codex_agents
+        return await read_codex_agents(self, thread, selected, include_messages)
+
+    async def interrupt_descendants(self, thread):
+        """Stop actual child turns rather than treating sidebar status as authority."""
+        errors = []
+        for row in (await self.agents(thread, include_messages=False))['agents']:
+            try:
+                page = await self.request('thread/turns/list', {
+                    'threadId': row['id'], 'limit': 1, 'sortDirection': 'desc', 'itemsView': 'summary'})
+                for turn in page.get('data', []):
+                    if turn.get('status') == 'inProgress':
+                        await self.interrupt(row['id'], turn['id'])
+            except Exception as exc:
+                errors.append(row['id'] + ': ' + (str(exc) or type(exc).__name__))
+        if errors:
+            raise RuntimeError('; '.join(errors))
 
     async def close(self):
         """Reap the owned process during application shutdown."""

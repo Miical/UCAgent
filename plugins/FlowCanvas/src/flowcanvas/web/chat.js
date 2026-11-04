@@ -5,7 +5,8 @@ const $=id=>document.getElementById(id);
 const view=new ConversationView($('conversation'));
 const active=new Set(['starting','running','stopping']);
 let session=null, models=[], unsubscribe=null, busy=false, selected=null, switchNumber=0;
-let sessionRows=[],showArchived=false;
+let sessionRows=[],showArchived=false,backendCatalogs=[],backendWorkspace=null,catalogNumber=0;
+let backendChoice=localStorage.getItem('flowcanvas.backend')||'codex';
 const drafts=new Map();
 try{for(const [key,value]of Object.entries(JSON.parse(localStorage.getItem('flowcanvas.drafts')||'{}')))if(typeof value==='string')drafts.set(key,value);}catch{}
 /** Keep drafts scoped to conversations and survive a page reload. */
@@ -17,7 +18,44 @@ let speedMode='standard';
 function rememberModel(){
   const value={model:$('model').value,effort:$('effort').value,speed:speedMode};
   if(!value.model)return;
-  try{localStorage.setItem('flowcanvas.model.codex',JSON.stringify(value));if(selected)localStorage.setItem('flowcanvas.model.session.'+selected,JSON.stringify(value));}catch{}
+  try{localStorage.setItem('flowcanvas.model.'+backendChoice+'.'+(session?.workspace||''),JSON.stringify(value));if(selected)localStorage.setItem('flowcanvas.model.session.'+selected,JSON.stringify(value));}catch{}
+}
+/** Restore native backend capabilities without changing another conversation's history. */
+function selectBackendModels(identity){
+  backendChoice=identity;localStorage.setItem('flowcanvas.backend',identity);
+  const backend=backendCatalogs.find(row=>row.id===identity);
+  models=backend?.models||[];
+  $('backend-label').textContent=$('model-backend-label').textContent=backend?.name||({codex:'Codex',opencode:'OpenCode'}[identity]||identity);
+  $('model').replaceChildren();for(const model of models)$('model').add(new Option(model.name,model.id));
+  modelSelection();paintPicker();paintBackends();
+}
+/** A backend change starts a new history once the selected conversation contains messages. */
+function paintBackends(){
+  $('backend-options').replaceChildren();
+  for(const row of backendCatalogs){
+    const button=document.createElement('button');button.type='button';button.className='model-option';
+    button.setAttribute('aria-pressed',String(row.id===backendChoice));button.disabled=busy||active.has(session?.status)||!row.models.length;
+    const name=document.createElement('span');name.textContent=row.name;
+    const note=document.createElement('span');note.className=!row.error&&row.id===backendChoice?'model-check':'backend-unavailable';note.textContent=row.error?'未连接':row.id===backendChoice?'✓':session?.items.length?'新对话':'';
+    button.title=row.error||'';button.append(name,note);
+    button.onclick=async()=>{
+      if(row.id===backendChoice){closePicker(true,'backend');return;}
+      busy=true;controls();
+      try{
+        if(session&&!session.thread&&!session.items.length&&!(session.queue||[]).length){render(await request('/sessions/'+session.id+'/backend',{backend:row.id}));}
+        else await create(row.id);
+        closePicker(true,'backend');
+      }catch(exc){error(exc.message);}finally{busy=false;controls();}
+    };
+    $('backend-options').append(button);
+  }
+}
+/** Refresh availability independently, keeping histories usable when one provider is offline. */
+async function loadBackends(reconnect=false){
+  const owner=selected,workspace=session?.workspace,number=++catalogNumber;
+  $('backend-refresh').disabled=true;
+  try{if(reconnect&&owner)await request('/sessions/'+owner+'/reconnect',{});const rows=await request('/backends'+(owner?'?session_id='+encodeURIComponent(owner):''));if(number!==catalogNumber||selected!==owner)return;backendCatalogs=rows;backendWorkspace=workspace;selectBackendModels(session?.backend||backendChoice);controls();}
+  finally{if(number===catalogNumber)$('backend-refresh').disabled=false;}
 }
 /** Restore browser preferences without trusting stale model capabilities. */
 function modelPreference(key){try{const value=JSON.parse(localStorage.getItem(key)||'null');return value&&typeof value==='object'?value:null;}catch{return null;}}
@@ -280,7 +318,7 @@ function paintWorkflowRun(){
 /** Attach or launch from the common menu without workflow-specific parameter dialogs. */
 async function configureWorkflow(item,direct){
   const owner=selected;closePicker();
-  try{const payload={workflow_id:item.id};const data=await request(direct?'/workflows/direct':'/sessions/'+owner+'/attachment',direct?{...payload,model:$('model').value,effort:$('effort').value}:payload);if(direct){await list();await choose(data.id);}else if(selected===owner)render(data);}
+  try{const payload={workflow_id:item.id};const data=await request(direct?'/workflows/direct':'/sessions/'+owner+'/attachment',direct?{...payload,backend:backendChoice,model:$('model').value,effort:$('effort').value}:payload);if(direct){await list();await choose(data.id);}else if(selected===owner)render(data);}
   catch(exc){error(exc.message);}
 }
 /** Show actionable API failures independently of generated message content. */
@@ -291,12 +329,14 @@ function controls(){
   $('send').textContent=running&&!$('message').value.trim()?'■':'↑';$('send').classList.toggle('is-stop',running);$('send').ariaLabel=running?($('message').value.trim()?(active.has(session?.status)?'加入队列':'发送消息'):session?.children_running>0?'停止任务':'停止回复'):'发送消息';$('send').title=$('send').ariaLabel;
   $('send').disabled=busy||session?.status==='stopping'||(!running&&(!models.length||!$('message').value.trim()));
   $('model').disabled=$('effort').disabled=$('model-toggle').disabled=running||!models.length;
-  $('backend-toggle').disabled=running;
+  $('backend-toggle').disabled=running||busy;
+  paintBackends();
   $('permission-toggle').disabled=running||busy||!session;
   paintPermissions();
   updateSpeed();
   if(running)closePicker();
-  $('connection').textContent=running?'Codex 正在处理':'Codex · '+(models.length?'已连接':'连接中');
+  const backend=backendCatalogs.find(row=>row.id===backendChoice);
+  $('connection').textContent=running?(backend?.name||backendChoice)+' 正在处理':(backend?.name||backendChoice)+' · '+(models.length?'已连接':backend?.error?'不可用':'连接中');
   $('connection').classList.toggle('working',running);
 }
 /** Persist permission choices before sending; never optimistically grant access. */
@@ -321,7 +361,7 @@ function paintPermissions(){
 /** Populate reasoning options from the selected model, not a hard-coded list. */
 function efforts(preferred){
   const model=models.find(m=>m.id===$('model').value);$('effort').replaceChildren();
-  for(const value of model?.efforts||[])$('effort').add(new Option(value,value));
+  for(const value of model?.efforts||[])$('effort').add(new Option(value==='default'?'默认':value,value));
   $('effort').value=(model?.efforts||[]).includes(preferred)?preferred:model?.default_effort||'';
   paintPicker();
   updateSpeed();
@@ -330,6 +370,7 @@ function efforts(preferred){
 function updateSpeed(){
   const model=models.find(model=>model.id===$('model').value);
   const tiers=model?.speed_tiers||{};
+  document.querySelector('.model-speed-section').hidden=!Object.keys(tiers).length;
   if(speedMode!=='standard'&&!tiers[speedMode])speedMode='standard';
   const labels={standard:'标准',fast:'Fast',ultrafast:'Ultrafast'};
   $('model-speed-badge').hidden=speedMode==='standard';
@@ -349,7 +390,7 @@ function updateSpeed(){
 function modelSelection(){
   if(!models.length)return;
   const fallback=models.find(m=>m.default)||models[0];
-  const remembered=modelPreference('flowcanvas.model.codex');
+  const remembered=modelPreference('flowcanvas.model.'+backendChoice+'.'+(session?.workspace||''));
   const local=selected?modelPreference('flowcanvas.model.session.'+selected):null;
   const preference=[local,session,remembered].find(value=>value?.model&&models.some(m=>m.id===value.model));
   $('model').value=preference?.model||fallback?.id||'';
@@ -364,7 +405,8 @@ function render(data){
     document.dispatchEvent(new CustomEvent('flowcanvas-test-run',{detail:aiRun}));
   }
   seenAITestRuns.set(data.id,aiRun?.run?.id||null);
-  session=data;document.dispatchEvent(new CustomEvent('flowcanvas-session',{detail:{id:data.id}}));view.render(data);controls();error(data.error);paintQueue();paintAttachments();paintWorkflowRun();
+  const changedBackend=session?.backend!==data.backend;
+  session=data;if(changedBackend)selectBackendModels(data.backend);document.dispatchEvent(new CustomEvent('flowcanvas-session',{detail:{id:data.id}}));view.render(data);controls();error(data.error);paintQueue();paintAttachments();paintWorkflowRun();
   const option=[...$('sessions').options].find(o=>o.value===data.id);
   if(option)option.textContent=data.title||'新对话';
   $('session-label').textContent=data.title||'新对话';
@@ -398,7 +440,8 @@ function paintPicker(){
   $('model-label').textContent=chosen?.name||'选择模型';
   const effort=$('effort').value;
   $('model-effort-badge').textContent=effort;
-  $('model-effort-badge').hidden=!effort;
+  $('model-effort-badge').hidden=!effort||effort==='default';
+  document.querySelector('.model-effort-section').hidden=(chosen?.efforts||[]).length<2;
   $('model-effort-badge').title='推理强度：'+effort;
   $('model-options').replaceChildren();
   for(const model of models){
@@ -411,7 +454,7 @@ function paintPicker(){
   }
   $('effort-options').replaceChildren();
   for(const value of chosen?.efforts||[]){
-    const button=document.createElement('button');button.type='button';button.textContent=value;
+    const button=document.createElement('button');button.type='button';button.textContent=value==='default'?'默认':value;
     button.setAttribute('aria-pressed',String(value===$('effort').value));
     button.onclick=()=>{$('effort').value=value;rememberModel();paintPicker();closePicker(true,'model');};
     $('effort-options').append(button);
@@ -461,7 +504,7 @@ async function sessionDialog(row,action){
   const dialog=document.createElement('dialog');dialog.className='session-dialog';dialog.setAttribute('aria-labelledby','session-dialog-title');
   const form=document.createElement('form');
   const heading=document.createElement('h3');heading.id='session-dialog-title';heading.textContent=action==='rename'?'重命名对话':action==='delete'?'删除这段对话？':'归档这段对话？';
-  const description=document.createElement('p');description.textContent=action==='delete'?'将永久删除 FlowCanvas 中的“'+(row.title||'新对话')+'”及其草稿，无法恢复。不会删除项目文件或 Codex 自身保存的历史。':action==='rename'?'给这段对话起一个方便查找的名字。':'“'+(row.title||'新对话')+'”将从当前列表移除。历史记录会保留，可在“已归档”中恢复。';
+  const description=document.createElement('p');description.textContent=action==='delete'?'将永久删除 FlowCanvas 中的“'+(row.title||'新对话')+'”及其草稿，无法恢复。不会删除项目文件或原生后端保存的历史。':action==='rename'?'给这段对话起一个方便查找的名字。':'“'+(row.title||'新对话')+'”将从当前列表移除。历史记录会保留，可在“已归档”中恢复。';
   const input=document.createElement('input');input.className='session-rename-input';input.value=row.title||'新对话';input.maxLength=120;input.required=true;input.ariaLabel='对话名称';
   const actions=document.createElement('div');actions.className='session-dialog-actions';
   const cancel=document.createElement('button');cancel.type='button';cancel.textContent='取消';cancel.onclick=()=>dialog.close();
@@ -502,11 +545,13 @@ async function choose(id){
   unsubscribe?.();selected=id;localStorage.setItem('flowcanvas.session',id);
   $('message').value=drafts.get(id)||'';quoteDraft=quotes.get(id)||[];paintQuote();resizeDraft();session=null;controls();$('reconnect-notice').hidden=true;
   const data=await request('/sessions/'+id);if(number!==switchNumber)return;
+  if(backendWorkspace!==data.workspace)backendCatalogs=[];
   render(data);modelSelection();$('sessions').value=id;paintSessions();
   unsubscribe=subscribe(id,data=>{if(selected===id)render(data);},connected=>{if(selected!==id)return;$('reconnect-notice').hidden=connected;if(!connected)$('connection').textContent='连接中断，正在重新连接…';else controls();});
+  if(backendWorkspace!==data.workspace)await loadBackends();
 }
 /** Create a conversation without invoking a model. */
-async function create(){const data=await request('/sessions',{});await list();await choose(data.id);$('message').focus();}
+async function create(backend=backendChoice){const data=await request('/sessions',{backend});await list();await choose(data.id);$('message').focus();}
 /** Submit or interrupt exactly one turn; keep a draft when submission is rejected. */
 async function send(){
   if(busy)return;busy=true;controls();error('');
@@ -531,7 +576,7 @@ $('new-chat').onclick=()=>create().catch(exc=>error(exc.message));
 $('sessions').onchange=()=>choose($('sessions').value).catch(exc=>error(exc.message));
 $('model').onchange=()=>{efforts($('effort').value);rememberModel();};
 $('effort').onchange=()=>{rememberModel();paintPicker();};
-$('backend-codex').onclick=()=>closePicker(true,'backend');
+$('backend-refresh').onclick=()=>loadBackends(true).catch(exc=>error(exc.message));
 for(const kind of ['model','session','backend','permission','attach','workflow']){
   const popup=$(kind+'-popover'),toggle=$(kind+'-toggle');
   toggle.onclick=()=>{
@@ -579,9 +624,6 @@ async function init(){
   try{
     const rows=await list();const saved=localStorage.getItem('flowcanvas.session');
     const visible=rows.filter(row=>!row.archived);if(visible.length)await choose(visible.some(r=>r.id===saved)?saved:visible[0].id);else await create();
-    const backends=await request('/backends');models=backends[0].models;
-    $('model').replaceChildren();for(const model of models)$('model').add(new Option(model.name,model.id));
-    modelSelection();controls();
   }catch(exc){error(exc.message);$('connection').textContent='连接失败 · 刷新页面重试';}
 }
 /** Append selected context without discarding an unfinished draft. */
@@ -642,7 +684,7 @@ window.FlowCanvasAI={
       if((!design||caseAction)&&owner.permission_mode!=='full')throw Error('请先将当前对话切换为完全访问，或使用独立任务对话');
       if(owner.attachment&&(design||owner.attachment.workflow_id!=='generate-testcase'))throw Error('当前对话已附加其他工作流，请使用独立任务对话');
     }else{
-      owner=await request('/sessions',{});
+      owner=await request('/sessions',{backend:backendChoice});
       await request('/sessions/'+owner.id+'/settings',{title:design?taskTitle+' · '+design.module:'AI 新增测试用例'});
       await request('/sessions/'+owner.id+'/permissions',{mode:design&&!caseAction?'readonly':'full'});
     }

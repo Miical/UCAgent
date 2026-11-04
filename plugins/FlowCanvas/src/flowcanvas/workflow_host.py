@@ -63,6 +63,13 @@ def main():
         if all(stage.is_completed() for stage in agent.stage_manager.stages):
             (root / 'complete.json').write_text(json.dumps({'completed': True}))
         agent.exit()
+        # Exit sets the agent flag inside an MCP call. Keep the process alive
+        # until that response drains; the daemon server thread cannot outlive main.
+        server = getattr(agent.pdb, '_mcp_server', None)
+        if server and server.is_running:
+            stopped, message = server.stop(timeout=60)
+            if not stopped:
+                raise RuntimeError(message)
 
 
 if __name__ == '__main__':

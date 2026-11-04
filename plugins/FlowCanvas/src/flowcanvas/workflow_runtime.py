@@ -8,6 +8,7 @@ import socket
 import sys
 import time
 import uuid
+import httpx2
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 from .workflow_tasks import WorkflowInput, attachment
@@ -57,6 +58,12 @@ class WorkflowRuntime:
         """Read authoritative host receipts and reconcile process/turn liveness."""
         cards = self.session.setdefault('workflow_runs', [])
         before = json.dumps(cards)
+        # A completed native turn can hand off to a refreshed tool catalog without
+        # ending the user task. Explicit stop and read-only mode still take precedence.
+        reconnecting = (self.session.get('status') == 'completed'
+                        and self.session['id'] in self.service.catalog_reconnect
+                        and not self.session.get('delegation_stopped')
+                        and self.session.get('permission_mode') != 'readonly')
         for card in cards:
             root = Path(card['root'])
             proc = self.processes.get(card['id'])
@@ -69,7 +76,7 @@ class WorkflowRuntime:
             project_startup_stage(card)
             if (root / 'complete.json').is_file():
                 card.update(status='completed', pause_reason='')
-            elif card['status'] != 'paused' and (not card['alive'] or not execution_active(self.session)):
+            elif card['status'] != 'paused' and (not card['alive'] or not (execution_active(self.session) or reconnecting)):
                 card.update(status='paused', pause_reason='MCP 服务停止' if not card['alive'] else '对话已停止')
             if card['status'] == 'completed' or not card['alive']:
                 for tool in (card.get('tui') or {}).get('tools', []):
@@ -164,7 +171,9 @@ class WorkflowRuntime:
             if card['status'] != 'completed':
                 card.update(status='running', pause_reason='')
             self.publish()
-            async with streamable_http_client(card['url']) as streams:
+            # This endpoint is an owned loopback host, never a remote proxy target.
+            async with (httpx2.AsyncClient(trust_env=False, timeout=httpx2.Timeout(30, read=300)) as http,
+                        streamable_http_client(card['url'], http_client=http) as streams):
                 read, write = streams[:2]
                 async with ClientSession(read, write) as client:
                     await client.initialize()

@@ -169,7 +169,7 @@ class WorkflowBridge:
         backend = self.service.session_backends.get(self.session['id'])
         if backend:
             try:
-                await backend.request('config/mcpServer/reload', None)
+                await backend.reload_tools()
             except Exception as exc:
                 self.session['error'] = '工作流工具刷新失败：' + str(exc)
                 self.service.changed(self.session)

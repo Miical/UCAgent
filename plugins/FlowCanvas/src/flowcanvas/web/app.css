@@ -161,7 +161,7 @@ html[data-theme="dark"] .composer,html[data-theme="graphite"] .composer{backgrou
 /* All picker labels and vector chevrons share the same center line. */
 .model-trigger{align-items:center;line-height:20px;gap:5px;}
 .model-trigger>span{display:block;line-height:20px;}
-.backend-popover{width:240px;}.backend-unavailable{font-size:10px;color:var(--text-dim);font-weight:400;}
+.backend-popover{width:240px;}.backend-unavailable{font-size:10px;color:var(--text-dim);font-weight:400;white-space:nowrap;}
 .model-option:disabled:hover{background:none;}
 
 /* Optical alignment for the composer selector chevrons. */

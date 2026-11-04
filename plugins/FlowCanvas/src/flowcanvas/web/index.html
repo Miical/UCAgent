@@ -85,17 +85,14 @@
             <button id="backend-toggle" class="model-trigger" aria-label="选择后端" aria-haspopup="dialog" aria-expanded="false" aria-controls="backend-popover"><span id="backend-label">Codex</span><svg class="picker-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
             <section id="backend-popover" class="model-popover backend-popover" role="dialog" aria-label="选择后端" hidden>
               <div class="picker-heading">选择后端</div>
-              <div class="model-options" role="group" aria-label="可用后端">
-                <button id="backend-codex" class="model-option" aria-pressed="true"><span>Codex</span><span class="model-check">✓</span></button>
-                <button class="model-option" disabled><span>OpenCode</span><span class="backend-unavailable">尚未接入</span></button>
-                <button class="model-option" disabled><span>LangChain</span><span class="backend-unavailable">尚未接入</span></button>
-              </div>
+              <div id="backend-options" class="model-options" role="group" aria-label="可用后端"></div>
+              <button id="backend-refresh" class="model-option" type="button">刷新连接</button>
             </section>
           </div>
           <div class="model-picker">
             <button id="model-toggle" class="model-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="model-popover" disabled><span id="model-label">连接中…</span><span id="model-effort-badge" class="model-effort-badge" hidden></span><span id="model-speed-badge" class="model-speed-badge" hidden></span><svg class="picker-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
             <section id="model-popover" class="model-popover" role="dialog" aria-label="选择模型" hidden>
-              <div class="picker-heading">选择模型 <span>Codex</span></div>
+              <div class="picker-heading">选择模型 <span id="model-backend-label">Codex</span></div>
               <div id="model-options" class="model-options" role="group" aria-label="可用模型"></div>
               <div class="model-effort-section">
                 <div class="picker-heading">推理强度</div><div id="effort-options" class="effort-options" role="group" aria-label="推理强度"></div>

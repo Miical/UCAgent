@@ -52,14 +52,25 @@ def messages(entries):
 
 async def read_agents(service, session, selected=None, include_messages=True):
     """Resolve child membership from this parent's native history before reading a child."""
-    if not session.get('thread'):
-        return {'agents': [], 'selected': None, 'items': []}
-    backend = service.session_backends.get(session['id']) or service.backend
+    async with service.connection_locks.setdefault(session['id'], asyncio.Lock()):
+        if service.closing:
+            raise RuntimeError('Chat service is shutting down')
+        # Select the owner after waiting, never retain a retired client across a
+        # permission change, reconnect, deletion or workflow catalog handoff.
+        service.get(session['id'])
+        if not session.get('thread'):
+            return {'agents': [], 'selected': None, 'items': []}
+        backend = service.session_backends.get(session['id']) or service.backends[session['backend']]
+        return await backend.agents(session['thread'], selected, include_messages)
+
+
+async def read_codex_agents(backend, thread_id, selected=None, include_messages=True):
+    """Project Codex child threads through the common sidebar contract."""
     await backend.connect()
-    agents = children(await thread_items(backend, session['thread']))
+    agents = children(await thread_items(backend, thread_id))
     limit = asyncio.Semaphore(4)
     histories = {}
-    seen = {session['thread'], *(row['id'] for row in agents)}
+    seen = {thread_id, *(row['id'] for row in agents)}
     frontier = list(agents)
 
     async def descendants(row):
@@ -164,10 +175,4 @@ async def interrupt_children(service, session):
     backend = service.session_backends.get(session['id'])
     if not backend or not session.get('thread'):
         return
-    agents = (await read_agents(service, session, include_messages=False))['agents']
-    for row in agents:
-        page = await backend.request('thread/turns/list', {
-            'threadId': row['id'], 'limit': 1, 'sortDirection': 'desc', 'itemsView': 'summary'})
-        for turn in page.get('data', []):
-            if turn.get('status') == 'inProgress':
-                await backend.interrupt(row['id'], turn['id'])
+    await backend.interrupt_descendants(session['thread'])
