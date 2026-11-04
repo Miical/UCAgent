@@ -344,9 +344,9 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       if(!caseMode)head.append(el('span','target-kind',kinds[node.kind][0]));
       const title=el('span','target-title',caseMode?(node.title||node.name):node.name);title.dataset.textField=caseMode&&node.title?'title':'name';head.append(title);
       if(!bugMode&&(!node.lifecycle||node.lifecycle==='ready')){
-        let clickTimer;title.title='双击修改标题';
-        title.onclick=event=>{event.stopPropagation();clearTimeout(clickTimer);clickTimer=setTimeout(()=>head.click(),450);};
-        title.ondblclick=event=>{event.preventDefault();event.stopPropagation();clearTimeout(clickTimer);if(node.lifecycle!=='deleting')editCaseText(node,caseMode?'title':'name',title);};
+        if(caseMode)title.title='双击修改标题';
+        title.onclick=event=>{event.stopPropagation();if(event.detail<=1)head.click();};
+        title.ondblclick=event=>{event.preventDefault();event.stopPropagation();if(node.lifecycle!=='deleting')editCaseText(node,caseMode?'title':'name',title);};
       }
       if(!caseMode&&!bugMode){
         const c=coverageFor(node);
@@ -354,6 +354,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         const badge=el('span','target-coverage-score'+(c.total&&c.status!=='stale'?' has-data':''),text);
         badge.title=c.status==='conflict'?'同一定义对应多个运行实例，请拆分后重新导入':c.status==='stale'?'源码与采集时不同，请重新构建并开始新累计':'该目标唯一实例的累计 bin 命中，不代表正确性检查通过';
         if(c.status==='available'&&c.total){
+          badge.title=c.covered+' / '+c.total+' 个 bin 达标 · '+badge.title;
           badge.replaceChildren(el('span','goal-coverage-percent',(100*c.covered/c.total).toFixed(1)+'%'),el('span','goal-coverage-count',c.covered+'/'+c.total));
           const meter=el('span','goal-coverage-meter');meter.setAttribute('aria-hidden','true');meter.style.setProperty('--coverage',Math.min(100,100*c.covered/c.total)+'%');badge.append(meter);
         }
@@ -369,7 +370,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d','M10.3 4.3 2.7 17.5A2 2 0 0 0 4.4 20h15.2a2 2 0 0 0 1.7-2.5L13.7 4.3a2 2 0 0 0-3.4 0ZM12 9v4m0 3h.01');svg.append(path);warning.append(svg);head.append(warning);
       }
       const header=el('div','target-header'+(selectedTarget===node.id?' is-selected':''));
-      head.title=caseMode?[node.title,node.name].filter(Boolean).join(' · '):node.name;
+      if(caseMode||bugMode)head.title=caseMode?[node.title,node.name].filter(Boolean).join(' · '):node.name;
       head.onkeydown=event=>{
         if(!bugMode&&(!node.lifecycle||node.lifecycle==='ready')&&event.key==='F2'){event.preventDefault();if(node.lifecycle!=='deleting')editCaseText(node,caseMode?'title':'name',title);return;}
         if(event.key==='ArrowDown'||event.key==='ArrowUp'){
@@ -421,6 +422,13 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         b.title=binding.file+(binding.message?' · '+binding.message:' · 查看源码');b.setAttribute('aria-label','查看源码 '+binding.file+(binding.line?' 第 '+binding.line+' 行':''));links.append(b);
       }
       if(!caseMode&&!bugMode){
+        const c=coverageFor(node);
+        for(const binding of report.bindings){
+          const observation=c.status==='available'?c.rows.find(row=>row.binding_id===binding.id):null;
+          const path=observation?.source_path||[binding.scope,binding.symbol].filter(Boolean).join('.')||binding.file;
+          const link=button(path,()=>{if(!operationLocked)source(binding);},'target-source target-title-source');
+          link.disabled=operationLocked||!binding.line;link.title=path;link.setAttribute('aria-label','查看 '+path+' 的源码');links.append(link);
+        }
         const score=head.querySelector('.target-coverage-score'),heading=el('div','goal-row-heading');
         heading.append(head,links);header.append(heading,score,controls);
       }else header.append(head,links,controls);
@@ -428,7 +436,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       if(opened.has(node.id)||(query&&searchExpanded)){
         const body=el('div','target-card-body');
         if(!bugMode){
-          const description=el('p','case-editable-description'+(node.description?'':' is-empty'),node.description||'双击添加说明');description.dataset.textField='description';description.title='双击修改说明';description.tabIndex=0;
+          const description=el('p','case-editable-description'+(node.description?'':' is-empty'),node.description||(caseMode?'双击添加说明':''));description.dataset.textField='description';description.title='双击修改说明';description.tabIndex=0;
           description.ondblclick=event=>{event.preventDefault();event.stopPropagation();editCaseText(node,'description',description);};
           description.onkeydown=event=>{if(event.key==='Enter'||event.key==='F2'){event.preventDefault();editCaseText(node,'description',description);}};
           if(!bugMode&&node.lifecycle&&node.lifecycle!=='ready'){
@@ -447,13 +455,6 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
           const c=coverageFor(node);
           if(report.bindings.length){
             const detail=el('div','target-coverage-detail');
-            for(const binding of report.bindings){
-              const observation=c.status==='available'?c.rows.find(row=>row.binding_id===binding.id):null;
-              const path=observation?.source_path||[binding.scope,binding.symbol].filter(Boolean).join('.')||binding.file;
-              const context=binding.line?button(path,()=>{if(!operationLocked)source(binding);},'target-coverage-context goal-source-link'):el('div','target-coverage-context',path);
-              if(binding.line){context.disabled=operationLocked;context.title=operationLocked?'AI 操作尚未完成':'查看源码';context.setAttribute('aria-label',operationLocked?path+'，AI 操作中不可打开':'查看 '+path+' 的源码');}
-              detail.append(context);
-            }
             if(node.kind==='testpoint'&&c.status==='available'){
               for(const row of c.rows)for(const bin of row.bins){
                 const item=el('div','target-coverage-bin');
@@ -462,13 +463,13 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
                 detail.append(item);
               }
             }
-            body.append(detail);
+            if(detail.childNodes.length)body.append(detail);
           }
         }
         const actions=el('div','target-actions');
         if(bugMode&&report.status==='changed'&&!operationLocked)actions.append(button('核对后确认',()=>{const {dialog,content}=modal('确认源码与目标一致');content.append(el('p','','请先查看当前源码，核对说明与实际实现。确认仅更新代码基线，不代表仿真通过。'));const error=el('p','targets-error');content.append(error,button('已核对，确认当前版本',async()=>{try{await api({operation:'accept',target_id:node.id,expected_revision:data.revision,values:Object.fromEntries(report.bindings.map(b=>[b.id,b.fingerprint]))});dialog.close();refresh();}catch(e){error.textContent=e.message;}},'targets-primary'));}));
         if(actions.children.length)body.append(actions);for(const child of children)body.append(card(child,depth+1));wrapper.append(body);
-      }else if(children.length){head.title=children.length+' 个子目标';}
+      }else if(children.length&&(caseMode||bugMode)){head.title=children.length+' 个子目标';}
       for(const label of wrapper.querySelectorAll('[data-text-field]')){
         if(label.closest('[data-target-id]')!==wrapper)continue;
         const id=node.id+':'+label.dataset.textField,started=textHighlights.get(id);

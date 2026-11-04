@@ -1059,7 +1059,15 @@ function onDoubleClick(e) {
 // identity moves; a function dodges that staleness.
 const _captureSvgProvider = () => _svgEl
 
+let fitMessageFrame = null
+function onFitViewMessage(event) {
+  if (event.origin !== location.origin || event.source !== window.parent || event.data?.type !== 'flowcanvas-fit-view') return
+  if (fitMessageFrame !== null) cancelAnimationFrame(fitMessageFrame)
+  fitMessageFrame = requestAnimationFrame(() => { fitMessageFrame = null; fitToWindow() })
+}
+
 onMounted(() => {
+  window.addEventListener('message', onFitViewMessage)
   if (svgHostEl.value) {
     svgHostEl.value.addEventListener('click', onClick)
     svgHostEl.value.addEventListener('dblclick', onDoubleClick)
@@ -1075,6 +1083,8 @@ onMounted(() => {
   renderSvg()
 })
 onBeforeUnmount(() => {
+  window.removeEventListener('message', onFitViewMessage)
+  if (fitMessageFrame !== null) cancelAnimationFrame(fitMessageFrame)
   if (svgHostEl.value) {
     svgHostEl.value.removeEventListener('click', onClick)
     svgHostEl.value.removeEventListener('dblclick', onDoubleClick)

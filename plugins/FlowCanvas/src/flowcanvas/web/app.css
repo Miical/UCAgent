@@ -1314,7 +1314,8 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .target-goal-pane .target-point>.target-header .target-title{font-weight:550}
 .target-goal-pane .targets-tree .target-point>.target-card-body{padding:0 8px 8px 24px}
 .target-goal-pane .targets-tree .target-testpoint>.target-header{min-height:27px}
-.target-goal-pane .target-testpoint>.target-header:hover,.target-goal-pane .target-testpoint>.target-header.is-selected{background:color-mix(in srgb,var(--text) 3%,transparent)}
+.target-goal-pane .target-testpoint>.target-header:hover{background:color-mix(in srgb,var(--text) 3%,transparent)}
+.target-goal-pane .target-testpoint>.target-header.is-selected:not(:hover){background:transparent}
 .target-goal-pane .target-testpoint>.target-header .target-title{font-size:11px;font-weight:400}
 .target-goal-pane .target-testpoint>.target-header .target-kind{display:none}
 .target-goal-pane .target-testpoint>.target-header .goal-coverage-percent{font-size:10px;color:var(--text-dim)}
@@ -1376,3 +1377,66 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .targets-tree .ai-text-updated::after{content:"";position:absolute;inset:-2px -3px;pointer-events:none;border-radius:inherit;background:linear-gradient(100deg,transparent 15%,#9865e826 50%,transparent 85%);background-size:220% 100%;animation:ai-text-update 2.2s ease-in-out both;animation-delay:var(--text-update-phase,0ms)}
 @keyframes ai-text-update{0%{background-position:110% 0;opacity:0}15%{opacity:1}85%{opacity:1}100%{background-position:-110% 0;opacity:0}}
 @media(prefers-reduced-motion:reduce){.targets-tree .ai-text-updated::after{animation:none;background:none}}
+
+/* Coverage list, quiet edition: one primary metric and compact disclosure. */
+.target-goal-pane .targets-tree .target-kind{display:none}
+.target-goal-pane .targets-tree>.target-group{margin-bottom:10px}
+.target-goal-pane .targets-tree>.target-group>.target-header{min-height:30px;background:color-mix(in srgb,var(--text) 2%,var(--surface));box-shadow:none;border-radius:5px}
+.target-goal-pane .target-group>.target-header .target-title{font-size:12px;font-weight:600}
+.target-goal-pane .targets-tree>.target-group>.target-card-body{padding:4px 0 0 10px}
+.target-goal-pane .targets-tree .target-group>.target-card-body>.target-point{margin-bottom:3px;background:transparent;box-shadow:none;border-radius:6px}
+.target-goal-pane .targets-tree .target-group>.target-card-body>.target-point:has(>.target-card-body),
+.target-goal-pane .targets-tree .target-group>.target-card-body>.target-point:hover{background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 2%,var(--surface)),var(--surface) 65%);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text-dim) 12%,var(--surface))}
+.target-goal-pane .target-point>.target-header{min-height:28px}
+.target-goal-pane .targets-tree .target-card-body{padding-top:1px}
+.target-goal-pane .target-card-body>p{font-size:10px;line-height:1.6;margin-bottom:4px}
+.target-goal-pane .target-header>.target-coverage-score{grid-template-columns:1fr;gap:3px;width:62px;justify-self:end}
+.target-goal-pane .goal-coverage-count{display:none}
+.target-goal-pane .goal-coverage-percent{font-size:10px;font-weight:500}
+.target-goal-pane .goal-coverage-meter{height:2px;opacity:.8}
+.target-goal-pane .target-coverage-context{font-size:9px;opacity:.55}
+.target-goal-pane .target-card-body>.case-editable-description.is-empty{display:block;min-height:1.6em}
+.target-goal-pane .target-testpoint>.target-header{min-height:25px}
+.target-goal-pane .target-testpoint>.target-header .target-title{font-size:11px}
+
+/* Group summaries keep their original quiet bar, without a hover selection frame. */
+.target-goal-pane .targets-tree>.target-group>.target-header,
+.target-goal-pane .targets-tree>.target-group>.target-header:hover,
+.target-goal-pane .targets-tree>.target-group>.target-header.is-selected{
+  min-height:28px;border-radius:5px;background:color-mix(in srgb,var(--text-dim) 3%,var(--surface));
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text-dim) 6%,var(--surface));outline:0;
+}
+.target-goal-pane .targets-tree>.target-group:hover{background:transparent;box-shadow:none;outline:0}
+.target-goal-pane .targets-tree>.target-group>.target-header:has(:focus-visible){outline:2px solid color-mix(in srgb,var(--accent) 50%,var(--surface));outline-offset:-2px}
+
+.target-goal-pane .target-group>.target-header .target-title{font-size:11px;font-weight:550}
+.target-goal-pane .target-group>.target-header .target-card-head{padding-top:3px;padding-bottom:3px}
+
+.target-goal-pane .target-group>.target-header .target-card-head:hover,
+.target-goal-pane .target-group>.target-header .target-title:hover{background:transparent;box-shadow:none;outline:0}
+
+.target-goal-pane .targets-tree .target-group>.target-card-body>.target-point>.target-card-body{padding-bottom:14px}
+
+/* Hover feedback belongs to the row/card, never a rectangle around its title. */
+.target-goal-pane .goal-row-heading>.target-card-head,
+.target-goal-pane .goal-row-heading>.target-card-head:hover,
+.target-goal-pane .goal-row-heading>.target-card-head:active{background:transparent;box-shadow:none}
+
+/* Functional hierarchy type scale: headings, descriptions, then technical metadata. */
+.target-goal-pane{--goal-group-size:12px;--goal-point-size:11px;--goal-test-size:11px;--goal-detail-size:10px;--goal-meta-size:9px}
+.target-goal-pane .targets-tree .target-group>.target-header .target-title{font-size:var(--goal-group-size);font-weight:600;line-height:1.5;letter-spacing:0}
+.target-goal-pane .targets-tree .target-point>.target-header .target-title{font-size:var(--goal-point-size);font-weight:550;line-height:1.5;letter-spacing:0}
+.target-goal-pane .targets-tree .target-testpoint>.target-header .target-title{font-size:var(--goal-test-size);font-weight:400;line-height:1.5;letter-spacing:0}
+.target-goal-pane .targets-tree .target-card-body>.case-editable-description{font-size:var(--goal-detail-size);font-weight:400;line-height:1.65;letter-spacing:0;color:var(--text-dim)}
+.target-goal-pane .target-coverage-context,.target-goal-pane .goal-source-link,.target-goal-pane .target-title-source{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:var(--goal-meta-size);font-weight:400;line-height:1.6;letter-spacing:0}
+.target-goal-pane .target-header .goal-coverage-percent{font-size:10px;font-weight:500;line-height:1.4;font-variant-numeric:tabular-nums;color:var(--text)}
+.target-goal-pane .target-header .goal-coverage-count,.target-goal-pane .target-header>.target-coverage-score{font-size:var(--goal-meta-size);font-weight:400;line-height:1.4;font-variant-numeric:tabular-nums}
+.target-goal-pane .target-coverage-bin{font-size:var(--goal-detail-size);font-weight:400;line-height:1.6;font-variant-numeric:tabular-nums}
+.target-goal-pane .case-operation-label,.target-goal-pane .target-state{font-size:var(--goal-meta-size);font-weight:400;line-height:1.5}
+.target-goal-pane .case-inline-input{font-family:inherit;font-size:var(--goal-detail-size);line-height:1.65}
+.target-goal-pane .target-group>.target-header .case-inline-input{font-size:var(--goal-group-size);font-weight:600;line-height:1.5}
+.target-goal-pane .target-point>.target-header .case-inline-input{font-size:var(--goal-point-size);font-weight:550;line-height:1.5}
+.target-goal-pane .target-testpoint>.target-header .case-inline-input{font-size:var(--goal-test-size);font-weight:400;line-height:1.5}
+
+.target-goal-pane .goal-row-heading>.target-card-head{max-width:72%;flex-shrink:0}
+.target-goal-pane .goal-row-heading>.target-title-sources{flex:1;min-width:0;margin-left:10px}

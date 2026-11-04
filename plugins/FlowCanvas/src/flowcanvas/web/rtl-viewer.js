@@ -21,12 +21,13 @@ import {openLocalSource} from './markdown-renderer.js';
   }
   function show(view){
     if(!project||!panel)return;
-    const visible=view==='设计总览';panel.hidden=!visible;host.classList.toggle('has-rtl-view',visible);
+    const visible=view==='设计总览',entering=visible&&panel.hidden;panel.hidden=!visible;host.classList.toggle('has-rtl-view',visible);
+    if(entering)requestAnimationFrame(()=>{if(!panel.hidden)panel.querySelector('iframe')?.contentWindow?.postMessage({type:'flowcanvas-fit-view'},location.origin);});
   }
   document.addEventListener('flowcanvas-view',event=>show(event.detail));
   fetch('/api/chat/projects').then(r=>r.json()).then(state=>{
     project=state.current;if(!project)return;
-    panel=document.createElement('section');panel.className='rtl-view-panel';
+    panel=document.createElement('section');panel.className='rtl-view-panel';panel.hidden=true;
     const status=document.createElement('p');status.className='rtl-view-status';const frame=document.createElement('iframe');frame.title='RTL 结构查看器 · rtl-buddy-sch';frame.hidden=true;
     panel.append(status,frame);host.append(panel);show(document.getElementById('project-heading').textContent);load();
   }).catch(()=>{});
