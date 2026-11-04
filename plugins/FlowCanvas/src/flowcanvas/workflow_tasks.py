@@ -8,6 +8,7 @@ from .catalog import workflow_menu
 class WorkflowInput(BaseModel):
     """Explicit local RTL input; the server chooses all task output paths."""
     workflow_id: str
+    task_only: bool = False
     rtl_file: str = Field(default='', max_length=4096)
     dut: str = Field(default='RTL', pattern=r'^[A-Za-z_][A-Za-z0-9_]*$', max_length=128)
 

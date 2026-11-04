@@ -943,3 +943,203 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 
 .target-goal-pane .goal-source-link{display:block;max-width:100%;padding:0;border:0;background:none;color:var(--text-dim);font-family:ui-monospace,SFMono-Regular,monospace;text-align:left;cursor:pointer;line-height:1.6}
 .target-goal-pane .goal-source-link:hover{opacity:1;color:var(--accent);text-decoration:underline;text-underline-offset:3px}
+
+.targets-toolbar .ai-case-add{width:32px;height:32px;display:grid;place-items:center;padding:6px;border:0;background:transparent;color:var(--text-dim)}
+.ai-case-add svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.targets-toolbar .ai-case-add:hover{color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--surface))}
+.ai-action-dialog{width:360px;max-width:calc(100vw - 24px)}
+.ai-action-dialog header{padding:14px 16px}.ai-action-dialog .targets-dialog-content{padding:14px 16px}
+.ai-action-context{font-size:11px;color:var(--text-dim);margin:0 0 14px}
+.ai-action-dialog textarea{font-size:12px;min-height:84px}
+.ai-action-permission{font-size:10px;color:var(--text-dim);line-height:1.6}
+.ai-action-mode{font:11px system-ui;flex:1;min-width:0}
+.ai-case-task{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:7px 9px;background:color-mix(in srgb,var(--accent) 5%,var(--surface));border-radius:6px}
+.ai-case-task[hidden]{display:none}.ai-case-task button{border:0;background:none;color:var(--text-dim);font:11px system-ui;text-align:left}.ai-case-task button:first-child{flex:1}
+.ai-case-task.is-running::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent);animation:fc-breathe 1.8s ease-in-out infinite}
+.ai-case-new{animation:case-added 3s ease-out}
+@keyframes case-added{from{background:color-mix(in srgb,var(--accent) 12%,var(--surface))}to{background:transparent}}
+@media(prefers-reduced-motion:reduce){.ai-case-new,.ai-case-task.is-running::before{animation:none}}
+
+.ai-action-dialog{position:fixed;z-index:50;transition:opacity .18s,box-shadow .18s}
+.ai-action-dialog.is-preview{opacity:1;box-shadow:0 6px 22px #00000012}
+.ai-action-dialog.is-preview input,.ai-action-dialog.is-preview textarea,.ai-action-dialog.is-preview select,.ai-action-dialog.is-preview footer{pointer-events:none}
+.ai-workflow-binding{font-size:11px;color:var(--accent);padding:7px 9px;background:color-mix(in srgb,var(--accent) 6%,var(--surface));border-radius:5px;margin-bottom:12px}
+.message.user>.message-content.ai-task-message{border-left:3px solid var(--accent);border-radius:10px;background:color-mix(in srgb,var(--accent) 4%,var(--surface));font-size:12px}
+
+.ai-task-surface{border:1px solid color-mix(in srgb,var(--accent) 18%,var(--border));border-radius:14px;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 4%,var(--surface)),var(--surface) 60%);box-shadow:0 8px 28px #0000000c;color:var(--text)}
+.ai-action-dialog{width:320px}.ai-action-dialog header{padding:11px 14px;border-bottom:0}.ai-action-dialog header strong{font-size:12px}.ai-action-dialog header strong::before{content:'✦';color:var(--accent);margin-right:7px}
+.ai-action-dialog .targets-dialog-content{padding:0 14px 12px}.ai-action-dialog .targets-field{margin-bottom:8px}.ai-action-dialog textarea{min-height:60px;font-size:11px;padding:8px}.ai-action-dialog footer{margin-top:10px}.ai-action-dialog .targets-primary{font-size:11px;padding:7px 11px;border-radius:7px;border:0}
+.ai-workflow-binding{display:inline-flex;font-size:10px;margin-bottom:8px;padding:4px 7px}.ai-action-context{font-size:10px;margin:0 0 10px}.ai-action-permission{font-size:9px;margin:6px 0}
+.message.user>.message-content.ai-task-message{border:0;background:none;padding:0;box-shadow:none}
+.ai-task-sent{width:320px;max-width:100%;padding:13px 15px;text-align:left}.ai-task-title{display:block;font-size:12px;margin-bottom:10px}.ai-task-requirements{font-size:11px;line-height:1.7;margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+
+.ai-action-dialog{width:300px}
+.ai-action-dialog header{padding:9px 12px 7px}
+.ai-action-dialog .targets-dialog-content{padding:0 12px 10px}
+.ai-action-dialog .ai-workflow-binding{padding:3px 6px;margin-bottom:6px}
+.ai-action-dialog .ai-action-context{margin-bottom:7px}
+.ai-action-dialog .targets-field{margin-bottom:5px}
+.ai-action-dialog .targets-field>span{font-size:10px;margin-bottom:4px}
+.ai-action-dialog textarea{min-height:50px;height:56px;padding:6px 8px}
+.ai-action-dialog .ai-action-permission{margin:4px 0;line-height:1.4}
+.ai-action-dialog footer{margin-top:7px;align-items:center;justify-content:space-between;gap:8px}
+.ai-action-new-chat{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-dim);cursor:pointer;white-space:nowrap}
+.ai-action-new-chat input{width:12px;height:12px;margin:0;accent-color:var(--accent)}
+.ai-action-dialog .targets-primary{padding:6px 9px}
+.ai-task-sent{width:300px;padding:10px 12px}
+.ai-task-sent .ai-task-title{margin-bottom:7px}
+.ai-task-sent .ai-workflow-binding{margin-bottom:6px}
+.ai-task-sent .ai-action-context{margin-bottom:6px}
+
+/* Quiet task surface: brief hover intent, stable solid preview, soft departure. */
+.ai-task-surface{border-radius:12px;border-color:color-mix(in srgb,var(--accent) 12%,var(--border));background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 3%,var(--surface)),var(--surface) 55%);box-shadow:0 2px 6px #00000005,0 12px 36px #00000010}
+.ai-action-dialog{width:284px;opacity:0;transform:translateX(-5px) translateY(3px) scale(.985);transform-origin:top left;transition:opacity 150ms ease,transform 220ms cubic-bezier(.2,.8,.2,1),box-shadow 180ms ease;overflow:visible}
+.ai-action-dialog.is-preview{opacity:0;box-shadow:0 2px 6px #00000005,0 12px 36px #00000010}
+.ai-action-dialog.is-visible{opacity:1;transform:none}
+.ai-action-dialog.is-leaving{opacity:0;transform:translateX(-3px) scale(.99);pointer-events:none}
+.ai-action-dialog:not(.is-preview){border-color:color-mix(in srgb,var(--accent) 28%,var(--border))}
+.ai-action-dialog header{padding:10px 12px 5px;gap:8px}
+.ai-action-dialog header strong{font-size:12px;font-weight:600;letter-spacing:.01em}
+.ai-action-dialog header strong::before{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:7px;background:color-mix(in srgb,var(--accent) 9%,var(--surface));margin-right:7px;font-size:14px;vertical-align:middle}
+.ai-action-dialog .targets-close{width:22px;height:22px;padding:0!important;font-size:16px!important;color:var(--text-dim)!important;background:transparent!important}
+.ai-action-dialog .ai-workflow-binding{font-size:9px;padding:2px 6px;margin:0 0 6px 29px;background:transparent;color:var(--text-dim);border:1px solid color-mix(in srgb,var(--border) 65%,transparent);border-radius:4px}
+.ai-action-dialog .ai-action-context{font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0 0 8px;opacity:.8}
+.ai-action-dialog .targets-field>span{display:none}
+.ai-action-dialog textarea{height:48px;min-height:48px;max-height:160px;font-size:11px;line-height:1.5;border-color:color-mix(in srgb,var(--border) 65%,transparent);border-radius:7px;background:color-mix(in srgb,var(--text) 2%,var(--surface));resize:vertical}
+.ai-action-dialog textarea:focus{outline:2px solid color-mix(in srgb,var(--accent) 15%,transparent);border-color:color-mix(in srgb,var(--accent) 40%,var(--border))}
+.ai-action-dialog .ai-action-permission{font-size:9px;line-height:1.4;margin:5px 0;color:var(--text-dim)}
+.ai-action-dialog .targets-primary{font-size:10px;padding:6px 10px;border-radius:7px;box-shadow:0 2px 5px color-mix(in srgb,var(--accent) 15%,transparent)}
+.ai-action-dialog footer{margin-top:8px}
+.ai-action-new-chat{font-size:9px;gap:5px}
+.ai-task-sent{width:284px;padding:11px 12px}
+.ai-task-sent .ai-task-title{font-size:12px}.ai-task-sent .ai-task-requirements{font-size:11px}
+@media(prefers-reduced-motion:reduce){.ai-action-dialog{transition:none;transform:none}.ai-action-dialog.is-leaving{transform:none}}
+
+.ai-action-dialog header{padding:8px 10px 4px;gap:6px}
+.ai-action-dialog header strong{flex:1;font-size:11px;white-space:nowrap}
+.ai-action-dialog header .ai-action-new-chat{flex-shrink:0;font-size:9px}
+.ai-action-dialog .targets-dialog-content{padding:0 10px 8px}
+.ai-action-dialog .ai-workflow-binding{margin-bottom:4px}
+.ai-action-dialog .ai-action-context{margin-bottom:6px}
+.ai-action-dialog textarea{height:42px;min-height:42px;padding:5px 7px}
+.ai-action-dialog .targets-field{margin-bottom:0}
+.ai-action-dialog footer{margin-top:5px;justify-content:flex-end}
+.ai-action-dialog .ai-action-permission[hidden]{display:none}
+.ai-action-dialog .targets-primary{padding:5px 9px}
+
+.ai-action-dialog header .ai-action-new-chat{gap:6px;padding:3px 5px;border-radius:6px;color:var(--text-dim);font-size:10px;line-height:16px;font-weight:400}
+.ai-action-dialog .ai-action-new-chat:hover{background:color-mix(in srgb,var(--text) 4%,var(--surface))}
+.ai-action-new-chat input{appearance:none;-webkit-appearance:none;position:relative;flex:none;width:24px;height:14px;border:1px solid color-mix(in srgb,var(--text) 16%,var(--surface));border-radius:8px;background:color-mix(in srgb,var(--text) 10%,var(--surface));cursor:pointer;transition:background .16s,border-color .16s}
+.ai-action-new-chat input::after{content:'';position:absolute;top:2px;left:2px;width:8px;height:8px;border-radius:50%;background:var(--surface);box-shadow:0 1px 2px #0002;transition:transform .16s}
+.ai-action-new-chat input:checked{background:var(--accent);border-color:var(--accent)}
+.ai-action-new-chat input:checked::after{transform:translateX(10px);background:#fff}
+.ai-action-new-chat input:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(prefers-reduced-motion:reduce){.ai-action-new-chat input,.ai-action-new-chat input::after{transition:none}}
+
+.ai-task-objective{margin:2px 0 7px;font-size:11px;line-height:1.6;color:var(--text-dim);text-align:left}
+.ai-action-dialog .ai-workflow-binding{margin-left:0}
+
+.ai-action-dialog header{flex-wrap:nowrap;column-gap:5px}
+.ai-action-dialog header strong{flex:0 0 auto}
+.ai-action-dialog header>.ai-workflow-binding{display:block;flex:0 1 auto;margin:0;min-width:0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:8px;padding:2px 4px}
+.ai-action-dialog header .ai-action-new-chat{margin-left:auto;font-size:9px;padding:2px 0;gap:4px}
+.ai-action-dialog header .targets-close{width:16px}
+.ai-task-heading{display:flex;align-items:center;gap:7px;margin-bottom:7px;min-width:0}
+.ai-task-heading .ai-task-title{margin:0;flex-shrink:0}
+.ai-task-heading .ai-workflow-binding{margin:0;font-size:9px;padding:2px 5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+
+.ai-action-dialog footer{justify-content:space-between;align-items:center}
+.ai-action-dialog footer .ai-action-new-chat{margin:0;font-size:10px;gap:6px;padding:2px 0}
+
+.ai-action-dialog header .targets-close{margin-left:auto;border:0!important;box-shadow:none;outline:none;border-radius:4px;flex-shrink:0}
+.ai-action-dialog header .targets-close:focus,.ai-action-dialog header .targets-close:focus-visible{border:0!important;outline:none!important;box-shadow:none!important}
+.ai-action-dialog header .targets-close:focus-visible{color:var(--accent)!important}
+
+.ai-case-add svg .ai-colored-spark{fill:url(#case-ai-spark);stroke:url(#case-ai-spark);stroke-width:1;transform-box:fill-box;transform-origin:center;transition:transform .3s cubic-bezier(.2,.8,.2,1)}
+.ai-case-add:hover .ai-colored-spark{transform:rotate(10deg) scale(1.1)}
+.ai-action-dialog header strong::before{color:#8b65df;background:linear-gradient(135deg,#4285ff12,#d878bc14)}
+.ai-action-dialog{transform:translateX(-7px) translateY(5px) scale(.96);transition:opacity 160ms ease,transform 320ms cubic-bezier(.18,1.18,.32,1),box-shadow 180ms ease}
+.ai-action-dialog.is-visible{animation:ai-card-arrive 320ms cubic-bezier(.18,.8,.32,1) both}
+.ai-action-dialog.is-leaving{animation:none;opacity:0;transform:translateX(-4px) translateY(2px) scale(.98);transition:opacity 140ms ease,transform 140ms ease}
+@keyframes ai-card-arrive{0%{opacity:0;transform:translateX(-7px) translateY(5px) scale(.96)}70%{opacity:1;transform:translateX(1px) translateY(-1px) scale(1.008)}100%{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){.ai-action-dialog,.ai-action-dialog.is-visible,.ai-action-dialog.is-leaving{animation:none;transition:none;transform:none}.ai-case-add svg .ai-colored-spark{transition:none;transform:none}}
+
+/* Compact task composition, preserving the approved entrance and sparkle. */
+.ai-action-dialog header{padding:9px 11px 3px;gap:6px;flex-wrap:nowrap}
+.ai-action-dialog header strong{flex:0 0 auto;font-size:11px;font-weight:600;letter-spacing:0}
+.ai-action-dialog header strong::before{width:19px;height:19px;border-radius:6px;font-size:13px;margin-right:6px}
+.ai-action-dialog header>.ai-workflow-binding{flex:0 1 auto;max-width:115px;padding:2px 5px;font-size:8px;line-height:1.4;margin:0;border:0;background:color-mix(in srgb,var(--accent) 5%,var(--surface));color:var(--text-dim);border-radius:4px}
+.ai-action-dialog header .targets-close{width:18px;height:18px;margin-left:auto;opacity:.65}
+.ai-action-dialog header .targets-close:hover{opacity:1}
+.ai-action-dialog .targets-dialog-content{padding:0 11px 8px}
+.ai-task-objective{font-size:10px;line-height:1.5;margin:3px 0 8px;color:var(--text-dim)}
+.ai-action-dialog .targets-field{border-radius:7px;background:color-mix(in srgb,var(--text) 2.5%,var(--surface));margin:0}
+.ai-action-dialog textarea{height:36px;min-height:36px;max-height:100px;resize:none;padding:8px;font-size:10px;line-height:1.6;border:1px solid transparent;border-radius:7px;background:transparent;scrollbar-width:thin}
+.ai-action-dialog textarea::placeholder{color:var(--text-dim);opacity:.65}
+.ai-action-dialog textarea:focus{background:var(--surface);outline:0;border-color:color-mix(in srgb,var(--accent) 28%,var(--border))}
+.ai-action-dialog footer{margin-top:7px;gap:8px;align-items:center;justify-content:space-between}
+.ai-action-dialog footer .ai-action-new-chat{font-size:9px;gap:5px;padding:0;line-height:20px}
+.ai-action-dialog .targets-primary{font-size:10px;font-weight:500;line-height:16px;padding:4px 10px;border-radius:6px;box-shadow:none}
+.ai-action-dialog .targets-error{font-size:10px;line-height:1.5;margin:6px 0}
+.ai-task-sent{padding:10px 12px}.ai-task-sent .ai-task-heading{margin-bottom:4px}.ai-task-sent .ai-task-objective{margin:3px 0 7px}.ai-task-sent .ai-task-requirements{padding:7px 8px;background:color-mix(in srgb,var(--text) 2.5%,var(--surface));border-radius:7px;font-size:10px;line-height:1.6}
+
+.ai-action-dialog header{align-items:center;min-height:32px}
+.ai-action-dialog header strong{display:inline-flex;align-items:center;gap:6px;line-height:20px}
+.ai-action-dialog header strong::before{display:grid;place-items:center;flex:none;margin:0;line-height:1;vertical-align:initial}
+.ai-action-dialog header>.ai-workflow-binding{display:inline-flex;align-items:center;line-height:16px;padding:2px 5px;align-self:center}
+.ai-action-dialog header .targets-close{display:grid;place-items:center;align-self:center;line-height:1;height:20px;width:20px;margin-top:0;margin-bottom:0}
+
+/* A single rounded surface, with quieter internal controls. */
+.ai-task-surface{border-radius:18px;background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 3%,var(--surface)),var(--surface) 65%);box-shadow:0 2px 5px #00000004,0 10px 30px #0000000e}
+.ai-action-dialog header{padding:8px 12px 2px;min-height:30px}
+.ai-action-dialog .targets-dialog-content{padding:0 12px 9px}
+.ai-action-dialog .ai-task-objective{margin:2px 0 6px;line-height:1.5}
+.ai-action-dialog .targets-field{border-radius:10px;background:color-mix(in srgb,var(--text) 2%,var(--surface))}
+.ai-action-dialog textarea{border-radius:10px;padding:7px 8px}
+.ai-action-dialog footer{margin-top:6px}
+.ai-action-dialog .targets-primary{border-radius:9px;padding:4px 11px}
+.ai-action-dialog header>.ai-workflow-binding{border-radius:6px;background:color-mix(in srgb,var(--accent) 4%,var(--surface))}
+.ai-task-sent{border-radius:18px;padding:10px 12px}
+.ai-task-sent .ai-task-requirements{border-radius:10px;background:color-mix(in srgb,var(--text) 2%,var(--surface))}
+
+/* Final optical balance: one quiet surface and a clear primary action. */
+.ai-task-surface{border-color:color-mix(in srgb,var(--accent) 10%,var(--border));box-shadow:0 1px 3px #00000005,0 8px 24px #0000000c,0 20px 46px #00000005}
+.ai-action-dialog header strong{letter-spacing:-.01em}
+.ai-action-dialog header>.ai-workflow-binding{font-size:8px;line-height:15px;color:color-mix(in srgb,var(--text-dim) 85%,var(--accent));padding:2px 5px}
+.ai-action-dialog .ai-task-objective{color:color-mix(in srgb,var(--text) 56%,var(--surface));font-size:10px;line-height:1.55;margin:3px 0 7px}
+.ai-action-dialog .targets-field{transition:background .18s,box-shadow .18s;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--border) 35%,transparent)}
+.ai-action-dialog .targets-field:focus-within{background:var(--surface);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 8%,transparent)}
+.ai-action-dialog textarea{transition:border-color .18s,background .18s}
+.ai-action-dialog footer{margin-top:7px;padding-left:1px}
+.ai-action-dialog footer .ai-action-new-chat{color:color-mix(in srgb,var(--text) 55%,var(--surface));transition:color .16s}
+.ai-action-dialog footer .ai-action-new-chat:has(input:checked){color:var(--text)}
+.ai-action-dialog .ai-task-send{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:25px;padding:4px 9px 4px 11px;border-radius:9px;transition:filter .16s,transform .16s;box-shadow:inset 0 1px 0 #ffffff15,0 2px 4px #00000006}
+.ai-task-send svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;transition:transform .18s}
+.ai-task-send:hover:enabled svg{transform:translateX(2px)}
+.ai-task-send:active:enabled{transform:scale(.98)}
+.ai-task-send.is-sending svg{opacity:.45}
+.ai-action-dialog .targets-close:hover{color:var(--text)!important;background:color-mix(in srgb,var(--text) 4%,var(--surface))!important}
+.ai-task-sent .ai-task-objective{color:color-mix(in srgb,var(--text) 56%,var(--surface))}
+@media(prefers-reduced-motion:reduce){.ai-action-dialog .targets-field,.ai-action-dialog textarea,.ai-task-send,.ai-task-send svg,.ai-action-dialog footer .ai-action-new-chat{transition:none}.ai-task-send:hover:enabled svg,.ai-task-send:active:enabled{transform:none}}
+
+/* Let the input wrapper own its edge; the textarea only supplies content. */
+.ai-action-dialog .targets-field{display:block;border:1px solid color-mix(in srgb,var(--text) 8%,var(--surface));border-radius:10px;overflow:hidden;box-shadow:none;background:color-mix(in srgb,var(--text) 2%,var(--surface));transition:border-color .18s,background .18s}
+.ai-action-dialog .targets-field:focus-within{border-color:color-mix(in srgb,var(--text) 22%,var(--surface));background:var(--surface);box-shadow:none}
+.ai-action-dialog .targets-field textarea,.ai-action-dialog .targets-field textarea:focus{display:block;box-sizing:border-box;width:100%;margin:0;border:0;border-radius:0;outline:none;box-shadow:none;background:transparent}
+.ai-task-surface,.ai-action-dialog:not(.is-preview){border:1px solid color-mix(in srgb,var(--text) 11%,var(--surface));box-shadow:0 1px 3px #00000004,0 8px 24px #0000000b,0 20px 46px #00000005}
+.ai-action-dialog.is-preview{border-color:color-mix(in srgb,var(--text) 9%,var(--surface));box-shadow:0 2px 6px #00000004,0 12px 30px #0000000d}
+@media(prefers-reduced-motion:reduce){.ai-action-dialog .targets-field{transition:none}}
+
+.ai-task-sent{position:relative;padding-top:26px}
+.ai-task-run-status{position:absolute;right:12px;top:8px;display:flex;align-items:center;gap:5px;font-size:9px;line-height:12px;color:var(--text-dim);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ai-task-run-status.is-running::before{content:'';width:4px;height:4px;border-radius:50%;background:var(--accent);animation:fc-breathe 1.8s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){.ai-task-run-status.is-running::before{animation:none}}
+
+.ai-action-dialog .ai-action-new-chat{cursor:default}
+.ai-action-dialog .ai-action-new-chat:hover{background:transparent}
+.ai-action-dialog .ai-action-new-chat input{cursor:pointer}
+
+.ai-task-sent{padding-top:10px}
+.ai-task-heading{gap:6px}
+.ai-task-heading .ai-task-run-status{position:static;margin-left:auto;flex-shrink:0;font-size:8px;line-height:16px}
+.ai-task-heading .ai-workflow-binding{flex:0 1 auto;min-width:0}

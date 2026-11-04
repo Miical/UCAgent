@@ -1,5 +1,10 @@
 # Curated menu entries, displayed in file order. Execution lives in workflow YAML.
 workflows:
+  - id: generate-testcase
+    name: 新增测试用例
+    description: 分析现有验证环境、编写用例并登记源码绑定
+    workflow: flowcanvas:generate-testcase
+    enabled: true
   - id: rtl-summary
     name: RTL 功能简述
     description: 阅读 RTL，简要总结设计功能

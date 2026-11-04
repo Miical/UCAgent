@@ -99,7 +99,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     host.querySelector('.coverage-shared-runs').textContent='累计 '+runs+' 次';
     menu.querySelector('button').disabled=!runs;
   }
-  function modal(title){const dialog=el('dialog','targets-dialog');const heading=el('header');heading.append(el('strong','',title),button('×',()=>dialog.close(),'targets-close'));const content=el('div','targets-dialog-content');dialog.append(heading,content);document.body.append(dialog);dialog.addEventListener('close',()=>dialog.remove());dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});dialog.showModal();return {dialog,content};}
+  function modal(title,floating=false){const dialog=el('dialog','targets-dialog');const heading=el('header');heading.append(el('strong','',title),button('×',()=>dialog.close(),'targets-close'));const content=el('div','targets-dialog-content');dialog.append(heading,content);document.body.append(dialog);dialog.addEventListener('close',()=>dialog.remove());dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});if(floating)dialog.show();else dialog.showModal();return {dialog,content};}
   function field(parent,label,value='',multi=false){const wrapper=el('label','targets-field');wrapper.append(el('span','',label));const input=el(multi?'textarea':'input');input.value=value;if(multi)input.rows=3;wrapper.append(input);parent.append(wrapper);return input;}
   async function source(binding){
     const {dialog,content}=modal('源码 · '+binding.file);dialog.classList.add('targets-source-dialog');content.textContent='正在读取并校验…';
@@ -133,6 +133,62 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     const error=el('p','targets-error');content.append(error);
     const save=button('保存',async()=>{save.disabled=true;try{const values={description:desc.value};if(condition)Object.assign(values,{condition:condition.value,expected:expected.value});if(bugMode)Object.assign(values,{actual:actual.value,evidence:evidence.value,status:bugStatus.value,severity:severity.value});await api(node?{operation:'update',target_id:node.id,expected_revision:data.revision,values:{...values,name:name.value}}:{operation:'create',kind,parent,name:name.value,values,expected_revision:data.revision});if(parent)opened.add(parent);dialog.close();await refresh();}catch(e){error.textContent=e.message;save.disabled=false;}} ,'targets-primary');content.append(save);name.focus();
   }
+  function newCaseTask(anchor,preview=false){
+    if(document.querySelector('.ai-action-dialog'))return;
+    const previousFocus=document.activeElement;
+    const {dialog,content}=modal('新增测试用例',true);dialog.classList.add('ai-action-dialog','ai-task-surface');dialog.classList.toggle('is-preview',preview);
+    let leaveTimer,closeTimer;
+    const enter=()=>{clearTimeout(leaveTimer);clearTimeout(closeTimer);dialog.classList.remove('is-leaving');};
+    const pin=()=>{enter();dialog.classList.remove('is-preview');};dialog.pinTask=pin;
+    const leave=()=>{clearTimeout(leaveTimer);leaveTimer=setTimeout(()=>{if(dialog.classList.contains('is-preview')){dialog.classList.add('is-leaving');closeTimer=setTimeout(()=>dialog.close(),140);}},160);};
+    dialog.addEventListener('click',pin);dialog.addEventListener('mouseenter',enter);dialog.addEventListener('mouseleave',leave);
+    anchor.addEventListener('mouseleave',leave);anchor.addEventListener('mouseenter',enter);
+    const outside=event=>{if(!dialog.contains(event.target)&&!anchor.contains(event.target))dialog.close();};
+    document.addEventListener('pointerdown',outside);
+    dialog.addEventListener('close',()=>{clearTimeout(leaveTimer);clearTimeout(closeTimer);anchor.removeEventListener('mouseleave',leave);anchor.removeEventListener('mouseenter',enter);document.removeEventListener('pointerdown',outside);});
+    content.append(el('p','ai-task-objective','生成可运行用例，补齐说明与源码绑定。'));
+    const workflowBadge=el('span','ai-workflow-binding','◇ 新增测试用例');
+    dialog.querySelector('header strong').after(workflowBadge);
+    const note=field(content,'想验证什么？（可选）','',true);note.placeholder='补充要求，例如读写边界场景…';note.setAttribute('aria-label','具体要求（可选）');note.oninput=()=>{note.style.height='36px';note.style.height=Math.min(100,Math.max(36,note.scrollHeight))+'px';};
+    const choice=el('input');choice.type='checkbox';choice.setAttribute('role','switch');
+    const newChat=el('div','ai-action-new-chat');choice.setAttribute('aria-label','新对话');newChat.append(choice,el('span','','新对话'));
+    const error=el('p','targets-error');error.setAttribute('role','alert');const start=button('',async()=>{
+      start.disabled=true;start.classList.add('is-sending');start.querySelector('span').textContent='发送中';error.textContent='';
+      try{
+        if(!window.FlowCanvasAI)throw Error('对话服务尚未就绪，请稍后重试');
+        const text='【AI任务：新增测试用例】\n绑定工作流：generate-testcase。请先调用 run_workflow 启动已附加的工作流，再按阶段执行。\n请为当前项目新增一个可独立运行的测试用例。项目：'+project.path+'。用户补充：'+(note.value.trim()||'请检查已有测试和验证目标，选择尚未充分验证且不重复的场景。')+'。先调用 test_cases(operation=guide) 读取规范，检查现有用例、目标和运行模板；复用现有驱动，必要时补齐用例所需基础设施。实现后通过 test_cases 工具保存用例名称、具体说明和源码绑定，不能只给方案。不要修改 RTL，不要自动启动仿真；结束时汇报新增文件与未验证事项。';
+        const result=await window.FlowCanvasAI.startCase({text,current:!choice.checked,project,requirements:note.value.trim()});
+        const task={id:result.id,before:(data?.targets||[]).map(n=>n.id)};localStorage.setItem('fc-case-task:'+project.id,JSON.stringify(task));
+        dialog.close();await updateCaseTask();
+      }catch(e){error.textContent=e.message;start.disabled=false;start.classList.remove('is-sending');start.querySelector('span').textContent='发送任务';}
+    },'targets-primary');
+    start.classList.add('ai-task-send');start.append(el('span','','发送任务'));
+    const arrow=document.createElementNS('http://www.w3.org/2000/svg','svg');arrow.setAttribute('viewBox','0 0 16 16');arrow.setAttribute('aria-hidden','true');const path=document.createElementNS(arrow.namespaceURI,'path');path.setAttribute('d','M3 8h10M9 4l4 4-4 4');arrow.append(path);start.append(arrow);
+    const footer=el('footer');footer.append(newChat,start);content.append(error,footer);
+    const position=()=>{const rect=anchor.getBoundingClientRect();dialog.style.margin='0';dialog.style.left=Math.max(12,Math.min(rect.right+10,innerWidth-dialog.offsetWidth-12))+'px';dialog.style.top=Math.max(12,Math.min(rect.top-8,innerHeight-dialog.offsetHeight-12))+'px';};
+    position();requestAnimationFrame(()=>dialog.classList.add('is-visible'));
+    window.addEventListener('resize',position);dialog.addEventListener('close',()=>window.removeEventListener('resize',position));
+    if(preview)previousFocus?.focus({preventScroll:true});else note.focus();
+  }
+  let taskChecking=false;
+  async function updateCaseTask(){
+    if(!caseMode||!project||!panel||taskChecking)return;
+    const bar=panel.querySelector('.ai-case-task');if(!bar)return;
+    let task;try{task=JSON.parse(localStorage.getItem('fc-case-task:'+project.id)||'null');}catch{}
+    if(!task){bar.hidden=true;return;}taskChecking=true;
+    try{
+      const response=await fetch('/api/chat/sessions/'+encodeURIComponent(task.id));
+      if(response.status===404){localStorage.removeItem('fc-case-task:'+project.id);bar.hidden=true;return;}
+      if(!response.ok)return;const session=await response.json();
+      const running=['starting','running','stopping'].includes(session.status);
+      const added=(data?.targets||[]).filter(n=>!task.before.includes(n.id));
+      bar.hidden=false;bar.classList.toggle('is-running',running);
+      const label=bar.querySelector('button');label.textContent=running?'正在生成测试用例 · 查看过程':added.length?'已新增 '+added.length+' 个用例 · 查看对话':'任务已停止 · 查看结果';label.onclick=()=>window.FlowCanvasAI?.open(task.id);
+      if(!running&&!task.finished){task.finished=true;localStorage.setItem('fc-case-task:'+project.id,JSON.stringify(task));await refresh();
+        for(const card of panel.querySelectorAll('[data-target-id]'))if(!task.before.includes(card.dataset.targetId))card.classList.add('ai-case-new');
+      }
+    }catch{}finally{taskChecking=false;}
+  }
   function importer(){
     if(!data)return;
     const {dialog,content}=modal('导入源码定义');content.append(el('p','targets-muted','选择项目内的 SV/UVM 或 Python 源文件。先预览，再导入；导入会在对应定义前插入稳定 ID 注释。'));
@@ -162,7 +218,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     for(const n of data.targets){if(!query||[n.name,n.description,n.id,...n.bindings.map(b=>b.file)].join(' ').toLowerCase().includes(query)){let current=n;while(current){visible.add(current.id);current=byId.get(current.parent);}}}
     function card(node,depth){
       const report=data.reports[node.id]||{status:'planned',bindings:[]};const children=data.targets.filter(n=>n.parent===node.id&&visible.has(n.id));
-      const wrapper=el('article','target-card target-'+node.kind);const head=button('',()=>{
+      const wrapper=el('article','target-card target-'+node.kind);wrapper.dataset.targetId=node.id;const head=button('',()=>{
         selectedTarget=node.id;
         for(const h of panel.querySelectorAll('.target-header.is-selected'))h.classList.remove('is-selected');
         header.classList.add('is-selected');
@@ -276,7 +332,10 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     search.onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();search.value='';query='';if(data)render();}else if(event.key==='ArrowDown'){event.preventDefault();panel.querySelector('.target-card-head')?.focus();}};
     document.addEventListener('keydown',event=>{if(active&&event.key==='/'&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.target.closest('input,textarea,select,[contenteditable="true"],dialog')){event.preventDefault();search.focus();}});
     toolbar.append(search);
+    if(caseMode){const add=button('',()=>newCaseTask(add),'ai-case-add');add.title='AI 新增测试用例';add.setAttribute('aria-label','AI 新增测试用例');add.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="case-ai-spark" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#4285ff"/><stop offset=".55" stop-color="#9164ec"/><stop offset="1" stop-color="#df77ba"/></linearGradient></defs><path d="M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M8 14h8m-4-4v8"/><path class="ai-colored-spark" d="M18 2l1.2 3.8L23 7l-3.8 1.2L18 12l-1.2-3.8L13 7l3.8-1.2Z" fill="url(#case-ai-spark)" stroke="url(#case-ai-spark)"/></svg>';let previewTimer;add.onmouseenter=()=>{clearTimeout(previewTimer);previewTimer=setTimeout(()=>{if(add.matches(':hover'))newCaseTask(add,true);},220);};add.onmouseleave=()=>clearTimeout(previewTimer);add.onclick=()=>{clearTimeout(previewTimer);const card=document.querySelector('.ai-action-dialog');if(card)card.pinTask();else newCaseTask(add);};toolbar.append(add);}
+
     const content=[toolbar,el('div','targets-summary'),el('p','targets-error'),el('div','targets-diagnostics'),el('div','targets-tree')];
+    if(caseMode){const bar=el('div','ai-case-task');bar.hidden=true;bar.append(button('',()=>{}),button('×',()=>{localStorage.removeItem('fc-case-task:'+project.id);bar.hidden=true;},'ai-task-dismiss'));bar.lastChild.title='隐藏任务提示';content.splice(1,0,bar);setInterval(()=>{if(active&&!document.hidden)updateCaseTask();},2000);}
     if(!caseMode&&!bugMode){
       panel.classList.add('coverage-tabs-panel');
       tabBar=el('nav','target-coverage-tabs');tabBar.setAttribute('role','tablist');tabBar.setAttribute('aria-label','覆盖率类型');

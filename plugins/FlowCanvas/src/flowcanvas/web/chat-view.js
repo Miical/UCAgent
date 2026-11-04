@@ -31,6 +31,14 @@ export class ConversationView {
   /** Refresh only time labels; streaming content and selection remain untouched. */
   tick(){
     for(const entry of this.nodes.values()){
+      if(entry.taskStatus){
+        const lastUser=[...(this.session?.items||[])].reverse().find(item=>item.kind==='user'&&!item.steered);
+        const run=entry.item.task_run||(lastUser?.id===entry.item.id?this.session:null);
+        const running=run&&['starting','running','stopping'].includes(run.status);
+        const state=running?(run.status==='stopping'?'停止中':'运行中'):({completed:'已完成',error:'失败',failed:'失败',interrupted:'已停止'}[run?.status]||'已发送');
+        entry.taskStatus.textContent=[run?.started_at?elapsed(run.started_at,run.ended_at):'',state].filter(Boolean).join(' · ');
+        entry.taskStatus.classList.toggle('is-running',!!running);
+      }
       if(entry.time)entry.time.textContent=elapsed(entry.item.started_at,entry.item.ended_at||(!runningStatuses.has(entry.item.status)?this.session?.ended_at:null));
     }
     if(this.liveTime&&this.session)this.liveTime.textContent=elapsed(this.session.started_at,this.session.ended_at);
@@ -143,7 +151,15 @@ export class ConversationView {
           if(!item.input&&!item.text)entry.content.append(element('span','empty-output',live?'等待工具返回…':'无文本输出'));
         }else if(item.kind!=='reasoning'){
           const follow=entry.content.scrollHeight-entry.content.scrollTop-entry.content.clientHeight<40;
-          markdown(entry.content,item.text||'');
+          const task=item.kind==='user'?item.task_card:null;
+          entry.content.classList.toggle('ai-task-message',!!task);
+          if(task){
+            const card=element('section','ai-task-surface ai-task-sent');
+            const heading=element('div','ai-task-heading');entry.taskStatus=element('span','ai-task-run-status');entry.taskStatus.setAttribute('role','status');heading.append(element('strong','ai-task-title','✦ '+task.title),element('span','ai-workflow-binding','◇ '+task.workflow));
+            heading.append(entry.taskStatus);
+            card.append(heading,element('p','ai-task-objective','生成可运行用例，补齐说明与源码绑定。'),element('p','ai-task-requirements',task.requirements||'根据现有验证目标补充一个测试用例'));
+            entry.content.replaceChildren(card);
+          }else markdown(entry.content,item.text||'');
           if(live&&item.kind==='reasoning'&&follow)entry.content.scrollTop=entry.content.scrollHeight;
         }
       }

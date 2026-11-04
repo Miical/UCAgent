@@ -21,8 +21,17 @@ class DirectWorkflow(WorkflowInput):
 ACTIVE = {'starting', 'running', 'stopping'}
 
 
+class TaskCard(BaseModel):
+    """Display metadata for a user-authored task, never an authorization source."""
+    title: str = Field(max_length=120)
+    workflow: str = Field(max_length=120)
+    project: str = Field(max_length=200)
+    requirements: str = Field(default="", max_length=8000)
+
+
 class Message(BaseModel):
     """A bounded user message and explicit catalog selections."""
+    task_card: TaskCard | None = None
     text: str = Field(min_length=1, max_length=64000)
     quote: str = Field(default='', max_length=64000)
     model: str = Field(min_length=1, max_length=200)
@@ -122,6 +131,15 @@ class ChatService:
         """Atomically persist the UI projection without rewriting native model history."""
         if self.sessions.get(session['id']) is not session:
             return
+        if session.get('ended_at') and session['status'] in {'completed', 'interrupted', 'error', 'failed'}:
+            if (session.get('attachment') or {}).get('task_only') and session.get('task_attachment_started'):
+                session.pop('attachment', None)
+                session.pop('task_attachment_started', None)
+            for item in reversed(session['items']):
+                if item['kind'] == 'user' and not item.get('steered'):
+                    if item.get('task_card'):
+                        item['task_run'] = {'status': session['status'], 'started_at': session.get('started_at'), 'ended_at': session['ended_at']}
+                    break
         if session['status'] == 'completed':
             for item in reversed(session['items']):
                 if item['kind'] == 'user' and not item.get('steered'):
@@ -262,8 +280,10 @@ class ChatService:
                        started_at=time.time(), ended_at=None, speed=message.speed, service_tier=tier)
         if not session['title']:
             session['title'] = message.text.strip()[:40]
+        if (session.get('attachment') or {}).get('task_only'):
+            session['task_attachment_started'] = True
         session['items'].append({'id': uuid.uuid4().hex, 'kind': 'user', 'text': message.text,
-                                 'quote': message.quote, 'status': 'completed', 'started_at': session['started_at']})
+                                 'task_card': message.task_card.model_dump() if message.task_card else None, 'quote': message.quote, 'status': 'completed', 'started_at': session['started_at']})
         self.launching.add(session['id'])
         self.changed(session)
         self.save(session)
@@ -561,7 +581,7 @@ def routes(service):
             finally:
                 service.steering.discard(identity)
             session['items'].append({'id': uuid.uuid4().hex, 'kind': 'user', 'text': message.text,
-                                     'quote': message.quote, 'steered': True, 'status': 'completed',
+                                     'task_card': message.task_card.model_dump() if message.task_card else None, 'quote': message.quote, 'steered': True, 'status': 'completed',
                                      'started_at': time.time()})
         queue.remove(queued)
         if action == 'send':

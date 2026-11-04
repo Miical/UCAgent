@@ -1,0 +1,45 @@
+# Test authoring uses the conversation project and records reviewable evidence.
+template: null
+guide_doc:
+  enable: false
+skill:
+  use_skill: false
+  general_skill_list: []
+mission:
+  name: 新增测试用例
+  prompt:
+    system: |
+      在用户指定的项目中新增可独立运行的测试用例。首先读取 test_cases 的 guide，检查已有用例、验证目标和驱动，避免重复。
+      项目路径及具体要求以用户任务消息为准，不把工作流隔离目录当成项目。
+      复用已有驱动，按需补齐基础设施；不修改 RTL，不自动启动仿真。
+      编写真实用例代码，通过 test_cases 登记具体说明和源码绑定。
+      先将目标、复用方案及预定修改文件写入 {OUT}/testcase_plan.md。
+      每阶段完成后记录 SetCurrentStageJournal 并调用 Complete；不要把计划当作完成。
+      将文件路径、登记的用例 ID、源码绑定、未验证事项记录在 {OUT}/testcase_result.md，完成后调用 Exit。
+    tips:
+      always: []
+      random: []
+tools:
+  selected_tools: [ReadTextFile, EditTextFile, CurrentTips, Status, SetCurrentStageJournal, Complete, Exit]
+write_dirs: ["{OUT}"]
+stage:
+  - name: inspect_test_environment
+    desc: 分析目标与现有验证环境
+    task: []
+    reference_files: []
+    output_files: ["{OUT}/testcase_plan.md"]
+    checker:
+      - name: plan_record
+        clss: UnityChipCheckerMarkdownFileFormat
+        args:
+          markdown_file_list: "{OUT}/testcase_plan.md"
+  - name: implement_and_register_testcase
+    desc: 编写用例并登记源码绑定
+    task: []
+    reference_files: ["{OUT}/testcase_plan.md"]
+    output_files: ["{OUT}/testcase_result.md"]
+    checker:
+      - name: result_record
+        clss: UnityChipCheckerMarkdownFileFormat
+        args:
+          markdown_file_list: "{OUT}/testcase_result.md"
