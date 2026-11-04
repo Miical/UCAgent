@@ -633,7 +633,7 @@ window.FlowCanvasAI={
   async startCase({text,current=true,project,requirements,design=null}){
     const model=$('model').value,effort=$('effort').value;
     const caseAction=['run-testcase','delete-testcase'].includes(design?.kind);
-    const taskTitle=design?.kind==='run-testcase'?'运行测试用例':design?.kind==='delete-testcase'?'删除测试用例':design?.kind==='line-coverage'?'分析行覆盖率':design?'解释设计':'新增测试用例';
+    const taskTitle=design?.kind==='functional-coverage'?'分析功能覆盖率':design?.kind==='run-testcase'?'运行测试用例':design?.kind==='delete-testcase'?'删除测试用例':design?.kind==='line-coverage'?'分析行覆盖率':design?'解释设计':'新增测试用例';
     if(!model)throw Error('请先选择可用模型');
     let owner=session;
     if(current){

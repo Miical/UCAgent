@@ -1287,3 +1287,78 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
   .testcase-panel .target-case:has(:focus-visible)>.target-header>.target-title-sources .target-title-source{opacity:.75;pointer-events:auto}
   .testcase-panel .target-case>.target-header>.target-title-sources .target-title-source:hover{opacity:1}
 }
+
+/* Functional coverage shares the compact AI surface while retaining its hierarchy. */
+.target-goal-pane .targets-tree{--goal-actions-width:48px;--goal-column-gap:8px;padding-top:6px}
+.target-goal-pane .targets-tree .target-card{position:relative;isolation:isolate;border:0;border-radius:8px;margin:0 0 2px;box-shadow:none;background:transparent}
+.target-goal-pane .targets-tree .target-card:has(>.target-card-body),
+.target-goal-pane .targets-tree .target-card:hover:not(:has(.target-card:hover)){
+  background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 3%,var(--surface)),var(--surface) 65%);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text-dim) 16%,var(--surface)),0 2px 6px #16132b04;
+}
+.target-goal-pane .targets-tree .target-card:has(>.target-card-body){margin-bottom:6px}
+.target-goal-pane .targets-tree>.target-group+.target-group{margin-top:2px}
+.target-goal-pane .target-header{position:relative;min-height:28px;padding-right:6px;border-radius:8px;background:transparent;outline:0}
+.target-goal-pane .target-header:hover,.target-goal-pane .target-header.is-selected,.target-goal-pane .target-header:focus-within{background:transparent;outline:0}
+.target-goal-pane .target-header.is-selected .target-title{color:var(--text)}
+.target-goal-pane .goal-row-heading>.target-card-head{padding:4px 4px 4px 7px;gap:7px}
+.target-goal-pane .target-header .target-kind{font-size:8px;opacity:.65}
+.target-goal-pane .target-header .target-title{font-size:12px;line-height:1.5}
+.target-goal-pane .target-testpoint>.target-header .target-title{font-size:11px}
+.target-goal-pane .target-actions .target-icon-action{width:22px;height:22px;border-radius:4px}
+.target-goal-pane .targets-tree .target-card-body{position:relative;padding:3px 8px 10px 24px}
+.target-goal-pane .target-card-body>p{margin:0 0 4px;padding:0;font-size:11px;line-height:1.55;color:color-mix(in srgb,var(--text) 78%,var(--surface))}
+.target-goal-pane .target-card-body>.case-editable-description.is-empty{color:var(--text-dim);opacity:.6}
+.target-goal-pane .target-card-body>.target-card:first-of-type{margin-top:6px}
+.target-goal-pane .target-card-body>.target-card:last-child>.target-card-body{padding-bottom:10px}
+.target-goal-pane .target-card-body>.case-ai-mark{position:absolute;bottom:8px;left:5px;display:inline-flex;width:15px;height:15px;pointer-events:none}
+.target-goal-pane .case-ai-mark svg{width:15px;height:15px;fill:#8d73cf}
+.target-goal-pane .case-ai-mark .case-ai-satellite{fill:#79a6d7}
+.target-goal-pane .target-actions .case-ai-action:hover:enabled{background:color-mix(in srgb,var(--text) 6%,var(--surface));color:var(--text)}
+.target-goal-pane .target-card:has(>.target-header :focus-visible){outline:2px solid color-mix(in srgb,var(--accent) 50%,var(--surface));outline-offset:-2px}
+@media(hover:hover){
+  .target-goal-pane .target-card>.target-header>.target-header-actions>.target-icon-action{opacity:0;pointer-events:none}
+  .target-goal-pane .target-card>.target-header .target-title-source{opacity:0;pointer-events:none}
+  .target-goal-pane .target-card:hover:not(:has(.target-card:hover))>.target-header>.target-header-actions>.target-icon-action,
+  .target-goal-pane .target-card:has(>.target-header :focus-visible)>.target-header>.target-header-actions>.target-icon-action{opacity:1;pointer-events:auto}
+  .target-goal-pane .target-card:hover:not(:has(.target-card:hover))>.target-header .target-title-source,
+  .target-goal-pane .target-card:has(>.target-header :focus-visible)>.target-header .target-title-source{opacity:.75;pointer-events:auto}
+}
+
+/* A functional group is one surface; descendants remain compact tree rows. */
+.target-goal-pane .targets-tree .target-card-body>.target-card,
+.target-goal-pane .targets-tree .target-card-body>.target-card:has(>.target-card-body),
+.target-goal-pane .targets-tree .target-card-body>.target-card:hover:not(:has(.target-card:hover)){
+  border:0;border-radius:4px;background:transparent;box-shadow:none;margin:0;
+}
+.target-goal-pane .targets-tree .target-card-body>.target-card:first-of-type{margin-top:3px}
+.target-goal-pane .target-card-body>.target-card>.target-header:hover,
+.target-goal-pane .target-card-body>.target-card>.target-header.is-selected{background:color-mix(in srgb,var(--accent) 5%,var(--surface));border-radius:4px}
+.target-goal-pane .targets-tree .target-card-body>.target-card>.target-card-body{padding-bottom:4px}
+.target-goal-pane .target-card-body>.target-card>.target-card-body>.case-ai-mark{display:none}
+
+/* Group and point are separate surfaces, not concentric containers. */
+.target-goal-pane .targets-tree>.target-group,
+.target-goal-pane .targets-tree>.target-group:has(>.target-card-body),
+.target-goal-pane .targets-tree>.target-group:hover:not(:has(.target-card:hover)){
+  background:transparent;box-shadow:none;overflow:visible;
+}
+.target-goal-pane .targets-tree>.target-group>.target-header{border-radius:8px}
+.target-goal-pane .targets-tree>.target-group:hover>.target-header,
+.target-goal-pane .targets-tree>.target-group:has(>.target-card-body)>.target-header{
+  background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 3%,var(--surface)),var(--surface) 65%);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text-dim) 16%,var(--surface));
+}
+.target-goal-pane .targets-tree>.target-group>.target-card-body{padding:5px 0 6px 14px}
+.target-goal-pane .targets-tree>.target-group>.target-card-body>.case-ai-mark{display:none}
+.target-goal-pane .targets-tree .target-group>.target-card-body>.target-point{border-radius:8px;margin:3px 0;overflow:hidden}
+.target-goal-pane .targets-tree .target-group>.target-card-body>.target-point:hover,
+.target-goal-pane .targets-tree .target-group>.target-card-body>.target-point:has(>.target-card-body){
+  background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 3%,var(--surface)),var(--surface) 65%);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text-dim) 16%,var(--surface));
+}
+.target-goal-pane .target-group>.target-card-body>.target-point>.target-header{background:transparent;border-radius:8px}
+.target-goal-pane .target-group>.target-card-body>.target-point>.target-card-body{padding-bottom:10px}
+.target-goal-pane .target-group>.target-card-body>.target-point>.target-card-body>.case-ai-mark{display:inline-flex}
+
+.testcase-panel .case-editable-description.is-locked{cursor:default}
