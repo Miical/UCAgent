@@ -1,7 +1,14 @@
+import {openLocalSource} from './markdown-renderer.js';
 /* Embed the source-built viewer and supply the current project view.json URL. */
 (()=>{
   const host=document.getElementById('project-content');
   let panel=null,project=null,loading=false;
+  window.addEventListener('message',event=>{
+    if(event.origin!==location.origin||event.source!==panel?.querySelector('iframe')?.contentWindow||event.data?.type!=='flowcanvas-open-source')return;
+    const {path,line,end}=event.data;
+    if(typeof path!=='string'||!Number.isInteger(line)||line<1)return;
+    openLocalSource({path,line,end:Number.isInteger(end)?Math.max(line,end):line});
+  });
   async function load(){
     if(loading||!project)return;loading=true;
     const status=panel.querySelector('.rtl-view-status'),frame=panel.querySelector('iframe');

@@ -157,7 +157,7 @@ export class ConversationView {
             const card=element('section','ai-task-surface ai-task-sent');
             const heading=element('div','ai-task-heading');entry.taskStatus=element('span','ai-task-run-status');entry.taskStatus.setAttribute('role','status');heading.append(element('strong','ai-task-title','✦ '+task.title));if(task.workflow&&task.title!=='解释设计')heading.append(element('span','ai-workflow-binding','◇ '+task.workflow));
             heading.append(entry.taskStatus);
-            card.append(heading,element('p','ai-task-objective',task.title==='解释设计'?'阅读源码，解释模块功能、接口与内部逻辑。':'生成可运行用例，补齐说明与源码绑定。'),element('p','ai-task-requirements',task.requirements||'根据现有验证目标补充一个测试用例'));
+            card.append(heading,element('p','ai-task-objective',task.title==='分析行覆盖率'?'分析覆盖缺口，定位未覆盖代码并建议补测场景。':task.title==='解释设计'?'阅读源码，解释模块功能、接口与内部逻辑。':'生成可运行用例，补齐说明与源码绑定。'),element('p','ai-task-requirements',task.requirements||'根据现有验证目标补充一个测试用例'));
             entry.content.replaceChildren(card);
           }else markdown(entry.content,item.text||'');
           if(live&&item.kind==='reasoning'&&follow)entry.content.scrollTop=entry.content.scrollHeight;

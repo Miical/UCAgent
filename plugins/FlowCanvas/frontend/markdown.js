@@ -68,3 +68,5 @@ export function markdown(target,text) {
   }
   [...target.querySelectorAll('pre,.markdown-table')].forEach((node,index)=>{node.scrollLeft=offsets[index]||0;});
 }
+
+export {openLocalSource} from './local-source.js';

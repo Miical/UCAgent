@@ -589,7 +589,8 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 .workflow-run{height:0;min-height:0;padding:0;overflow:visible;pointer-events:none;}
 .workflow-run .run-track{width:max-content;max-width:100%;box-sizing:border-box;pointer-events:auto;}
 .workflow-run .run-scroll{pointer-events:auto;}
-.workflow-run:not([hidden])+#conversation{margin-top:0;}
+/* Leave the first message below the 90px capsule fade, including scroll-to-message actions. */
+.workflow-run:not([hidden])+#conversation{margin-top:0;padding-top:102px;scroll-padding-top:102px;}
 
 .run-capsule.same-conversation{border-color:color-mix(in srgb,var(--accent) 30%,var(--border));}
 

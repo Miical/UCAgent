@@ -15,6 +15,7 @@
             <span class="tree-inst" :title="row.path">{{ row.path.split('.').at(-1) }}</span>
             <button type="button" class="coverage-source-link" :title="'查看 ' + row.module + ' 源码'" :aria-label="'查看 ' + row.module + ' 源码'" @click.stop="openSource(row)" @dblclick.stop @keydown.enter.stop @keydown.space.stop>{{ sourceLocations[row.path] || row.files?.[0]?.path?.split('/').at(-1) || row.module }}</button>
           </span>
+          <button class="tree-ai-explain" type="button" :aria-label="'AI 分析行覆盖率 '+row.module" title="AI 分析行覆盖率" @mouseenter="analyzeCoverage(row,$event,'preview')" @mouseleave="analyzeCoverage(row,$event,'leave')" @click.stop="analyzeCoverage(row,$event,'pin')" @dblclick.stop @keydown.stop><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6M7 9h4M7 13h8M7 17h5"/><path class="design-ai-spark" d="m18 1 1.4 4.6L24 7l-4.6 1.4L18 13l-1.4-4.6L12 7l4.6-1.4Z"/></svg></button>
           <span class="coverage-tree-values">
             <span v-for="(metric,index) in [row.subtree,row]" :key="index" class="line-coverage-score" :title="(index ? '自身' : '含子模块') + '：' + metric.covered + '/' + metric.total + ' 覆盖点'">
               <span class="line-coverage-percent">{{ percentage(metric) }}</span><small>{{ metric.covered }}/{{ metric.total }}</small>
@@ -37,6 +38,16 @@
 import { computed, ref, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useViewerStore } from '../store.js'
 const store = useViewerStore()
+/** Send cloneable coverage context to the shared host task card. */
+function analyzeCoverage(row,event,action){
+  const rect=event.currentTarget.getBoundingClientRect()
+  const node=store.nodesById.get(row.path)
+  const context={type:'flowcanvas-explain-design',kind:'line-coverage',action,instance:row.path,module:row.module,
+    source:node?.source||null,coverage:{self:{covered:row.covered,total:row.total},subtree:row.subtree,
+      instances:coverageRows.value.filter(item=>item.path===row.path||item.path.startsWith(row.path+'.')),
+      report:'.flowcanvas/coverage'},rect:{left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}}
+  window.parent.postMessage(JSON.parse(JSON.stringify(context)),location.origin)
+}
 const projectCoverage = computed(()=>store.projectCoverageState)
 const coverageError = computed(()=>store.projectCoverageError)
 const coverageUrl = (() => {
@@ -187,4 +198,19 @@ onBeforeUnmount(() => { clearTimeout(toggleTimer); sourceRequest++ })
 .line-coverage-search::placeholder{color:var(--fg-muted);opacity:.8}
 .line-coverage-summary>span{font-family:inherit;font-size:9px;font-weight:400;color:color-mix(in srgb,var(--fg) 65%,var(--panel))}
 .line-coverage-summary .line-coverage-clear{padding:2px}
+</style>
+
+<style scoped>
+/* Keep actions in their own reserved slot so the two metric columns stay aligned. */
+.coverage-tree-row{padding-right:4px}
+.coverage-row-name .tree-inst{flex:0 1 auto}
+.coverage-source-link{flex:0 1 auto;min-width:0;max-width:45%;overflow:hidden;text-overflow:ellipsis}
+.tree-ai-explain{display:grid;place-items:center;flex:0 0 20px;width:20px;height:20px;margin:0 2px;padding:0;border:0;border-radius:4px;background:transparent;color:var(--fg-muted);opacity:0;cursor:pointer;transition:opacity .15s}
+.tree-ai-explain svg{display:block;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;overflow:visible}
+.tree-ai-explain .design-ai-spark{fill:#9466e8;stroke:#6e83f4;stroke-width:.7;transform-box:fill-box;transform-origin:center;transition:transform .25s}
+.tree-row:hover .tree-ai-explain,.tree-row:focus-within .tree-ai-explain{opacity:1}
+.tree-ai-explain:hover{color:var(--accent)}
+.tree-ai-explain:hover .design-ai-spark{transform:rotate(10deg) scale(1.1)}
+@media(hover:none){.tree-ai-explain{opacity:1}}
+@media(prefers-reduced-motion:reduce){.tree-ai-explain,.tree-ai-explain .design-ai-spark{transition:none}}
 </style>

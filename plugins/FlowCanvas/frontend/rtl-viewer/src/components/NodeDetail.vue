@@ -1,60 +1,14 @@
 <template>
   <section class="node-detail" v-if="node">
-    <h3 :title="node.id">
-      <!-- The path text is wrapped so consumers (and the e2e suite)
-           can read the instance path without picking the copy glyph
-           out of the heading's text content. -->
-      <span class="inst-path">
-        <span v-for="(segment, i) in pathSegments" :key="i">
-          <span v-if="i > 0" class="sep">.</span>{{ segment }}<wbr />
-        </span>
-      </span>
-      <button
-        type="button"
-        class="copy-btn"
-        :title="`复制实例路径：${node.id}`"
-        aria-label="复制实例路径"
-        @click="copy('path', node.id)"
-      >{{ copied === 'path' ? '✓' : '📋' }}</button>
-    </h3>
-    <div class="nav-actions">
-      <button
-        type="button"
-        @click="store.descend(node.id)"
-        :disabled="!store.selectedHasChildren"
-        :title="store.selectedHasChildren ? '仅查看此模块及子模块' : '叶模块，没有子模块'"
-      >进入模块</button>
-      <button
-        type="button"
-        @click="store.ascend()"
-        :disabled="!store.rootInstancePath"
-        title="返回上一级（快捷键：u）"
-      >上一级</button>
-      <button
-        type="button"
-        @click="store.goToTop()"
-        :disabled="!store.rootInstancePath"
-        title="返回设计顶层"
-      >顶层</button>
+    <div class="node-summary">
+      <h3 :title="node.id + ' · 模块：' + node.module"><span class="inst-path">{{ node.id }}</span></h3>
+      <div v-if="hasOpenable" class="open-target-row">
+        <button type="button" class="open-target" :title="'查看源码 · ' + absoluteTargetText" @click="openSource">{{ openTargetText }}</button>
+      </div>
+      <button class="detail-ai-explain" type="button" :aria-label="'AI 解释设计 '+node.module" title="AI 解释设计" @mouseenter="explainDesign(node,$event,'preview')" @mouseleave="explainDesign(node,$event,'leave')" @click.stop="explainDesign(node,$event,'pin')" @dblclick.stop @keydown.stop><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6M7 9h4M7 13h8M7 17h5"/><path class="design-ai-spark" d="m18 1 1.4 4.6L24 7l-4.6 1.4L18 13l-1.4-4.6L12 7l4.6-1.4Z"/></svg></button>
     </div>
-    <!-- Source location. Shown project-relative (store.sourceRoot, see
-         sourcePaths.js) because the absolute path was four wrapped
-         lines of which the leading two thirds were identical for every
-         node; the absolute path is the title and the copy button's
-         payload. -->
-    <div v-if="hasOpenable" class="open-target-row">
-      <code class="open-target" :title="absoluteTargetText || openTitle">{{ openTargetText }}</code>
-      <button
-        v-if="absoluteTargetText"
-        type="button"
-        class="copy-btn"
-        :title="`复制绝对路径：${absoluteTargetText}`"
-        aria-label="复制源码绝对路径"
-        @click="copy('file', absoluteTargetText)"
-      >{{ copied === 'file' ? '✓' : '📋' }}</button>
-    </div>
+    <div v-if="node.module !== node.id.split('.').at(-1)" class="node-module-caption" :title="'模块：' + node.module">{{ node.module }}</div>
     <dl>
-      <dt>模块</dt><dd>{{ node.module }}</dd>
       <dt v-if="node.is_blackbox">状态</dt>
       <dd v-if="node.is_blackbox" class="blackbox">黑盒模块</dd>
       <template v-if="hasParameters">
@@ -69,7 +23,7 @@
       </template>
       <template v-for="group in portGroups" :key="group.dir">
         <dt>端口 — {{ group.label }} ({{ group.ports.length }})</dt>
-        <dd>
+        <dd class="ports-scroll" tabindex="0" :aria-label="group.label + '端口连接表，可横向滚动'">
           <table class="ports-table">
             <tbody>
               <tr v-for="port in group.ports" :key="port.name">
@@ -192,9 +146,8 @@
 // require this component to know about every overlay's payload
 // shape, and stays useful for unknown / future overlays the
 // viewer doesn't have a dedicated renderer for.
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed } from 'vue'
 import { useViewerStore } from '../store.js'
-import { copyText } from '../clipboard.js'
 import { relativeSourcePath } from '../sourcePaths.js'
 import { heatColor } from '../overlays/coverage.js'
 import { covSummaryText, COV_PANE_ROUTE } from '../covData.js'
@@ -204,9 +157,16 @@ import { areaOf, physScope, powerOf } from '../overlays/phys.js'
 import { themeVersion } from '../theme.js'
 import { formatBandwidth as fmtBps } from '../format.js'
 
+/** Ask the host to compose a task using this exact instance and source location. */
+function explainDesign(row,event,action){
+  const rect=event.currentTarget.getBoundingClientRect(),node=store.nodesById.get(row.id)
+  // Pinia source records are reactive proxies; postMessage cannot clone them.
+  const source=node?.source ? JSON.parse(JSON.stringify(node.source)) : null
+  window.parent.postMessage({type:'flowcanvas-explain-design',action,instance:row.id,module:row.module,source,rect:{left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}},location.origin)
+}
+
 const store = useViewerStore()
 const node = computed(() => store.selectedNode)
-const pathSegments = computed(() => (node.value?.id || '').split('.'))
 const hasParameters = computed(
   () => node.value && node.value.parameters && Object.keys(node.value.parameters).length > 0,
 )
@@ -487,15 +447,8 @@ function ifaceTagTitle(port) {
     ? `由 ${ifaceDescriptor(port)} 展开的信号`
     : `未解析的接口端口：${ifaceDescriptor(port)}`
 }
-// Openable when the node has either a structured ``source`` block
-// (preferred — hub path uses (file, line, col)) or just a raw
-// ``link`` URI (offline fallback through the OS).
-const hasOpenable = computed(
-  () => node.value && (node.value.source || node.value.link),
-)
-// Absolute ``file:line`` — what ``open_source`` sends, what the copy
-// button copies, and what the tooltip shows. Falls back to the raw
-// ``link`` URI for nodes with no structured source block.
+// Source links use the host's project file viewer.
+const hasOpenable = computed(() => typeof node.value?.source?.file === 'string')
 const absoluteTargetText = computed(() => {
   const src = node.value && node.value.source
   if (src && typeof src.file === 'string') {
@@ -515,27 +468,12 @@ const openTargetText = computed(() => {
   return (node.value && node.value.link) || ''
 })
 
-// --- copy affordances -----------------------------------------------
-// Two payloads, one flash: the heading copies the INSTANCE PATH (what
-// you paste into ``rb hub send`` or a testbench probe), the source row
-// copies the ABSOLUTE ``file:line`` (what you paste into an editor).
-const COPY_FLASH_MS = 1200
-const copied = ref('')
-let copyFlashTimer = null
-async function copy(which, text) {
-  const ok = await copyText(text)
-  if (!ok) return
-  copied.value = which
-  if (copyFlashTimer) clearTimeout(copyFlashTimer)
-  copyFlashTimer = setTimeout(() => {
-    copied.value = ''
-    copyFlashTimer = null
-  }, COPY_FLASH_MS)
+/** Open the selected source in the host viewer without leaving the design. */
+function openSource(){
+  const source=node.value?.source
+  if(!source?.file)return
+  window.parent.postMessage({type:'flowcanvas-open-source',path:source.file,line:source.start_line||1,end:source.end_line||source.start_line||1},location.origin)
 }
-onBeforeUnmount(() => {
-  if (copyFlashTimer) clearTimeout(copyFlashTimer)
-})
-const openTitle = '源码位置'
 </script>
 
 <style scoped>
@@ -729,8 +667,14 @@ const openTitle = '源码位置'
   font-size: 0.75rem;
   color: var(--accent);
 }
+.ports-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
 .ports-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.78rem;
 }
@@ -745,8 +689,11 @@ const openTitle = '源码位置'
 }
 .port-expr-cell {
   color: var(--fg-muted);
-  word-break: break-all;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
 }
+.ports-table code { white-space: nowrap; word-break: normal; overflow-wrap: normal; }
 .port-expr { color: var(--fg-muted); }
 .port-iface-tag {
   margin-left: 0.5em;
@@ -797,4 +744,52 @@ const openTitle = '源码位置'
   font-size: 0.75rem;
   color: var(--fg-muted);
 }
+</style>
+
+<style scoped>
+/* Match FlowCanvas's quiet outline actions; reserve geometry while copy feedback changes. */
+.node-detail h3{display:flex;align-items:center;gap:6px}
+.inst-path{min-width:0}
+.open-target-row{align-items:center;gap:6px}
+.copy-btn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:4px;margin:0;border:0;border-radius:6px;line-height:1;color:var(--fg-muted);background:transparent}
+.copy-btn svg,.nav-actions svg{display:block;width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.copy-btn:hover,.nav-actions button:hover:enabled{color:var(--fg);background:color-mix(in srgb,var(--fg) 5%,var(--panel))}
+.copy-btn:focus-visible,.nav-actions button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.nav-actions{align-items:center;gap:4px;margin:0 0 8px}
+.nav-actions button{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:27px;padding:4px 7px;border:0;border-radius:6px;background:transparent;color:var(--fg-muted);font:11px/1 system-ui,sans-serif;white-space:nowrap}
+.nav-actions button:disabled{opacity:.35;cursor:default}
+</style>
+
+<style scoped>
+/* Compact identity bar: metadata yields space before the fixed navigation controls. */
+.node-summary{display:flex;align-items:center;gap:8px;min-width:0;margin-bottom:6px}
+.node-summary h3{order:0;flex:0 1 auto;min-width:45px;margin:0;gap:2px;font-size:12px;line-height:24px;white-space:nowrap}
+.node-summary .inst-path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal}
+.node-summary .inst-path wbr{display:none}
+.node-summary .open-target-row{order:1;flex:0 1 auto;min-width:0;flex-wrap:nowrap;margin:0;gap:2px}
+.node-summary .open-target{font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;word-break:normal}
+.node-summary .copy-btn{width:20px;height:22px;padding:3px;opacity:0;transition:opacity .15s}
+.node-summary:hover .copy-btn,.node-summary:focus-within .copy-btn{opacity:1}
+.node-summary .nav-actions{order:2;flex:none;flex-wrap:nowrap;margin:0 0 0 auto;gap:1px}
+.node-summary .nav-actions button{width:24px;height:24px;padding:4px}
+.node-summary .nav-actions button span{display:none}
+.node-module-caption{font:10px/1.5 var(--font-mono);color:var(--fg-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:6px}
+.node-detail dl{margin-top:4px}
+@media(hover:none){.node-summary .copy-btn{opacity:1}}
+</style>
+
+<style scoped>
+.node-summary .open-target{border:0;background:transparent;padding:2px 0;color:var(--fg-muted);font:10px/1.5 var(--font-mono);cursor:pointer;text-align:left}
+.node-summary .open-target:hover{color:var(--accent);text-decoration:underline;text-underline-offset:3px}
+.node-summary .open-target:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
+</style>
+
+<style scoped>
+.node-summary .detail-ai-explain{order:2;display:grid;place-items:center;flex:0 0 24px;width:24px;height:24px;margin-left:auto;padding:4px;border:0;border-radius:6px;background:transparent;color:var(--fg-muted);cursor:pointer}
+.detail-ai-explain svg{display:block;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;overflow:visible}
+.detail-ai-explain .design-ai-spark{fill:#9466e8;stroke:#6e83f4;stroke-width:.7;transform-box:fill-box;transform-origin:center;transition:transform .25s}
+.detail-ai-explain:hover{color:var(--accent);background:color-mix(in srgb,var(--fg) 5%,var(--panel))}
+.detail-ai-explain:hover .design-ai-spark{transform:rotate(10deg) scale(1.1)}
+.detail-ai-explain:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){.detail-ai-explain .design-ai-spark{transition:none}}
 </style>
