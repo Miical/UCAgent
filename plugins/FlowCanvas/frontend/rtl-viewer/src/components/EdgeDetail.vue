@@ -5,22 +5,22 @@
       <button
         type="button"
         @click="store.select(edge.from)"
-        title="Select the source instance"
-      >Select source</button>
+        title="选择源模块"
+      >选择源模块</button>
       <button
         type="button"
         @click="store.select(edge.to)"
-        title="Select the destination instance"
-      >Select destination</button>
+        title="选择目标模块"
+      >选择目标模块</button>
       <button
         type="button"
         @click="store.clearSelection()"
-        title="Clear edge selection"
-      >Clear</button>
+        title="取消连线选择"
+      >取消选择</button>
     </div>
     <dl>
       <template v-if="hasPortPairs">
-        <dt>Port pairs</dt>
+        <dt>端口连接</dt>
         <dd>
           <ul>
             <li v-for="(pair, idx) in edge.port_pairs" :key="idx">
@@ -33,12 +33,12 @@
         </dd>
       </template>
       <template v-if="cdcCrossings.length">
-        <dt>CDC crossings</dt>
+        <dt>跨时钟域连接</dt>
         <dd>
           <table class="cdc-table">
             <thead>
               <tr>
-                <th>src clock</th><th>→ dst clock</th><th class="num">flops</th><th>sync</th>
+                <th>源时钟</th><th>目标时钟</th><th class="num">触发器</th><th>同步方式</th>
               </tr>
             </thead>
             <tbody>
@@ -56,12 +56,12 @@
         </dd>
       </template>
       <template v-for="(payload, name) in otherOverlays" :key="name">
-        <dt>overlay: {{ name }}</dt>
+        <dt>附加信息：{{ name }}</dt>
         <dd><pre>{{ JSON.stringify(payload, null, 2) }}</pre></dd>
       </template>
       <template v-if="!hasPortPairs && !hasOverlays">
-        <dt>Edge</dt>
-        <dd class="empty">Structural parent → child edge. No port pairs or overlay payloads recorded.</dd>
+        <dt>连线</dt>
+        <dd class="empty">父模块与子模块的结构连线，未记录端口连接或附加数据。</dd>
       </template>
     </dl>
   </section>

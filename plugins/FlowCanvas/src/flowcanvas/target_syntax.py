@@ -75,6 +75,8 @@ def inventory(path):
                 name = str(getattr(node.prototype, 'name', '')).strip()
             if not name:
                 name = str(getattr(node, 'expr', '')).strip() or kind
+            if label:
+                name = re.sub(r'//[^\n]*|/\*[\s\S]*?\*/', '', name).strip()
             keyword = str(getattr(node, 'keyword', '')).strip()
             rows.append(dict(name=name, kind=kind, start=start, end=end,
                              base=re.sub(r'^extends\s+', '', str(getattr(node, 'extendsClause', '') or '').strip()).split('#')[0].strip(),

@@ -3,7 +3,23 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
   const panelView=view;
   const host=document.getElementById('project-content');
   let project=null,data=null,panel=null,active=false,query='',busy=false,searchExpanded=true,selectedTarget=null;
+  let lineCoverage=null;
   const opened=new Set();
+  let coverageTab='functional',functionalPane=null,linePane=null,lineFrame=null,tabBar=null;
+  function selectCoverageTab(mode,instance){
+    if(caseMode||bugMode||!tabBar)return;
+    coverageTab=mode==='line'?'line':'functional';
+    functionalPane.hidden=coverageTab!=='functional';linePane.hidden=coverageTab!=='line';
+    for(const b of tabBar.querySelectorAll('button')){b.classList.toggle('active',b.dataset.mode===coverageTab);b.setAttribute('aria-selected',String(b.dataset.mode===coverageTab));}
+    try{localStorage.setItem('fc-target-coverage-tab:'+project.id,coverageTab);}catch{}
+    if(coverageTab==='line'){
+      if(!lineFrame.src){
+        const view='/api/chat/projects/'+encodeURIComponent(project.id)+'/rtl-view';
+        lineFrame.src='/rtl-viewer/?coverageOnly=1&view='+encodeURIComponent(view)+(instance?'&focus='+encodeURIComponent(instance):'');
+      }else if(instance)lineFrame.contentWindow.postMessage({type:'flowcanvas-coverage-focus',instance},location.origin);
+    }
+  }
+
   const labels={planned:'待实现',bound:'已绑定',changed:'待核对',missing:'绑定失效',conflict:'绑定冲突',unverified:'无法校验'};
   const kinds=bugMode?{bug:['BUG','Bug']}:caseMode?{case:['TC','测试用例']}:{group:['FG','功能组'],point:['FP','功能点'],testpoint:['TP','测试点']};
   const rootKind=bugMode?'bug':caseMode?'case':'group';
@@ -18,7 +34,68 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
   }
   async function api(request){const url='/api/chat/projects/'+encodeURIComponent(project.id)+'/'+endpoint;const response=await fetch(url,request?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)}:{});const body=await response.json();if(!response.ok)throw Error(typeof body.detail==='string'?body.detail:JSON.stringify(body.detail));return body;}
   function fail(error){panel.querySelector('.targets-error').textContent=error.message;}
-  async function refresh(){if(busy)return;busy=true;try{panel.querySelector('.targets-error').textContent='';const first=!data;data=await api();if(first)for(const n of data.targets)if(n.kind==='group')opened.add(n.id);render();}catch(e){fail(e);}finally{busy=false;}}
+  async function refresh(){
+    if(busy)return;busy=true;
+    try{
+      panel.querySelector('.targets-error').textContent='';const first=!data;
+      const requests=[api()];
+      if(!caseMode&&!bugMode)requests.push(fetch('/api/chat/projects/'+encodeURIComponent(project.id)+'/coverage').then(async r=>{if(!r.ok)throw Error('行覆盖率读取失败');return r.json();}));
+      const results=await Promise.allSettled(requests);
+      if(results[0].status==='rejected')throw results[0].reason;
+      data=results[0].value;
+      if(results.length>1)lineCoverage=results[1].status==='fulfilled'?results[1].value:null;
+      if(first)for(const n of data.targets)if(n.kind==='group')opened.add(n.id);
+      render();
+    }catch(e){fail(e);}finally{busy=false;}
+  }
+  function renderCoverageRings(){
+    const host=panel.querySelector('.target-coverage-overview');if(!host)return;
+    const records=(data?.targets||[]).filter(n=>n.kind==='group').map(n=>data.coverage?.targets?.[n.id]);
+    const bins=[...new Map(records.flatMap(r=>r?.observations||[]).map(r=>[r.instance+'::'+r.point,r])).values()];
+    const instances=[...new Map((lineCoverage?.report?.instances||[]).map(r=>[r.path,r])).values()];
+    const metrics=[
+      {mode:'functional',label:'功能覆盖率',rows:bins,valid:records.length>0&&records.every(r=>r?.status==='available'),unit:'bin'},
+      {mode:'line',label:'行覆盖率',rows:instances,valid:instances.length>0,unit:'覆盖点'}
+    ];
+    for(const metric of metrics){
+      let card=host.querySelector('[data-metric="'+metric.mode+'"]');
+      if(!card){
+        card=button('',()=>selectCoverageTab(metric.mode),'coverage-overview-item');card.dataset.metric=metric.mode;
+        const ring=el('span','coverage-overview-ring'),svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+        svg.setAttribute('viewBox','0 0 64 64');svg.setAttribute('aria-hidden','true');
+        for(const cls of ['coverage-ring-track','coverage-ring-fill']){
+          const circle=document.createElementNS(svg.namespaceURI,'circle');
+          for(const [key,value]of Object.entries({cx:32,cy:32,r:27,pathLength:100,class:cls}))circle.setAttribute(key,value);
+          svg.append(circle);
+        }
+        ring.append(svg,el('strong','coverage-ring-value'));
+        const text=el('span','coverage-overview-text');text.append(el('span','coverage-overview-label',metric.label),el('span','coverage-overview-count'),el('span','coverage-overview-extra'));
+        card.append(ring,text);host.append(card);
+      }
+      const covered=metric.rows.reduce((sum,row)=>sum+row.covered,0),total=metric.rows.reduce((sum,row)=>sum+row.total,0);
+      const available=metric.valid&&total>0,percent=available?Math.min(100,Math.max(0,100*covered/total)):0;
+      card.querySelector('.coverage-ring-fill').style.strokeDashoffset=String(100-percent);
+      card.querySelector('.coverage-ring-value').textContent=available?percent.toFixed(1)+'%':'—';
+      card.querySelector('.coverage-overview-count').textContent=available?covered+' / '+total+' '+metric.unit:'暂无有效数据';
+      const points=(data?.targets||[]).filter(n=>n.kind==='testpoint').map(coverageFor);
+      const reached=points.filter(c=>c.status==='available'&&c.total>0&&c.covered===c.total).length;
+      card.querySelector('.coverage-overview-extra').textContent=metric.mode==='functional'?reached+'/'+points.length+' 测试点达标':(lineCoverage?.runs?.length||0)+' 次累计';
+      card.setAttribute('aria-label',metric.label+'，'+(available?percent.toFixed(1)+'%，'+covered+'/'+total:'暂无有效数据')+'，点击查看明细');
+    }
+    let menu=host.querySelector('.coverage-overview-menu');
+    if(!menu){
+      menu=el('details','coverage-overview-menu');const trigger=el('summary','','⋯');trigger.title='覆盖率操作';trigger.setAttribute('aria-label','覆盖率操作');
+      const reset=button('清空累计',async()=>{
+        menu.open=false;
+        if(!confirm('清空行覆盖率和功能覆盖率的本轮累计？历史运行和日志会保留。'))return;
+        try{const response=await fetch('/api/chat/projects/'+encodeURIComponent(project.id)+'/coverage/reset',{method:'POST'});if(!response.ok)throw Error('清空失败');await refresh();if(lineFrame?.src)lineFrame.contentWindow.location.reload();}catch(e){fail(e);}
+      },'coverage-menu-reset');
+      menu.append(trigger,reset);host.append(menu);
+      menu.addEventListener('focusout',()=>setTimeout(()=>{if(!menu.contains(document.activeElement))menu.open=false;},0));
+      menu.addEventListener('keydown',event=>{if(event.key==='Escape'){menu.open=false;trigger.focus();}});
+    }
+    menu.querySelector('button').disabled=!(lineCoverage?.runs?.length||data?.coverage?.runs);
+  }
   function modal(title){const dialog=el('dialog','targets-dialog');const heading=el('header');heading.append(el('strong','',title),button('×',()=>dialog.close(),'targets-close'));const content=el('div','targets-dialog-content');dialog.append(heading,content);document.body.append(dialog);dialog.addEventListener('close',()=>dialog.remove());dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});dialog.showModal();return {dialog,content};}
   function field(parent,label,value='',multi=false){const wrapper=el('label','targets-field');wrapper.append(el('span','',label));const input=el(multi?'textarea':'input');input.value=value;if(multi)input.rows=3;wrapper.append(input);parent.append(wrapper);return input;}
   async function source(binding){
@@ -65,13 +142,19 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     const inspect=button('预览定义',async()=>{inspect.disabled=true;error.textContent='';try{const files=paths.value.split('\n').map(s=>s.trim()).filter(Boolean);if(!files.length)throw Error('请输入源码路径');const rows=await api({operation:'inspect',files});preview.replaceChildren();for(const file of rows){preview.append(el('strong','',file.file));for(const n of file.nodes)preview.append(el('div','targets-preview-row',`${n.kind} · ${n.name} · L${n.line}–${n.end_line}${n.excluded?' · 排除项，不导入':''}`));}inspected=files;run.disabled=false;}catch(e){error.textContent=e.message;}finally{inspect.disabled=false;}});
     const run=button('插入标识并导入',async()=>{run.disabled=true;inspect.disabled=true;try{await api({operation:'import',files:inspected,expected_revision:data.revision});dialog.close();await refresh();}catch(e){error.textContent=e.message;inspect.disabled=false;}} ,'targets-primary');run.disabled=true;const actions=el('footer');actions.append(inspect,run);content.append(actions);
   }
+  function coverageFor(node){
+    const record=data.coverage?.targets?.[node.id];
+    const rows=record?.observations||[];
+    return {status:record?.status||'no_data',rows,covered:rows.reduce((n,r)=>n+r.covered,0),total:rows.reduce((n,r)=>n+r.total,0)};
+  }
   function render(){
+    if(!caseMode&&!bugMode)renderCoverageRings();
     const list=panel.querySelector('.targets-tree'),summary=panel.querySelector('.targets-summary');list.replaceChildren();summary.replaceChildren();
     for(const [kind,[,label]]of Object.entries(kinds))summary.append(el('span','',data.targets.filter(n=>n.kind===kind).length+' '+label));
     if(bugMode)summary.append(el('span','',data.targets.filter(n=>!n.example&&n.status==='confirmed').length+' 已确认 · '+data.targets.filter(n=>n.example).length+' 示例'));
     const allExpanded=data.targets.length>0&&data.targets.every(node=>opened.has(node.id)||(query&&searchExpanded));
     const toggleAll=button(allExpanded?'全部折叠':'全部展开',()=>{const expanded=data.targets.every(node=>opened.has(node.id)||(query&&searchExpanded));if(expanded){opened.clear();searchExpanded=false;}else{for(const node of data.targets)opened.add(node.id);}render();},'targets-toggle-all');
-    toggleAll.disabled=!data.targets.length;summary.append(toggleAll);
+    toggleAll.disabled=!data.targets.length;toggleAll.title=toggleAll.textContent;toggleAll.setAttribute('aria-label',toggleAll.textContent);summary.append(toggleAll);
     const byId=new Map(data.targets.map(n=>[n.id,n]));const visible=new Set();
     for(const n of data.targets){if(!query||[n.name,n.description,n.id,...n.bindings.map(b=>b.file)].join(' ').toLowerCase().includes(query)){let current=n;while(current){visible.add(current.id);current=byId.get(current.parent);}}}
     function card(node,depth){
@@ -87,12 +170,19 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         wrapper.querySelector(':scope > .target-card-body')?.remove();if(body)wrapper.append(body);
         head.setAttribute('aria-expanded',String(opened.has(node.id)));
         head.querySelector('.target-chevron').classList.toggle('is-expanded',opened.has(node.id));
-        const toggle=panel.querySelector('.targets-toggle-all');if(toggle)toggle.textContent=data.targets.every(item=>opened.has(item.id))?'全部折叠':'全部展开';
+        const toggle=panel.querySelector('.targets-toggle-all');if(toggle){toggle.textContent=data.targets.every(item=>opened.has(item.id))?'全部折叠':'全部展开';toggle.title=toggle.textContent;toggle.setAttribute('aria-label',toggle.textContent);}
       },'target-card-head');head.setAttribute('aria-expanded',String(opened.has(node.id)||(!!query&&searchExpanded)));
       const chevron=el('span','target-chevron'+((opened.has(node.id)||(query&&searchExpanded))?' is-expanded':''));
       const arrow=document.createElementNS('http://www.w3.org/2000/svg','svg');arrow.setAttribute('viewBox','0 0 16 16');arrow.setAttribute('aria-hidden','true');
       const arrowPath=document.createElementNS(arrow.namespaceURI,'path');arrowPath.setAttribute('d','m5 3 6 5-6 5Z');arrow.append(arrowPath);chevron.append(arrow);
       head.append(chevron,el('span','target-kind',kinds[node.kind][0]));const title=el('span','target-title',node.name);head.append(title);
+      if(!caseMode&&!bugMode){
+        const c=coverageFor(node);
+        const text=c.status==='conflict'?'多实例冲突':c.status==='stale'?'数据已过期':c.total?((c.covered/c.total*100).toFixed(1)+'% · '+c.covered+'/'+c.total):'无数据';
+        const badge=el('span','target-coverage-score'+(c.total&&c.status!=='stale'?' has-data':''),text);
+        badge.title=c.status==='conflict'?'同一定义对应多个运行实例，请拆分后重新导入':c.status==='stale'?'源码与采集时不同，请重新构建并开始新累计':'该目标唯一实例的累计 bin 命中，不代表正确性检查通过';
+        head.append(badge);
+      }
       if(bugMode){head.append(el('span','target-state',node.example?'示例 · 未验证':bugStatuses[node.status]));}else if(report.status==='planned')head.append(el('span','target-state state-planned','待实现'));
       else if(report.status!=='bound'){
         const warning=el('span','target-warning state-'+report.status);
@@ -132,6 +222,21 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         const body=el('div','target-card-body');
         for(const [label,value]of [['',node.description],[bugMode?'复现步骤':'条件',node.condition],['预期',node.expected],...(bugMode?[['实际',node.actual],['证据',node.evidence],['严重程度',severities[node.severity]],['关联用例',node.case_ids.join('、')]]:[])]){if(value){const p=el('p');if(label)p.append(el('strong','',label+' · '));p.append(document.createTextNode(value));body.append(p);}}
 
+        if(!caseMode&&!bugMode){
+          const c=coverageFor(node);
+          if(c.rows.length&&c.status!=='stale'){
+            const detail=el('div','target-coverage-detail');
+            detail.append(el('div','target-coverage-context',c.rows[0].instance));
+            if(node.kind==='testpoint'){
+              for(const row of c.rows)for(const bin of row.bins){
+                const item=el('div','target-coverage-bin');
+                item.append(el('span','',bin.name),el('span',bin.hits>=bin.goal?'is-hit':'',bin.hits+' / '+bin.goal+' 次'+(bin.hits>=bin.goal?' · 已命中':' · 未达标')));
+                detail.append(item);
+              }
+            }else detail.append(el('span','',c.covered+' / '+c.total+' 个 bin 达标（含自动组合）'));
+            body.append(detail);
+          }
+        }
         const actions=el('div','target-actions');
         if(report.status==='changed')actions.append(button('核对后确认',()=>{const {dialog,content}=modal('确认源码与目标一致');content.append(el('p','','请先查看当前源码，核对描述、验证条件和预期行为。确认仅更新代码基线，不代表仿真通过。'));const error=el('p','targets-error');content.append(error,button('已核对，确认当前版本',async()=>{try{await api({operation:'accept',target_id:node.id,expected_revision:data.revision,values:Object.fromEntries(report.bindings.map(b=>[b.id,b.fingerprint]))});dialog.close();refresh();}catch(e){error.textContent=e.message;}},'targets-primary'));}));
         if(actions.children.length)body.append(actions);for(const child of children)body.append(card(child,depth+1));wrapper.append(body);
@@ -146,14 +251,35 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
   document.addEventListener('flowcanvas-view',e=>show(e.detail));
   // Watch published metadata only; never scan source files on a timer.
   let checking=false;
-  setInterval(async()=>{if(!active||!data||busy||checking||document.hidden)return;checking=true;try{const response=await fetch('/api/chat/projects/'+encodeURIComponent(project.id)+'/'+endpoint+'/revision');if(response.ok&&(await response.json()).revision!==data.revision)await refresh();}catch{}finally{checking=false;}},3000);
+  setInterval(async()=>{if(!active||!data||busy||checking||document.hidden)return;checking=true;try{const response=await fetch('/api/chat/projects/'+encodeURIComponent(project.id)+'/'+endpoint+'/revision');if(response.ok){const next=await response.json();if(next.revision!==data.revision||(!caseMode&&!bugMode&&next.coverage_revision!==data.coverage?.revision))await refresh();}}catch{}finally{checking=false;}},3000);
   fetch('/api/chat/projects').then(r=>r.json()).then(state=>{
     project=state.current;if(!project)return;panel=el('section','targets-panel');panel.hidden=true;
     const toolbar=el('div','targets-toolbar');const search=el('input','targets-search');search.placeholder='筛选'+view+'…  /';search.setAttribute('aria-label','搜索'+view);search.oninput=()=>{query=search.value.trim().toLowerCase();searchExpanded=true;if(data)render();};
     search.onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();search.value='';query='';if(data)render();}else if(event.key==='ArrowDown'){event.preventDefault();panel.querySelector('.target-card-head')?.focus();}};
     document.addEventListener('keydown',event=>{if(active&&event.key==='/'&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.target.closest('input,textarea,select,[contenteditable="true"],dialog')){event.preventDefault();search.focus();}});
     toolbar.append(search);
-    panel.append(toolbar,el('div','targets-summary'),el('p','targets-error'),el('div','targets-diagnostics'),el('div','targets-tree'));host.append(panel);show(document.getElementById('project-heading').textContent);
+    const content=[toolbar,el('div','targets-summary'),el('p','targets-error'),el('div','targets-diagnostics'),el('div','targets-tree')];
+    if(!caseMode&&!bugMode){
+      panel.classList.add('coverage-tabs-panel');
+      tabBar=el('nav','target-coverage-tabs');tabBar.setAttribute('role','tablist');tabBar.setAttribute('aria-label','覆盖率类型');
+      for(const [mode,label] of [['functional','功能覆盖率'],['line','行覆盖率']]){
+        const b=button(label,()=>selectCoverageTab(mode));b.dataset.mode=mode;b.setAttribute('role','tab');tabBar.append(b);
+      }
+      functionalPane=el('div','target-goal-pane');functionalPane.append(...content);
+      linePane=el('div','target-line-pane');lineFrame=el('iframe');lineFrame.title='行覆盖率明细';linePane.append(lineFrame);
+      panel.append(el('div','target-coverage-overview'),tabBar,functionalPane,linePane);
+      renderCoverageRings();
+      try{coverageTab=localStorage.getItem('fc-target-coverage-tab:'+project.id)||'functional';}catch{}
+      selectCoverageTab(coverageTab);
+      window.addEventListener('message',event=>{
+        if(event.origin!==location.origin||event.data?.type!=='flowcanvas-open-coverage')return;
+        const viewer=document.querySelector('.rtl-view-panel iframe');
+        if(event.source!==viewer?.contentWindow)return;
+        if(!active)document.querySelector('[data-view="验证目标"]')?.click();
+        selectCoverageTab(event.data.mode,event.data.instance);
+      });
+    }else panel.append(...content);
+    host.append(panel);show(document.getElementById('project-heading').textContent);
   }).catch(()=>{});
 }
 mountDefinitionPanel({view:'验证目标',endpoint:'targets'});

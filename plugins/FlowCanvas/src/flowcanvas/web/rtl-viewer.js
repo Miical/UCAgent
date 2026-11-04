@@ -14,7 +14,7 @@
   }
   function show(view){
     if(!project||!panel)return;
-    const visible=view==='验证进度';panel.hidden=!visible;host.classList.toggle('has-rtl-view',visible);
+    const visible=view==='设计总览';panel.hidden=!visible;host.classList.toggle('has-rtl-view',visible);
   }
   document.addEventListener('flowcanvas-view',event=>show(event.detail));
   fetch('/api/chat/projects').then(r=>r.json()).then(state=>{

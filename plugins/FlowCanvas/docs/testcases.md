@@ -40,8 +40,37 @@ build_id_command 必须针对实际执行位置和编译输入，不能仅使用
 
 ## uvm-cache / Redmi 已接入版本
 
-`flowcanvas.vcs_coverage` 适配远端 VCS W-2024.09-SP1，复用 `/home/miical/eda/projects/uvm-cache/build/simv`，不自动同步或重新编译。每次运行写入远端 `.flowcanvas/runs/<run_id>`；复制覆盖率静态设计数据但排除旧 testdata，采集使用独立数据库和名称。URG 只合并当前批次的独立数据库，原始产物保留。
+`flowcanvas.vcs_coverage` 适配远端 VCS W-2024.09-SP1，通过 `--build-dir` 选择远端构建，默认 `build/simv`，当前实验配置使用 `.flowcanvas/build-single-instance/simv`，不自动同步或重新编译。每次运行写入远端 `.flowcanvas/runs/<run_id>`；复制覆盖率静态设计数据但排除旧 testdata，采集使用独立数据库和名称。URG 只合并当前批次的独立数据库，原始产物保留。
 
 模块报告解析针对本项目每个模块一个实例的结构；不支持的多实例报告会拒绝，不能将模块合计冒充实例覆盖率。实际构建 Cache.v 的 SHA256 与本地源码比较，不匹配时在验证进度页标注远端版本。页面展示模块自身统计，不将父模块和子模块重复累计。
 
 累计状态在 `.flowcanvas/coverage/state.json`，每次合并先写独立目录再发布状态；运行 ID 去重。清空使用新 epoch，历史记录保留，旧批次迟到结果不计入。构建 ID 不兼容时拒绝混合，需清空开始新批次。当前仍维持项目级串行运行，尚未开放并行。
+
+
+## 验证目标累计命中
+
+同一个覆盖率合并步骤同时执行 URG `line+group`；输出 JSON 增加 `functional`：
+
+```json
+{
+  "schema_version": 1,
+  "groups": [{
+    "type": "cache_cpu_cov::request_cg",
+    "instance": "uvm_test_top.env.cpu_cov.request_cg",
+    "file": "verification/src/components/cache_bus_cov.sv",
+    "source_fingerprint": "编译时验证源码的词法指纹",
+    "points": [{
+      "name": "command_cp",
+      "covered": 1,
+      "total": 5,
+      "bins": [{"name": "read", "hits": 3, "goal": 1}]
+    }]
+  }]
+}
+```
+
+上述 bins 仅示意一个成员，真实报告保存全部显式 bin。以工具原生数据库合并次数/命中，绝不相加百分比。报告中每个 covergroup 实例独立保留，每份目标定义只绑定一个实例；同一类型出现多个实例时拒绝累计。CPU、Memory、MMIO 使用独立组件、独立定义和目标 ID，页面没有实例切换。数组 bins 以 URG 的 LRM 名称逐项保留；自动 cross 使用真实 EXPECTED/COVERED 总数，不生成伪造的测试点定义。当前解析器针对 VCS W-2024.09-SP1 的 uvm-cache 文本格式；不支持的压缩 bin 或计数矛盾会拒绝发布。
+
+验证目标使用现有源码绑定 ID 查找 class/covergroup/coverpoint/bin 的结构名，再匹配报告。编译时源码与当前源码词法指纹不一致、绑定失效或待核对时显示数据过期/无数据，不通过名称近似匹配。未产生数据不能判为零命中或验证通过。报告必须使用唯一、跨运行稳定的 covergroup 实例名，当前实验通过 `set_inst_name` 设置 UVM 组件完整路径。
+
+验证目标与行覆盖率共用批次、构建身份和清空入口。清空后迟到结果不加入新批次，旧数据库保留。新构建不与旧构建混合。覆盖率更新版本纳入目标页的轻量轮询，不因累计变化修改验证定义 revision。Python 目标目前可维护源码绑定，但本 VCS 提取器不会为 Python 断言生成命中数据。

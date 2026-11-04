@@ -8,15 +8,15 @@
         class="canvas-tab"
         :class="{ active: store.viewMode === 'hier' }"
         @click="store.setViewMode('hier')"
-        title="Nested-cluster hierarchy from the producer's embedded layout"
-      >Hierarchy</button>
+        title="查看模块嵌套层级"
+      >层级结构</button>
       <button
         type="button"
         class="canvas-tab"
         :class="{ active: store.viewMode === 'flow' }"
         @click="store.setViewMode('flow')"
         :title="flowTabTitle"
-      >Block Flow</button>
+      >信号流</button>
       <!-- Third mode: the elkjs pin-level schematic (#163 P2). It is a
            separate component (the SVG is Vue's, not a viz.js string),
            so App.vue swaps the whole canvas — this button only has to
@@ -26,14 +26,14 @@
         class="canvas-tab"
         @click="store.setViewMode('sch')"
         :title="schTabTitle"
-      >Schematic</button>
+      >原理图</button>
       <nav
         v-if="breadcrumb.length > 0"
         class="scope-breadcrumb"
         data-rb-scope-breadcrumb
-        :aria-label="store.viewMode === 'flow' ? 'Block-flow scope' : 'Hierarchy scope'"
+        :aria-label="store.viewMode === 'flow' ? '信号流范围' : '层级范围'"
       >
-        <span class="scope-label">scope:</span>
+        <span class="scope-label">范围：</span>
         <template v-for="(crumb, i) in breadcrumb" :key="crumb.path">
           <span v-if="i > 0" class="crumb-sep" aria-hidden="true">›</span>
           <button
@@ -41,14 +41,14 @@
             class="crumb"
             :class="{ current: crumb.current }"
             :disabled="crumb.current"
-            :title="crumb.current ? `Current scope: ${crumb.path}` : `Set scope to ${crumb.path}`"
+            :title="crumb.current ? `当前范围：${crumb.path}` : `切换到：${crumb.path}`"
             @click="jumpToScope(crumb.path)"
           >{{ crumb.label }}</button>
         </template>
       </nav>
     </div>
     <div class="graph-toolbar">
-      <button type="button" @click="fitToWindow">Reset</button>
+      <button type="button" @click="fitToWindow">重置视图</button>
     </div>
     </div>
     <div class="svg-host" ref="svgHostEl"></div>
@@ -117,13 +117,13 @@ const svgVersion = ref(0)
 const graph = computed(() => store.displayGraph)
 const flowTabTitle = computed(() =>
   store.flowScopeId
-    ? `One-level signal flow under ${store.flowScopeId}`
-    : 'One-level signal flow (select a node to scope)',
+    ? `查看 ${store.flowScopeId} 内的信号流`
+    : '查看当前层级的信号流，可选择模块切换范围',
 )
 const schTabTitle = computed(() =>
   store.graph?.layout?.elk
-    ? 'Pin-level schematic laid out in-browser by elkjs'
-    : 'Pin-level schematic — this view.json predates the layout.elk payload',
+    ? '查看端口级连接原理图'
+    : '当前结构数据未包含原理图布局',
 )
 // "Up" is only meaningful when the current scope isn't already the
 // design top — popping past top would lose context.
@@ -591,7 +591,7 @@ function repaintOverlays() {
   const context = overlayContext()
   applyOverlays(_svgEl, graph.value, store.enabledOverlays, context)
   coverageLiveOverlay.apply(_svgEl, graph.value, store.covEnabled, context)
-  paintProjectCoverage(_svgEl, store.projectCoverageEnabled, store.projectCoverageInstances)
+  paintProjectCoverage(_svgEl, store.projectCoverageMode, store.projectCoverageInstances, store.projectFunctionalCoverage, store.graph?.top)
 }
 watch(
   () => [store.waveValuesByKey, store.hubSignalSelected],
@@ -618,7 +618,7 @@ watch(
 // paint usually happens before it arrives. Re-run the overlay layer
 // on arrival and on every toggle — no viz.js re-layout, just fills.
 watch(
-  () => [store.covEnabled, store.covByModule, store.projectCoverageEnabled, store.projectCoverageInstances],
+  () => [store.covEnabled, store.covByModule, store.projectCoverageMode, store.projectCoverageInstances, store.projectFunctionalCoverage],
   () => {
     if (_svgEl && graph.value) {
       repaintOverlays()

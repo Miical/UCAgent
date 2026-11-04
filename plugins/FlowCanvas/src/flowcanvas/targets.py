@@ -147,7 +147,11 @@ class Targets:
             state = 'planned' if not records else next((v for v in ('conflict', 'unverified', 'missing', 'changed')
                                                        if any(r['status'] == v for r in records)), 'bound')
             reports[target.id] = {'status': state, 'bindings': records}
-        return {**definition.model_dump(), 'reports': reports, 'errors': errors,
+        extra = {}
+        if self.path.name == 'verification.json':
+            from .functional_coverage import project
+            extra['coverage'] = project(self.root, definition, parsed, reports)
+        return {**definition.model_dump(), **extra, 'reports': reports, 'errors': errors,
                 'summary': dict(Counter(r['status'] for r in reports.values()))}
 
     def inspect(self, files):
@@ -164,6 +168,8 @@ class Targets:
             if definition.revision != expected_revision:
                 raise ValueError('定义已更新，请重新读取')
             files = list(dict.fromkeys(files))
+            from .target_import import validate_single_instance
+            validate_single_instance(self.root, {file:inventory(self.file(file)) for file in files})
             existing = {b.id: n.id for n in definition.targets for b in n.bindings}
             binding_files = {b.id:b.file for n in definition.targets for b in n.bindings}
             original, staged, metadata = {}, {}, []
@@ -371,7 +377,9 @@ def routes(projects):
         return project['path']
     @router.get('/{identity}/targets/revision')
     def revision(identity:str):
-        try: return {'revision':Targets(root(identity)).read().revision}
+        try:
+            from .functional_coverage import revision as coverage_revision
+            return {'revision':Targets(root(identity)).read().revision, 'coverage_revision':coverage_revision(root(identity))}
         except (ValueError,OSError) as exc: raise HTTPException(422,str(exc)) from None
     @router.get('/{identity}/targets')
     def read(identity:str):

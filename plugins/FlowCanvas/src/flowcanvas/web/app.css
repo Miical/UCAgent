@@ -16,7 +16,7 @@ button:focus-visible,a:focus-visible { outline:2px solid var(--accent); outline-
 .nav-button.active::before { content:""; position:absolute; left:-8px; width:3px; height:20px; background:var(--accent); border-radius:0 3px 3px 0; }
 .nav-button svg { width:21px; height:21px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
 .nav-bottom { margin-top:auto; }
-.workspace { display:grid; grid-template-columns:minmax(230px,var(--project-track,var(--project,25fr))) 7px minmax(500px,var(--chat,45fr)) 7px minmax(190px,var(--detail,30fr)); flex:1; min-width:934px; }
+.workspace { display:grid; grid-template-columns:minmax(345px,var(--project-track,var(--project,25fr))) 7px minmax(500px,var(--chat,45fr)) 7px minmax(190px,var(--detail,30fr)); flex:1; min-width:1049px; }
 .pane { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--surface); }
 .chat-pane { background:var(--bg); }
 .pane-header { display:flex; align-items:center; justify-content:space-between; min-height:49px; padding:0 18px; border-bottom:1px solid var(--border); gap:10px; }
@@ -320,7 +320,7 @@ html[data-theme="light"] .project-pane{background:#fafafa;}
 .detail-toggle svg{display:block;width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;}
 .detail-toggle .sidebar-fill{fill:currentColor;stroke:none;opacity:.15;}
 .detail-toggle[aria-expanded="false"] .sidebar-fill{opacity:0;}
-.workspace.detail-collapsed{grid-template-columns:minmax(230px,var(--project-track,var(--collapsed-project,var(--project,25fr)))) 7px minmax(500px,var(--collapsed-chat,var(--chat,45fr))) 0px minmax(0px,0fr);min-width:737px;}
+.workspace.detail-collapsed{grid-template-columns:minmax(345px,var(--project-track,var(--collapsed-project,var(--project,25fr)))) 7px minmax(500px,var(--collapsed-chat,var(--chat,45fr))) 0px minmax(0px,0fr);min-width:852px;}
 .detail-pane{overflow:hidden;min-width:0;}
 .splitter[data-split="1"]{min-width:0;overflow:hidden;}
 .detail-collapsed .splitter[data-split="1"]{border-left-width:0;border-right-width:0;pointer-events:none;}
@@ -464,9 +464,7 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 .run-capsule[hidden]{display:none;}
 
 /* Page navigation stays above the task selector, which follows its progress ring. */
-.detail-page-tabs{display:flex;align-items:center;gap:16px;}
-.detail-page-tab{border:0;background:transparent;color:var(--muted);padding:6px 0;font:inherit;font-size:12px;cursor:pointer;}
-.detail-page-tab.active{color:var(--text);font-weight:600;}
+
 .workflow-task-heading{display:flex;align-items:center;gap:12px;padding:12px 22px 8px;flex-shrink:0;min-width:0;}
 .workflow-task-heading>.run-ring{width:26px;height:26px;}
 #workflow-detail-ring[data-status="completed"]{--ring-color:#b5bbc3;}
@@ -827,9 +825,10 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 .detail-pane.show-test-output > .workflow-task-heading,
 .detail-pane.show-test-output > #detail-content,
 .workflow-task-heading[hidden],#detail-content[hidden]{display:none!important}
-.test-output-panel{display:flex;flex-direction:column;gap:0;min-height:0;overflow:hidden;padding:0 14px 14px}
+.test-output-panel{display:flex;flex-direction:column;gap:0;min-height:0;overflow:hidden;padding:14px 14px 14px}
 .test-output-panel[hidden],.test-output-panel [hidden]{display:none!important}
-.output-run-tabs{display:flex;flex-shrink:0;gap:4px;overflow-x:auto;scrollbar-width:thin;padding:4px 0 9px;border-bottom:1px solid var(--border)}
+.output-run-tabs{display:flex;flex-shrink:0;gap:4px;overflow-x:auto;scrollbar-width:none;padding:4px 0 9px;border-bottom:1px solid var(--border)}
+.output-run-tabs::-webkit-scrollbar{display:none}
 .output-run-tab{display:flex;align-items:center;gap:7px;flex-shrink:0;max-width:210px;padding:7px 9px;border:0;border-radius:6px;background:transparent;color:var(--text-dim);font:11px/1.4 ui-monospace,SFMono-Regular,monospace;cursor:pointer}
 .output-run-tab span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .output-run-tab:hover{background:color-mix(in srgb,var(--text) 4%,transparent)}
@@ -853,3 +852,60 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 .output-empty-icon{font:24px/1.5 ui-monospace,monospace;opacity:.5}
 .output-empty strong{font-size:12px;font-weight:500;color:var(--text)}
 .output-empty p{font-size:11px;line-height:1.8;max-width:220px;margin:0}
+
+/* Functional coverage keeps the existing compact target hierarchy. */
+.target-coverage-score{font-size:11px;font-weight:400;color:var(--text-dim);white-space:nowrap;margin-left:8px;font-variant-numeric:tabular-nums}
+.target-coverage-score.has-data{color:#1aa66b}
+.target-coverage-runs,.target-coverage-reset{font-size:11px;color:var(--text-dim)}
+.target-coverage-reset{background:none;border:0;cursor:pointer;padding:2px}
+.target-coverage-reset:disabled{opacity:.4;cursor:default}
+.target-coverage-detail{margin:5px 0 8px;font-size:11px;color:var(--text-dim)}
+.target-coverage-context{font-family:monospace;margin-bottom:4px}
+.target-coverage-bin{display:flex;justify-content:space-between;gap:12px;max-width:420px;padding:2px 0;font-variant-numeric:tabular-nums}
+.target-coverage-bin .is-hit{color:#1aa66b}
+
+.coverage-tabs-panel{height:100%;min-height:0;padding-top:0}
+/* Both coverage and detail pages use the same underline tabs. */
+.target-coverage-tabs,.detail-page-tabs{display:flex;gap:18px;flex-shrink:0;border-bottom:1px solid var(--border);padding:0 12px}
+.target-coverage-tabs{margin:0 -12px}
+.workflow-detail-header{min-height:0;padding:0;font-weight:400}
+.detail-page-tabs{width:100%;box-sizing:border-box}
+.target-coverage-tabs button,.detail-page-tabs button{font:inherit;font-size:12px;font-weight:400;padding:11px 0 9px;color:var(--text-dim);background:none;border:0;border-radius:0;border-bottom:2px solid transparent;cursor:pointer}
+.target-coverage-tabs button.active,.detail-page-tabs button.active{color:var(--text);border-bottom-color:var(--accent)}
+.target-goal-pane{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto;margin:0 -12px;padding:10px 12px 0;box-sizing:border-box}
+.target-line-pane{display:flex;flex:1;min-height:0;background:var(--surface);margin:0 -12px}
+.target-line-pane iframe{width:100%;height:100%;min-height:320px;border:0;flex:1;background:var(--surface)}
+.target-goal-pane[hidden],.target-line-pane[hidden]{display:none}
+
+.target-coverage-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:18px 0 12px;flex-shrink:0}
+.coverage-overview-item{display:flex;align-items:center;gap:10px;min-width:0;padding:4px;border:0;background:none;color:var(--text);text-align:left;cursor:pointer;border-radius:8px}
+.coverage-overview-item:hover{background:color-mix(in srgb,var(--accent) 4%,transparent)}
+.coverage-overview-ring{position:relative;display:grid;place-items:center;width:64px;height:64px;flex-shrink:0}
+.coverage-overview-ring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
+.coverage-overview-ring circle{fill:none;stroke-width:4}
+.coverage-ring-track{stroke:color-mix(in srgb,var(--text) 8%,var(--surface))}
+.coverage-ring-fill{stroke:var(--accent);stroke-linecap:round;stroke-dasharray:100;stroke-dashoffset:100;transition:stroke-dashoffset .45s ease}
+[data-metric="line"] .coverage-ring-fill{stroke:#36b37e}
+.coverage-ring-value{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
+.coverage-overview-text{display:flex;flex-direction:column;gap:5px;min-width:0}
+.coverage-overview-label{font-size:12px;font-weight:500;white-space:nowrap}
+.coverage-overview-count{font-size:10px;color:var(--text-dim);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.target-coverage-overview{container-type:inline-size}
+@container(max-width:340px){.coverage-overview-item{flex-direction:column;gap:6px;text-align:center}.coverage-overview-ring{width:58px;height:58px}.coverage-overview-text{gap:3px}}
+@media(prefers-reduced-motion:reduce){.coverage-ring-fill{transition:none}}
+
+/* Keep coverage controls quiet; detailed results belong beside the rings. */
+.coverage-tabs-panel .targets-summary{flex-wrap:nowrap;gap:6px}
+.coverage-tabs-panel .targets-summary>span{white-space:nowrap;font-weight:400}
+.coverage-tabs-panel .targets-summary>span+span::before{content:'·';margin-right:6px;opacity:.5}
+.target-coverage-overview{position:relative;grid-template-columns:repeat(2,minmax(0,1fr)) 24px;column-gap:12px}
+.coverage-overview-extra{font-size:10px;color:var(--text-dim);font-variant-numeric:tabular-nums}
+.coverage-overview-menu{position:relative;align-self:start;grid-column:3;grid-row:1;margin-top:4px;z-index:3}
+.coverage-overview-menu summary{display:grid;place-items:center;width:24px;height:24px;list-style:none;cursor:pointer;color:var(--text-dim);border-radius:4px;font-size:18px}
+.coverage-overview-menu summary::-webkit-details-marker{display:none}
+.coverage-overview-menu summary:hover{background:var(--surface2)}
+.coverage-menu-reset{position:absolute;right:0;top:28px;white-space:nowrap;padding:9px 14px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);box-shadow:0 6px 20px #0001;font:12px system-ui}
+
+.coverage-tabs-panel .targets-summary{padding-top:0;padding-bottom:7px}
+.coverage-tabs-panel .targets-summary>span,.coverage-tabs-panel .targets-toggle-all{font-family:inherit;font-size:9px;font-weight:400}
+.coverage-tabs-panel .targets-toolbar{margin-bottom:9px}

@@ -5,7 +5,7 @@
       class="collapsible-header"
       @click="toggle"
       :aria-expanded="!collapsed"
-      :title="collapsed ? `Show ${title}` : `Hide ${title}`"
+      :title="collapsed ? `展开${title}` : `折叠${title}`"
     >
       <span class="chevron" aria-hidden="true">{{ collapsed ? '▸' : '▾' }}</span>
       <span class="title">{{ title }}</span>

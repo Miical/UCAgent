@@ -12,8 +12,8 @@
       <button
         type="button"
         class="copy-btn"
-        :title="`Copy the instance path — ${node.id}`"
-        aria-label="Copy instance path"
+        :title="`复制实例路径：${node.id}`"
+        aria-label="复制实例路径"
         @click="copy('path', node.id)"
       >{{ copied === 'path' ? '✓' : '📋' }}</button>
     </h3>
@@ -22,20 +22,20 @@
         type="button"
         @click="store.descend(node.id)"
         :disabled="!store.selectedHasChildren"
-        :title="store.selectedHasChildren ? 'Show only this subtree' : 'Leaf node — nothing to descend into'"
-      >Descend</button>
+        :title="store.selectedHasChildren ? '仅查看此模块及子模块' : '叶模块，没有子模块'"
+      >进入模块</button>
       <button
         type="button"
         @click="store.ascend()"
         :disabled="!store.rootInstancePath"
-        title="Show parent scope (keyboard: u)"
-      >Up</button>
+        title="返回上一级（快捷键：u）"
+      >上一级</button>
       <button
         type="button"
         @click="store.goToTop()"
         :disabled="!store.rootInstancePath"
-        title="Back to design top"
-      >Top</button>
+        title="返回设计顶层"
+      >顶层</button>
     </div>
     <!-- Source location. Shown project-relative (store.sourceRoot, see
          sourcePaths.js) because the absolute path was four wrapped
@@ -48,17 +48,17 @@
         v-if="absoluteTargetText"
         type="button"
         class="copy-btn"
-        :title="`Copy the absolute path — ${absoluteTargetText}`"
-        aria-label="Copy absolute source path"
+        :title="`复制绝对路径：${absoluteTargetText}`"
+        aria-label="复制源码绝对路径"
         @click="copy('file', absoluteTargetText)"
       >{{ copied === 'file' ? '✓' : '📋' }}</button>
     </div>
     <dl>
-      <dt>Module</dt><dd>{{ node.module }}</dd>
-      <dt v-if="node.is_blackbox">Status</dt>
-      <dd v-if="node.is_blackbox" class="blackbox">blackbox</dd>
+      <dt>模块</dt><dd>{{ node.module }}</dd>
+      <dt v-if="node.is_blackbox">状态</dt>
+      <dd v-if="node.is_blackbox" class="blackbox">黑盒模块</dd>
       <template v-if="hasParameters">
-        <dt>Parameters</dt>
+        <dt>参数</dt>
         <dd>
           <ul>
             <li v-for="(value, key) in node.parameters" :key="key">
@@ -68,7 +68,7 @@
         </dd>
       </template>
       <template v-for="group in portGroups" :key="group.dir">
-        <dt>Ports — {{ group.label }} ({{ group.ports.length }})</dt>
+        <dt>端口 — {{ group.label }} ({{ group.ports.length }})</dt>
         <dd>
           <table class="ports-table">
             <tbody>
@@ -90,7 +90,7 @@
         </dd>
       </template>
       <template v-if="coverage">
-        <dt>Coverage</dt>
+        <dt>覆盖率</dt>
         <dd class="coverage-block">
           <div v-for="row in coverageRows" :key="row.label" class="cov-row">
             <span class="cov-label">{{ row.label }}</span>
@@ -108,19 +108,19 @@
             :href="coverage.coverview_link"
             target="_blank"
             rel="noopener"
-            title="Open this module's source file in Coverview"
-          >Open in Coverview ↗</a>
+            title="在 Coverview 中查看模块源码"
+          >在 Coverview 中打开 ↗</a>
         </dd>
       </template>
       <template v-if="liveCoverageText">
-        <dt>Coverage</dt>
+        <dt>覆盖率</dt>
         <dd class="live-cov" data-testid="node-live-coverage">
           <div class="live-cov-metrics">{{ liveCoverageText }}</div>
 
         </dd>
       </template>
       <template v-if="phys">
-        <dt>Physical</dt>
+        <dt>物理信息</dt>
         <dd class="phys-block" data-testid="node-phys">
           <div class="phys-figures">
             <span
@@ -146,20 +146,20 @@
         </dd>
       </template>
       <template v-if="axiPins.length || axiInterconnect">
-        <dt>AXI performance</dt>
+        <dt>AXI 性能</dt>
         <dd>
           <table class="axi-table" v-if="axiPins.length">
             <thead>
-              <tr><th>bundle</th><th>role</th><th>throughput</th><th>bp</th></tr>
+              <tr><th>总线</th><th>角色</th><th>吞吐量</th><th>反压</th></tr>
             </thead>
             <tbody>
               <tr v-for="p in axiPins" :key="p.port">
                 <td>
                   <code>{{ p.port }}</code>
-                  <span v-if="p.errors" class="axi-err" :title="p.errors + ' AXI error response(s)'">⚠</span>
+                  <span v-if="p.errors" class="axi-err" :title="p.errors + ' 个 AXI 错误响应'">⚠</span>
                 </td>
                 <td><span class="axi-role" :data-role="p.role">{{ p.role || '—' }}</span></td>
-                <td class="axi-tput" :title="'peer: ' + (p.peer || '—')">
+                <td class="axi-tput" :title="'对端：' + (p.peer || '—')">
                   <span class="rd">R {{ p.rd }}</span> <span class="wr">W {{ p.wr }}</span>
                 </td>
                 <td class="rb-bp" :data-level="bpLevel(p.bp)">{{ p.bp.toFixed(0) }}%</td>
@@ -174,13 +174,13 @@
         </dd>
       </template>
       <template v-for="(payload, name) in otherOverlays" :key="name">
-        <dt>overlay: {{ name }}</dt>
+        <dt>附加信息：{{ name }}</dt>
         <dd><pre>{{ JSON.stringify(payload, null, 2) }}</pre></dd>
       </template>
     </dl>
   </section>
   <section class="node-detail empty" v-else>
-    <p>Click a node to see its ports, parameters, and overlay values.</p>
+    <p>点击模块查看端口、参数和附加信息。</p>
   </section>
 </template>
 
@@ -218,9 +218,9 @@ const coverage = computed(
   () => (node.value && node.value.overlays && node.value.overlays.coverage) || null,
 )
 const COVERAGE_CHANNELS = [
-  ['lines', 'lines'],
-  ['branches', 'branches'],
-  ['toggles', 'toggles'],
+  ['lines', '行覆盖率'],
+  ['branches', '分支覆盖率'],
+  ['toggles', '翻转覆盖率'],
 ]
 const coverageRows = computed(() => {
   // ``heatColor`` resolves --cov-l at call time, so the rows have to be
@@ -301,10 +301,10 @@ const physFigures = computed(() => {
   const out = []
   if (typeof block.cell_count === 'number') {
     out.push({
-      label: 'cells',
+      label: '单元数',
       value: formatCount(block.cell_count),
       title:
-        "The module's own cells, as Yosys counted them — a submodule instance counts as one cell, so this does not roll up.",
+        "模块自身的综合单元数；子模块实例按一个单元计数。",
     })
   }
   // The area label says what the figure IS, in both scopes: the
@@ -316,21 +316,21 @@ const physFigures = computed(() => {
   const area = areaOf(block)
   if (area !== null) {
     out.push({
-      label: 'module area (rolls submodules up)',
+      label: '模块面积（含子模块）',
       value: `${formatMetric(area)} µm²`,
       title:
-        "The defining module's area from the synthesis, which already includes its submodules'. Unaffected by the self/subtree toggle.",
+        "综合报告中的模块面积，已包含子模块面积。",
     })
   }
   const power = powerOf(block, scope)
   if (power !== null) {
     out.push({
-      label: scope === 'self' ? 'power (self)' : 'power (subtree)',
+      label: scope === 'self' ? '自身功耗' : '含子模块功耗',
       value: `${formatMetric(power)} µW`,
       title:
         scope === 'self'
-          ? 'Total power of the leaf cells this scope directly contains.'
-          : 'Total power of every leaf cell under this scope.',
+          ? '当前模块直接包含的叶单元总功耗。'
+          : '当前模块及子模块内全部叶单元的总功耗。',
     })
   }
   return out
@@ -344,19 +344,19 @@ const physBars = computed(() => {
   const area = share(areaOf(block), areaOf(parent))
   if (area !== null) {
     bars.push({
-      label: 'area',
+      label: '面积',
       pct: area,
       color: heatRampColor(area / 100),
-      title: 'Share of the parent scope\u2019s area',
+      title: '占父模块面积的比例',
     })
   }
   const power = share(powerOf(block, 'subtree'), powerOf(parent, 'subtree'))
   if (power !== null) {
     bars.push({
-      label: 'power',
+      label: '功耗',
       pct: power,
       color: heatRampColor(power / 100),
-      title: 'Share of the parent scope\u2019s total power',
+      title: '占父模块总功耗的比例',
     })
   }
   return bars
@@ -440,10 +440,10 @@ const otherOverlays = computed(() => {
 // inputs / outputs. (#102, #105.)
 const PORT_DIR_ORDER = ['input', 'output', 'inout', 'interface']
 const PORT_DIR_LABEL = {
-  input: 'inputs',
-  output: 'outputs',
-  inout: 'inout',
-  interface: 'interfaces',
+  input: '输入',
+  output: '输出',
+  inout: '双向',
+  interface: '接口',
 }
 const portGroups = computed(() => {
   if (!node.value || !Array.isArray(node.value.ports) || node.value.ports.length === 0) {
@@ -479,13 +479,13 @@ function ifaceDescriptor(port) {
 }
 function ifaceTag(port) {
   return port.port_kind === 'interface_signal'
-    ? `(from ${ifaceDescriptor(port)})`
+    ? `（来自 ${ifaceDescriptor(port)}）`
     : `(${ifaceDescriptor(port)})`
 }
 function ifaceTagTitle(port) {
   return port.port_kind === 'interface_signal'
-    ? `Signal flattened from ${ifaceDescriptor(port)}`
-    : `Unresolved interface port: ${ifaceDescriptor(port)}`
+    ? `由 ${ifaceDescriptor(port)} 展开的信号`
+    : `未解析的接口端口：${ifaceDescriptor(port)}`
 }
 // Openable when the node has either a structured ``source`` block
 // (preferred — hub path uses (file, line, col)) or just a raw
@@ -535,7 +535,7 @@ async function copy(which, text) {
 onBeforeUnmount(() => {
   if (copyFlashTimer) clearTimeout(copyFlashTimer)
 })
-const openTitle = 'Source location'
+const openTitle = '源码位置'
 </script>
 
 <style scoped>

@@ -5,8 +5,8 @@
         ref="filterEl"
         type="text"
         class="tree-filter-input"
-        placeholder="filter instances… ( / )"
-        aria-label="Filter instances"
+        placeholder="筛选模块实例…（/）"
+        aria-label="筛选模块实例"
         v-model="query"
         @keydown.enter.prevent="selectFirstMatch"
         @keydown.esc.prevent.stop="onFilterEscape"
@@ -24,7 +24,7 @@
       ref="scrollEl"
       class="tree-scroll"
       role="tree"
-      aria-label="Instance hierarchy"
+      aria-label="模块实例层级"
       tabindex="0"
       :aria-activedescendant="cursorId ? rowDomId(cursorId) : undefined"
       @keydown="onKeydown"
@@ -60,8 +60,8 @@
           v-if="row.hasChildren"
           type="button"
           class="tree-caret"
-          :aria-label="(row.open ? 'Collapse ' : 'Expand ') + row.id"
-          :title="row.open ? 'Collapse' : 'Expand'"
+          :aria-label="(row.open ? '折叠 ' : '展开 ') + row.id"
+          :title="row.open ? '折叠' : '展开'"
           tabindex="-1"
           @click.stop="toggle(row.id)"
         >{{ row.open ? '▾' : '▸' }}</button>
@@ -71,11 +71,11 @@
         <span
           v-if="row.id === store.rootInstancePath"
           class="tree-scope-mark"
-          title="Current canvas scope"
+          title="当前画布范围"
         >⌂</span>
       </div>
       <p v-if="rows.length === 0" class="tree-empty">
-        {{ filtering ? 'No instance or module matches this filter.' : 'No instances in this view.' }}
+        {{ filtering ? '没有匹配的模块或实例。' : '当前视图没有模块实例。' }}
       </p>
     </div>
   </div>

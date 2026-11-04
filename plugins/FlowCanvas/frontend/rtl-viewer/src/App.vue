@@ -6,9 +6,10 @@
          renders on top instead, giving the user clear "something is
          happening" feedback while preserving the previous view as a
          visual anchor. -->
+    <div v-if="coverageOnly && store.graph" class="coverage-detail-page"><OverlayPanel /></div>
     <div
       class="app-body"
-      v-if="store.graph"
+      v-else-if="store.graph"
     >
       <div class="canvas-wrap">
         <!-- One canvas slot, three modes. The schematic is a *mode*,
@@ -21,29 +22,26 @@
         <GraphCanvas v-else />
         <div v-if="store.status === 'loading'" class="loading-overlay">
           <div class="spinner" aria-hidden="true"></div>
-          <span>Loading…</span>
+          <span>加载中…</span>
         </div>
       </div>
       <div
         class="sidebar-resizer"
         role="separator"
         aria-orientation="horizontal"
-        title="Drag to resize"
+        title="拖动调整高度"
         @mousedown.prevent="startResize"
       ></div>
       <aside class="sidebar" :style="{ height: panelHeight + 'px' }">
         <!-- The hierarchy outline goes FIRST: it is the design's index
              and the thing every other panel is about. Verdi/Vivado both
              put it here for the same reason. -->
-        <CollapsiblePanel title="Hierarchy" persist-key="hierarchy">
+        <CollapsiblePanel title="层级结构" persist-key="hierarchy">
           <HierarchyTree ref="treeRef" />
-        </CollapsiblePanel>
-        <CollapsiblePanel title="Coverage" persist-key="overlays">
-          <OverlayPanel />
         </CollapsiblePanel>
         <CollapsiblePanel
           v-if="!store.selectedEdgeObj"
-          title="Node detail"
+          title="模块详情"
           persist-key="node-detail"
           :badge="store.selection ? '●' : null"
         >
@@ -51,7 +49,7 @@
         </CollapsiblePanel>
         <CollapsiblePanel
           v-else
-          title="Edge detail"
+          title="连线详情"
           persist-key="edge-detail"
           :badge="'●'"
         >
@@ -61,7 +59,7 @@
     </div>
     <div class="loading" v-else-if="store.status === 'loading'">
       <div class="spinner" aria-hidden="true"></div>
-      <span>Loading…</span>
+      <span>加载中…</span>
     </div>
     <!-- ``idle`` and ``error`` both mean "there is no view on screen";
          the placeholder decides WHICH explanation to give from the
@@ -78,7 +76,7 @@
 // Drag-and-drop is wired at the document level so users can drop
 // onto any part of the viewer without targeting a specific zone.
 
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useViewerStore } from './store.js'
 import GraphCanvas from './components/GraphCanvas.vue'
 import SchematicCanvas from './components/SchematicCanvas.vue'
@@ -91,7 +89,22 @@ import HierarchyTree from './components/HierarchyTree.vue'
 import { initTheme } from './theme.js'
 import { makeGlobalKeydownHandler } from './keyboard.js'
 
+import { useProjectCoverage } from './composables/useProjectCoverage.js'
 const store = useViewerStore()
+useProjectCoverage(store)
+const coverageOnly = new URLSearchParams(location.search).get('coverageOnly') === '1'
+let requestedInstance = new URLSearchParams(location.search).get('focus')
+function focusCoverage() {
+  if(coverageOnly && store.graph?.nodes.some(n=>n.id===requestedInstance))store.select(requestedInstance)
+}
+function onCoverageMessage(event) {
+  if(event.origin!==location.origin || event.source!==window.parent || event.data?.type!=='flowcanvas-coverage-focus')return
+  requestedInstance=event.data.instance;focusCoverage()
+}
+watch(()=>store.graph,focusCoverage)
+onMounted(()=>window.addEventListener('message',onCoverageMessage))
+onBeforeUnmount(()=>window.removeEventListener('message',onCoverageMessage))
+
 
 // Resizable details panel below the drawing.
 function loadPanelHeight() {
@@ -272,6 +285,8 @@ onBeforeUnmount(() => {
   color: var(--accent);
   border-color: var(--accent);
 }
+
+.coverage-detail-page{height:100vh;overflow:auto;background:var(--panel);padding:0;box-sizing:border-box}
 
 /* -- body ------------------------------------------------------------ */
 /* Header and status strip are both fixed-height, so the body is what

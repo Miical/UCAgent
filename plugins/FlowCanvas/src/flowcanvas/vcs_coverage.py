@@ -11,7 +11,7 @@ from .targets import atomic
 
 REMOTE = r'''
 import hashlib,json,pathlib,shutil,subprocess,sys
-p=json.loads(sys.argv[1]);root=pathlib.Path('/home/miical/eda/projects/uvm-cache');build=root/'build'
+p=json.loads(sys.argv[1]);root=pathlib.Path('/home/miical/eda/projects/uvm-cache');build=root/p.get('build_dir','build')
 env='source /home/miical/eda/synopsys-2024/env.sh; '
 def shell(command,cwd):
  return subprocess.run(['/bin/bash','-c',env+command],cwd=cwd)
@@ -26,6 +26,7 @@ elif p['op']=='run':
  run=root/'.flowcanvas/runs'/p['id'];run.mkdir(parents=True,exist_ok=False)
  before=identity();(run/'build-id').write_text(before)
  shutil.copy2(build/'Cache.v',run/'Cache.v')
+ if (build/'src/components/cache_bus_cov.sv').is_file():shutil.copy2(build/'src/components/cache_bus_cov.sv',run/'cache_bus_cov.sv')
  shutil.copytree(build/'covdir.vdb',run/'coverage.vdb',ignore=lambda d,n:['testdata'] if pathlib.Path(d).name=='db' else [])
  (run/'simv').symlink_to(build/'simv');(run/'simv.daidir').symlink_to(build/'simv.daidir')
  cmd='./simv -no_save +UVM_VERBOSITY=UVM_LOW +UVM_TESTNAME='+p['case']+' -cm line+cond+fsm+branch+tgl -cm_dir '+str(run/'coverage.vdb')+' -cm_name '+p['id']
@@ -36,17 +37,17 @@ elif p['op']=='run':
 elif p['op']=='extract':
  run=root/'.flowcanvas/runs'/p['id'];result=json.loads((run/'finished.json').read_text())
  if not list((run/'coverage.vdb/snps/coverage/db/testdata').glob('*')):raise RuntimeError('No runtime coverage data')
- print(json.dumps(dict(result,artifact=str(run/'coverage.vdb'),rtl_sha256=hashlib.sha256((run/'Cache.v').read_bytes()).hexdigest())))
+ print(json.dumps(dict(result,artifact=str(run/'coverage.vdb'),rtl_sha256=hashlib.sha256((run/'Cache.v').read_bytes()).hexdigest(),functional_source=(run/'cache_bus_cov.sv').read_text() if (run/'cache_bus_cov.sv').is_file() else '')))
 elif p['op']=='merge':
  out=root/'.flowcanvas/coverage'/p['id'];out.mkdir(parents=True,exist_ok=False)
  inputs=p['inputs']
  if not inputs or any(not str(x).startswith(str(root/'.flowcanvas/runs')+'/') for x in inputs):raise RuntimeError('Invalid input database')
  import shlex
- cmd='urg -dir '+' '.join(shlex.quote(x) for x in inputs)+' -metric line -format text -show ratios -dbname '+shlex.quote(str(out/'merged'))+' -report '+shlex.quote(str(out/'report'))
+ cmd='urg -dir '+' '.join(shlex.quote(x) for x in inputs)+' -metric line+group -format text -show ratios -group instcov_for_score -group lrm_bin_name -dbname '+shlex.quote(str(out/'merged'))+' -report '+shlex.quote(str(out/'report'))
  with (out/'urg.log').open('w') as log:
   proc=subprocess.run(['/bin/bash','-c',env+cmd],cwd=out,stdout=log,stderr=subprocess.STDOUT)
  if proc.returncode:raise RuntimeError('URG merge failed; see '+str(out/'urg.log'))
- print((out/'report/modinfo.txt').read_text())
+ print(json.dumps({'line':(out/'report/modinfo.txt').read_text(),'group':(out/'report/grpinfo.txt').read_text() if (out/'report/grpinfo.txt').exists() else ''}))
 '''
 
 def remote(payload,capture=True):
@@ -81,21 +82,26 @@ def parse_report(text,build_id,rtl_hash):
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('operation',choices=['run','identity','extract','merge'])
-    parser.add_argument('--run-dir');parser.add_argument('--case');parser.add_argument('--inputs-manifest');parser.add_argument('--merge-dir');a=parser.parse_args()
-    if a.operation=='identity':print(remote({'op':'identity'}).stdout.strip());return
+    parser.add_argument('--build-dir',default='build');parser.add_argument('--run-dir');parser.add_argument('--case');parser.add_argument('--inputs-manifest');parser.add_argument('--merge-dir');a=parser.parse_args()
+    if a.operation=='identity':print(remote({'op':'identity','build_dir':a.build_dir}).stdout.strip());return
     if a.operation in {'run','extract'}:
         directory=Path(a.run_dir);directory.mkdir(parents=True,exist_ok=True);identity=directory.name
         if not re.fullmatch('[0-9a-f]{32}',identity):raise ValueError('Invalid run ID')
         if a.operation=='run':
             if not re.fullmatch('[A-Za-z_][A-Za-z0-9_]*',a.case or ''):raise ValueError('Invalid UVM test class')
-            sys.exit(remote({'op':'run','id':identity,'case':a.case},False).returncode)
+            sys.exit(remote({'op':'run','id':identity,'case':a.case,'build_dir':a.build_dir},False).returncode)
         artifact=json.loads(remote({'op':'extract','id':identity}).stdout)
         atomic(directory/'coverage.json',artifact);return
     paths=json.loads(Path(a.inputs_manifest).read_text());items=[json.loads(Path(p).read_text()) for p in paths]
     if len({x['build_id'] for x in items})!=1 or len({x['rtl_sha256'] for x in items})!=1:raise ValueError('Incompatible builds')
     import uuid
-    report=remote({'op':'merge','id':uuid.uuid4().hex,'inputs':[x['artifact'] for x in items]}).stdout
-    out=Path(a.merge_dir);out.mkdir(parents=True,exist_ok=True);(out/'urg-modinfo.txt').write_text(report)
-    atomic(out/'coverage.json',parse_report(report,items[0]['build_id'],items[0]['rtl_sha256']))
+    reports=json.loads(remote({'op':'merge','id':uuid.uuid4().hex,'inputs':[x['artifact'] for x in items]}).stdout)
+    out=Path(a.merge_dir);out.mkdir(parents=True,exist_ok=True);(out/'urg-modinfo.txt').write_text(reports['line']);(out/'urg-grpinfo.txt').write_text(reports['group'])
+    report=parse_report(reports['line'],items[0]['build_id'],items[0]['rtl_sha256'])
+    from .functional_coverage import parse_groups,source_fingerprint
+    sources=[item.get('functional_source','') for item in items]
+    if len({source_fingerprint(source) for source in sources})!=1:raise ValueError('Incompatible functional coverage sources')
+    report['functional']=parse_groups(reports['group'],sources[0])
+    atomic(out/'coverage.json',report)
 
 if __name__=='__main__':main()

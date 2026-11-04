@@ -7,45 +7,45 @@
         type="button"
         class="canvas-tab"
         @click="store.setViewMode('hier')"
-        title="Nested-cluster hierarchy from the producer's embedded layout"
-      >Hierarchy</button>
+        title="查看模块嵌套层级"
+      >层级结构</button>
       <button
         type="button"
         class="canvas-tab"
         @click="store.setViewMode('flow')"
-        title="One-level signal flow"
-      >Block Flow</button>
+        title="查看当前层级的信号流"
+      >信号流</button>
       <button
         type="button"
         class="canvas-tab active"
-        title="Pin-level schematic laid out in-browser by elkjs"
-      >Schematic</button>
+        title="查看端口级连接原理图"
+      >原理图</button>
     </div>
     <div class="graph-toolbar" v-if="hasPayload">
-      <button type="button" @click="panZoom.fit">Reset</button>
+      <button type="button" @click="panZoom.fit">重置视图</button>
       <button
         type="button"
         v-if="collapsedCount > 0"
         @click="store.expandAllSch()"
-        :title="`Expand all ${collapsedCount} collapsed block(s)`"
-      >Expand all</button>
+        :title="`展开全部 ${collapsedCount} 个已折叠模块`"
+      >全部展开</button>
       <button
         type="button"
         class="sch-export"
         @click="exportSvg"
-        title="Download this sheet as a standalone SVG"
+        title="下载 SVG 矢量图"
       >SVG</button>
       <button
         type="button"
         class="sch-export"
         @click="exportPng"
         :disabled="exporting"
-        title="Download this sheet as a 2x PNG"
+        title="下载两倍分辨率 PNG 图片"
       >PNG</button>
     </div>
     </div>
     <p v-if="exportError" class="sch-export-error" role="alert">
-      Export failed: {{ exportError }}
+      导出失败： {{ exportError }}
     </p>
 
     <!-- Degraded producer: the payload this canvas lays out simply
@@ -53,18 +53,8 @@
          use (AxiPerfView's "No AXI performance data", the no-view
          placeholder): name what's missing, then the command. -->
     <section v-if="!hasPayload" class="sch-empty">
-      <h2>No schematic payload in this view</h2>
-      <p>
-        The schematic canvas lays out <code>layout.elk</code>, which this
-        <code>view.json</code> doesn't carry — it came from an
-        <strong>older rtl-buddy-view</strong>.
-      </p>
-      <p class="empty-hint">
-        Regenerate it with a current one:<br />
-        <code>{{ RENDER_FOR_SCHEMATIC_HINT }}</code><br />
-        Under the hub, restarting it against the same model is enough.
-        The Hierarchy and Block Flow tabs work either way.
-      </p>
+      <h2>暂无原理图数据</h2>
+      <p>请重新解析项目结构后重试，也可以先查看层级结构和信号流。</p>
     </section>
 
     <div
@@ -841,8 +831,8 @@ watch(
 // GraphCanvas): the element identity moves when the canvas
 // re-renders, and a function dodges that staleness.
 watch(
-  () => [model.value, store.projectCoverageEnabled, store.projectCoverageInstances],
-  () => paintProjectCoverage(svgEl.value, store.projectCoverageEnabled, store.projectCoverageInstances),
+  () => [model.value, store.projectCoverageMode, store.projectCoverageInstances, store.projectFunctionalCoverage],
+  () => paintProjectCoverage(svgEl.value, store.projectCoverageMode, store.projectCoverageInstances, store.projectFunctionalCoverage, store.graph?.top),
   { flush: 'post' },
 )
 const _captureSvgProvider = () => svgEl.value

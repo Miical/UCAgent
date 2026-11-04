@@ -4,6 +4,13 @@
   const el=(tag,cls,text)=>{const n=document.createElement(tag);n.className=cls;if(text!==undefined)n.textContent=text;return n;};
   const tabs=el('div','output-run-tabs'),header=el('div','output-run-header'),title=el('strong','output-run-title'),status=el('span','output-run-status'),time=el('span','output-run-time');
   tabs.setAttribute('aria-label','用例运行记录');header.append(title,status,time);
+  // Translate a vertical wheel into horizontal navigation; retain native trackpad gestures.
+  tabs.addEventListener('wheel',event=>{
+    if(event.ctrlKey||Math.abs(event.deltaX)>=Math.abs(event.deltaY)||tabs.scrollWidth<=tabs.clientWidth)return;
+    event.preventDefault();
+    const unit=event.deltaMode===1?16:event.deltaMode===2?tabs.clientWidth:1;
+    tabs.scrollLeft+=event.deltaY*unit;
+  },{passive:false});
   const details=el('details','output-command-details'),summary=el('summary','','执行命令'),command=el('pre','test-output-command');details.append(summary,command);
   const terminal=el('div','output-terminal'),log=el('pre','test-output-log');
   log.tabIndex=0;log.setAttribute('aria-label','运行终端输出');terminal.append(log);

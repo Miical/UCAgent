@@ -1,5 +1,4 @@
 """Coverage epochs and atomic publication of independently generated reports."""
-import hashlib
 import json
 from pathlib import Path
 import time
@@ -50,13 +49,15 @@ async def collect(runner,row,log):
         for n in report['instances']:
             if not isinstance(n.get('covered'),int) or not isinstance(n.get('total'),int) or not 0<=n['covered']<=n['total']:
                 raise ValueError('Invalid coverage counts')
+        from collections import Counter
+        groups=report.get('functional',{}).get('groups',[])
+        duplicates=[key for key,count in Counter((g['file'],g['type']) for g in groups).items() if count>1]
+        if duplicates:raise ValueError('覆盖定义存在多实例复用，请按导入规范复制独立定义：'+str(duplicates))
         current.update(build_id=row['build_id'],runs=inputs,report=report,updated=time.time())
         atomic(Path(row['cwd'])/'.flowcanvas/coverage/state.json',current)
         row['coverage_status']='merged'
 
 
 def public(root):
-    data=state(root);report=data.get('report');rtl=Path(root)/'Cache.v'
-    if report and rtl.is_file():
-        data['source_matches']=hashlib.sha256(rtl.read_bytes()).hexdigest()==report.get('rtl_sha256')
-    return data
+    """Return the project's published coverage batch without source-specific assumptions."""
+    return state(root)
