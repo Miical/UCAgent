@@ -219,7 +219,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     const enter=()=>{clearTimeout(leaveTimer);clearTimeout(closeTimer);dialog.classList.remove('is-leaving');};
     const pin=()=>{enter();dialog.classList.remove('is-preview');};dialog.pinTask=pin;
     const leave=()=>{clearTimeout(leaveTimer);leaveTimer=setTimeout(()=>{if(dialog.classList.contains('is-preview')){dialog.classList.add('is-leaving');closeTimer=setTimeout(()=>dialog.close(),140);}},160);};
-    dialog.addEventListener('click',pin);dialog.addEventListener('mouseenter',enter);dialog.addEventListener('mouseleave',leave);
+    dialog.addEventListener('pointerdown',pin);dialog.addEventListener('click',pin);dialog.addEventListener('mouseenter',enter);dialog.addEventListener('mouseleave',leave);
     anchor.addEventListener('mouseleave',leave);anchor.addEventListener('mouseenter',enter);
     const outside=event=>{if(!dialog.contains(event.target)&&!anchor.contains(event.target))dialog.close();};
     document.addEventListener('pointerdown',outside);

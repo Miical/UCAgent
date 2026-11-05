@@ -95,6 +95,23 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
             metadata['rtl'] = {'top': 'Adder', 'top_file': 'rtl/Adder.v'}
             marker.write_text(json.dumps(metadata))
 
+    async def test_message_keeps_workflow_context_after_attachment_changes(self):
+        """A queued message carries its workflow identity in the actual model input."""
+        from flowcanvas.chat import Message
+        for name in ('codex', 'opencode'):
+            owner = self.service.create(name)
+            backend = SimpleNamespace(open=AsyncMock(return_value='native'), send=AsyncMock(return_value='turn'),
+                                      close=AsyncMock(), emit=lambda event: None)
+            self.service.session_backends[owner['id']] = backend
+            message = Message(text='Can you see my attachment?', model='model', effort='low',
+                              workflow_context={'id': 'rtl-summary', 'name': 'RTL 功能简述', 'description': 'Summarize RTL'})
+            owner.pop('attachment', None)
+            await self.service.run(owner, message)
+            sent = backend.send.call_args.args[1]
+            self.assertIn('Can you see my attachment?', sent)
+            self.assertIn('"id": "rtl-summary"', sent)
+            self.assertIn('RTL 功能简述', sent)
+
     async def test_rtl_summary_requires_known_top_and_project_output(self):
         """Unknown tops are not guessed and project output cannot escape via symlinks."""
         root = Path(self.temp.name) / 'rtl-project'

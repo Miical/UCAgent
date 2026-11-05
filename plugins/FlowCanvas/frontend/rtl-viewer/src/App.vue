@@ -43,7 +43,6 @@
           v-if="!store.selectedEdgeObj"
           title="模块详情"
           persist-key="node-detail"
-          :badge="store.selection ? '●' : null"
         >
           <NodeDetail />
         </CollapsiblePanel>

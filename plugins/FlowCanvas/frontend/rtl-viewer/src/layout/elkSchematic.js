@@ -1024,7 +1024,6 @@ export function titleBlockRows({ top, toolVersion, scope = null, model = null } 
   const rows = [{ label: 'DESIGN', value: top || '(unnamed)' }]
   if (scope && scope !== top) rows.push({ label: 'SHEET', value: scope })
   if (model) rows.push({ label: 'MODEL', value: model })
-  rows.push({ label: 'TOOL', value: `rtl-buddy-sch ${toolVersion || 'unknown'}` })
   return rows
 }
 

@@ -963,7 +963,6 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 
 .ai-action-dialog{position:fixed;z-index:50;transition:opacity .18s,box-shadow .18s}
 .ai-action-dialog.is-preview{opacity:1;box-shadow:0 6px 22px #00000012}
-.ai-action-dialog.is-preview input,.ai-action-dialog.is-preview textarea,.ai-action-dialog.is-preview select,.ai-action-dialog.is-preview footer{pointer-events:none}
 .ai-workflow-binding{font-size:11px;color:var(--accent);padding:7px 9px;background:color-mix(in srgb,var(--accent) 6%,var(--surface));border-radius:5px;margin-bottom:12px}
 .message.user>.message-content.ai-task-message{border-left:3px solid var(--accent);border-radius:10px;background:color-mix(in srgb,var(--accent) 4%,var(--surface));font-size:12px}
 

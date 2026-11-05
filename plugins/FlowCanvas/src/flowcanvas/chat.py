@@ -44,6 +44,7 @@ class Message(BaseModel):
     """A bounded user message and explicit catalog selections."""
     task_card: TaskCard | None = None
     workflow_label: str = Field(default='', max_length=200)
+    workflow_context: dict | None = None
     text: str = Field(min_length=1, max_length=64000)
     quote: str = Field(default='', max_length=64000)
     model: str = Field(min_length=1, max_length=200)
@@ -443,7 +444,11 @@ class ChatService:
             if session.get('delegation_stopped') or session['status'] == 'stopping':
                 session['status'] = 'error' if session.get('stop_error') else 'interrupted'
                 return
-            turn = await backend.send(session['thread'], ('Quoted context (reference only):\n' + message.quote + '\n\nUser request:\n' if message.quote else '') + message.text, message.model, message.effort,
+            workflow_context = message.workflow_context
+            if workflow_context is None and attached and workflow_meta:
+                workflow_context = {key: workflow_meta[key] for key in ('id', 'name', 'description')}
+            workflow_suffix = ('\n\nAttached workflow (FlowCanvas task context):\n' + json.dumps(workflow_context, ensure_ascii=False, indent=2)) if workflow_context else ''
+            turn = await backend.send(session['thread'], ('Quoted context (reference only):\n' + message.quote + '\n\nUser request:\n' if message.quote else '') + message.text + workflow_suffix, message.model, message.effort,
                                            session.get('service_tier'), mode)
             session['turn'] = turn
             # Notifications may precede the RPC response: never overwrite terminal state.
@@ -701,6 +706,12 @@ def routes(service):
         if len(session.get('queue', [])) >= 20:
             raise HTTPException(409, 'Message queue is full')
         attached = session.get('attachment')
+        message.workflow_context = None
+        if attached:
+            from .catalog import workflow_menu
+            meta = next((row for row in workflow_menu() if row['id'] == attached['workflow_id']), None)
+            if meta:
+                message.workflow_context = {key: meta[key] for key in ('id', 'name', 'description')}
         message.workflow_label = (attached.get('name') or attached['workflow_id']) if attached and not session.get('attachment_sent') else ''
         if message.workflow_label:
             session['attachment_sent'] = True
