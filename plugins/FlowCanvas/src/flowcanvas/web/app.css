@@ -590,7 +590,7 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 .workflow-run .run-track{width:max-content;max-width:100%;box-sizing:border-box;pointer-events:auto;}
 .workflow-run .run-scroll{pointer-events:auto;}
 /* Leave the first message below the 90px capsule fade, including scroll-to-message actions. */
-.workflow-run:not([hidden])+#conversation{margin-top:0;padding-top:102px;scroll-padding-top:102px;}
+.workflow-run+#conversation{margin-top:0;padding-top:102px;scroll-padding-top:102px;}
 
 .run-capsule.same-conversation{border-color:color-mix(in srgb,var(--accent) 30%,var(--border));}
 
@@ -1483,3 +1483,26 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .bug-panel .targets-tree .target-card-body{padding:2px 12px 10px 24px}
 .bug-panel .targets-tree .target-card-body>.bug-editable{margin:0;padding:0;font-size:11px;line-height:1.55;min-height:1.55em}
 .bug-panel .target-header>.target-header-actions{margin:0 4px 0 auto;gap:2px}
+
+
+/* Flat stacked AI entry points retain the corner sparkle on each icon. */
+.targets-empty-ai-actions{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:16px}
+.targets-empty .targets-empty-ai-button{display:inline-flex;align-items:center;justify-content:center;gap:9px;box-sizing:border-box;position:relative;width:140px;height:30px;margin:0;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;font-weight:500;line-height:1;box-shadow:none;transition:background .15s,border-color .15s}
+.targets-empty .targets-empty-ai-button svg{flex-shrink:0;color:var(--text-dim)}
+.targets-empty .targets-empty-ai-button:hover{background:color-mix(in srgb,var(--text) 4%,var(--surface));border-color:color-mix(in srgb,var(--text-dim) 40%,var(--border));box-shadow:none}
+.targets-empty .targets-empty-ai-button:active{background:color-mix(in srgb,var(--text) 7%,var(--surface))}
+.targets-empty .targets-empty-ai-button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(prefers-reduced-motion:reduce){.targets-empty .targets-empty-ai-button{transition:none;transform:none}}
+
+
+/* Match the capsule visibility toggle to the neighboring conversation tools. */
+#workflow-capsules-toggle[aria-expanded="true"]{color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--surface))}
+
+/* Animate the overlay only; keep message spacing and scroll position stable. */
+.workflow-run{opacity:1;transform:translateY(0);visibility:visible;transition:opacity .2s ease,transform .28s cubic-bezier(.22,.8,.24,1),visibility 0s}
+.workflow-run.is-collapsed{opacity:0;transform:translateY(-16px);visibility:hidden;transition:opacity .18s ease,transform .24s cubic-bezier(.4,0,.6,1),visibility 0s .24s}
+.workflow-run.is-collapsed .run-track,.workflow-run.is-collapsed .run-scroll{pointer-events:none}
+@media(prefers-reduced-motion:reduce){.workflow-run,.workflow-run.is-collapsed{transition:none;transform:none}}
+
+.message-workflow-binding{display:flex;justify-content:flex-end;margin-top:6px;padding-right:2px}
+.message-workflow-binding .ai-workflow-binding{max-width:100%}

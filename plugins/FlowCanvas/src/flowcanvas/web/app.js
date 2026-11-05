@@ -67,7 +67,10 @@ document.getElementById('detail-toggle').onclick=()=>{
   toggleDetails(!workspace.classList.contains('detail-collapsed'));
   detailMotionTimer=setTimeout(()=>workspace.classList.remove('detail-motion'),500);
 };
-try{if(localStorage.getItem('flowcanvas.detailCollapsed')==='true')toggleDetails(true);}catch{}
+// First visits keep the conversation focused; restore an explicit saved preference.
+let initialDetailCollapsed=true;
+try{initialDetailCollapsed=localStorage.getItem('flowcanvas.detailCollapsed')!=='false';}catch{}
+toggleDetails(initialDetailCollapsed);
 
 /** Collapse the project column from its active navigation icon, keeping navigation visible. */
 let projectMotionTimer;

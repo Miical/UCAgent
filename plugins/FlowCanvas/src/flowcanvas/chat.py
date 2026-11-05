@@ -43,6 +43,7 @@ class TaskCard(BaseModel):
 class Message(BaseModel):
     """A bounded user message and explicit catalog selections."""
     task_card: TaskCard | None = None
+    workflow_label: str = Field(default='', max_length=200)
     text: str = Field(min_length=1, max_length=64000)
     quote: str = Field(default='', max_length=64000)
     model: str = Field(min_length=1, max_length=200)
@@ -398,7 +399,7 @@ class ChatService:
         if (session.get('attachment') or {}).get('task_only'):
             session['task_attachment_started'] = True
         session['items'].append({'id': uuid.uuid4().hex, 'kind': 'user', 'text': message.text,
-                                 'task_card': message.task_card.model_dump() if message.task_card else None, 'quote': message.quote, 'status': 'completed', 'started_at': session['started_at']})
+                                 'workflow_label': message.workflow_label, 'task_card': message.task_card.model_dump() if message.task_card else None, 'quote': message.quote, 'status': 'completed', 'started_at': session['started_at']})
         self.launching.add(session['id'])
         self.changed(session)
         self.save(session)
@@ -655,6 +656,7 @@ def routes(service):
         resolved = attachment(value)
         async with service.reconfigure(session, workflow=True):
             session['attachment'] = resolved
+            session['attachment_sent'] = False
             service.changed(session)
             service.save(session)
         return session
@@ -703,6 +705,13 @@ def routes(service):
         if not message.text.strip():
             raise HTTPException(400, 'Message is empty')
         tier = model.get('speed_tiers', {}).get(message.speed)
+        # Consume the composer chip only after validation; authorization stays with the session.
+        if len(session.get('queue', [])) >= 20:
+            raise HTTPException(409, 'Message queue is full')
+        attached = session.get('attachment')
+        message.workflow_label = (attached.get('name') or attached['workflow_id']) if attached and not session.get('attachment_sent') else ''
+        if message.workflow_label:
+            session['attachment_sent'] = True
         if session['status'] in ACTIVE or session.get('queue') or identity in service.launching or identity in service.steering:
             queue = session.setdefault('queue', [])
             if len(queue) >= 20:
@@ -740,7 +749,7 @@ def routes(service):
             finally:
                 service.steering.discard(identity)
             session['items'].append({'id': uuid.uuid4().hex, 'kind': 'user', 'text': message.text,
-                                     'task_card': message.task_card.model_dump() if message.task_card else None, 'quote': message.quote, 'steered': True, 'status': 'completed',
+                                     'workflow_label': message.workflow_label, 'task_card': message.task_card.model_dump() if message.task_card else None, 'quote': message.quote, 'steered': True, 'status': 'completed',
                                      'started_at': time.time()})
         queue.remove(queued)
         if action == 'send':

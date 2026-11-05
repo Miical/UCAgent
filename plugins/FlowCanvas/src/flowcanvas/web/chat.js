@@ -10,7 +10,7 @@ let backendChoice=localStorage.getItem('flowcanvas.backend')||'codex';
 const drafts=new Map();
 try{for(const [key,value]of Object.entries(JSON.parse(localStorage.getItem('flowcanvas.drafts')||'{}')))if(typeof value==='string')drafts.set(key,value);}catch{}
 /** Keep drafts scoped to conversations and survive a page reload. */
-function saveDraft(){if(selected){if($('message').value)drafts.set(selected,$('message').value);else drafts.delete(selected);}try{localStorage.setItem('flowcanvas.drafts',JSON.stringify(Object.fromEntries(drafts)));}catch{}}
+function saveDraft(){if(!session)return;const key=selected||'__new__';if($('message').value)drafts.set(key,$('message').value);else drafts.delete(key);try{localStorage.setItem('flowcanvas.drafts',JSON.stringify(Object.fromEntries(drafts)));}catch{}}
 /** Resize restored drafts as well as text entered by the user. */
 function resizeDraft(){$('message').style.height='auto';$('message').style.height=Math.min($('message').scrollHeight,180)+'px';}
 let speedMode='standard';
@@ -42,8 +42,8 @@ function paintBackends(){
       if(row.id===backendChoice){closePicker(true,'backend');return;}
       busy=true;controls();
       try{
-        if(session&&!session.thread&&!session.items.length&&!(session.queue||[]).length){render(await request('/sessions/'+session.id+'/backend',{backend:row.id}));}
-        else await create(row.id);
+        if(session?.id&&!session.thread&&!session.items.length&&!(session.queue||[]).length){render(await request('/sessions/'+session.id+'/backend',{backend:row.id}));}
+        else await create(row.id,true);
         closePicker(true,'backend');
       }catch(exc){error(exc.message);}finally{busy=false;controls();}
     };
@@ -78,16 +78,16 @@ function paintQuote(){
   });
 }
 /** Persist structured annotations per conversation without inserting them into the prompt. */
-function saveQuote(){if(selected){if(quoteDraft.length)quotes.set(selected,quoteDraft);else quotes.delete(selected);}try{localStorage.setItem('flowcanvas.annotations',JSON.stringify(Object.fromEntries(quotes)));}catch{}}
+function saveQuote(){if(!session)return;const key=selected||'__new__';if(quoteDraft.length)quotes.set(key,quoteDraft);else quotes.delete(key);try{localStorage.setItem('flowcanvas.annotations',JSON.stringify(Object.fromEntries(quotes)));}catch{}}
 /** Serialize attachments only at the backend boundary. */
 function quoteText(){return quoteDraft.map((item,index)=>(index+1)+'. 所选文本：\n'+item.text+(item.comment?'\n评论：'+item.comment:'')).join('\n\n');}
 /** Reflect server-owned authorization as one removable attachment card. */
 function paintAttachments(){
-  const host=$('attached-workflows');host.replaceChildren();const item=session?.attachment;if(!item||item.task_only)return;
+  const host=$('attached-workflows');host.replaceChildren();const item=session?.attachment;if(!item||item.task_only||session.attachment_sent)return;
   const card=document.createElement('div');card.className='workflow-chip';card.title=item.name+(item.rtl_file?'\n'+item.rtl_file:'');
   const name=document.createElement('span');name.textContent='◇ '+item.name;
   const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.title='移除工作流';remove.disabled=active.has(session.status);
-  remove.onclick=async()=>{try{render(await request('/sessions/'+session.id+'/attachment/remove',{}));}catch(exc){error(exc.message);}};card.append(name,remove);host.append(card);
+  remove.onclick=async()=>{try{if(!session.id){render({...session,attachment:null});return;}render(await request('/sessions/'+session.id+'/attachment/remove',{}));}catch(exc){error(exc.message);}};card.append(name,remove);host.append(card);
 }
 /** Display the execution card in the conversation it belongs to, independent of message text. */
 let workflowCardSignature='',allWorkflowRuns=[],workflowRefreshPending=false,workflowRunsLoaded=false;
@@ -229,11 +229,26 @@ function showWorkflowGroup(owner,cardId){
   const target=fits?first:clicked||first;
   track.scrollTo({left:Math.max(0,target.offsetLeft-20),behavior:'smooth'});
 }
+let capsulesVisible=false,previousExecutingRuns=null;
+/** Apply manual visibility without allowing timer refreshes to override the choice. */
+function paintCapsuleVisibility(){
+  const available=allWorkflowRuns.some(run=>!run.dismissed),host=$('workflow-run'),button=$('workflow-capsules-toggle');
+  const visible=available&&capsulesVisible;
+  host.hidden=false;host.classList.toggle('is-collapsed',!visible);host.inert=!visible;
+  host.setAttribute('aria-hidden',String(!visible));
+  button.disabled=!available;button.setAttribute('aria-expanded',String(visible));
+  button.title=button.ariaLabel=visible?'隐藏工作流胶囊':'显示工作流胶囊';
+  if(!visible)for(const popover of host.querySelectorAll(':popover-open'))popover.hidePopover();
+}
+$('workflow-capsules-toggle').onclick=()=>{capsulesVisible=!capsulesVisible;paintCapsuleVisibility();};
 function paintWorkflowRun(){
   const runs=groupedWorkflowRuns(),host=$('workflow-run');
   const signature=JSON.stringify(runs);if(signature===workflowCardSignature)return;
   workflowCardSignature=signature;
-  host.hidden=!runs.some(run=>!run.dismissed);
+  const executing=new Set(runs.filter(run=>!run.dismissed&&['starting','running','stopping'].includes(run.status)).map(run=>run.id));
+  if(previousExecutingRuns===null||[...executing].some(id=>!previousExecutingRuns.has(id)))capsulesVisible=executing.size>0;
+  else if(previousExecutingRuns.size>0&&!executing.size)capsulesVisible=false;
+  previousExecutingRuns=executing;paintCapsuleVisibility();
   const focused=document.activeElement?.closest('.run-capsule')?.dataset.id;
   const previousScroll=host.querySelector('.run-track')?.scrollLeft||0;
   const oldTrack=host.querySelector('.run-track');
@@ -318,6 +333,7 @@ function paintWorkflowRun(){
 /** Attach or launch from the common menu without workflow-specific parameter dialogs. */
 async function configureWorkflow(item,direct){
   const owner=selected;closePicker();
+  if(!direct&&!owner){render({...session,attachment:{workflow_id:item.id,name:item.name},attachment_sent:false});return;}
   try{const payload={workflow_id:item.id};const data=await request(direct?'/workflows/direct':'/sessions/'+owner+'/attachment',direct?{...payload,backend:backendChoice,model:$('model').value,effort:$('effort').value}:payload);if(direct){await list();await choose(data.id);}else if(selected===owner)render(data);}
   catch(exc){error(exc.message);}
 }
@@ -327,6 +343,7 @@ function error(message){$('chat-error').textContent=message||'';$('chat-error').
 function controls(){
   const running=active.has(session?.status)||session?.children_running>0;
   $('send').textContent=running&&!$('message').value.trim()?'■':'↑';$('send').classList.toggle('is-stop',running);$('send').ariaLabel=running?($('message').value.trim()?(active.has(session?.status)?'加入队列':'发送消息'):session?.children_running>0?'停止任务':'停止回复'):'发送消息';$('send').title=$('send').ariaLabel;
+  $('new-chat').disabled=busy;
   $('send').disabled=busy||session?.status==='stopping'||(!running&&(!models.length||!$('message').value.trim()));
   $('model').disabled=$('effort').disabled=$('model-toggle').disabled=running||!models.length;
   $('backend-toggle').disabled=running||busy;
@@ -352,6 +369,7 @@ function paintPermissions(){
     const note=document.createElement('small');note.textContent=description;text.append(note);
     const mark=document.createElement('span');mark.className='model-check';mark.textContent=mode===value?'✓':'';button.append(text,mark);
     button.onclick=async()=>{
+      if(!session.id){render({...session,permission_mode:value});closePicker(true,'permission');return;}
       const id=session.id;busy=true;controls();
       try{const data=await request('/sessions/'+id+'/permissions',{mode:value});if(selected===id)render(data);closePicker(true,'permission');}
       catch(exc){error(exc.message);}finally{busy=false;controls();}
@@ -550,8 +568,36 @@ async function choose(id){
   unsubscribe=subscribe(id,data=>{if(selected===id)render(data);},connected=>{if(selected!==id)return;$('reconnect-notice').hidden=connected;if(!connected)$('connection').textContent='连接中断，正在重新连接…';else controls();});
   if(backendWorkspace!==data.workspace)await loadBackends();
 }
-/** Create a conversation without invoking a model. */
-async function create(backend=backendChoice){const data=await request('/sessions',{backend});await list();await choose(data.id);$('message').focus();}
+/** Open a local draft; repeated clicks never publish an empty conversation. */
+async function create(backend=backendChoice,changingBackend=false){
+  if(busy&&!changingBackend)return;
+  if(session&&!session.id){if(backend!==backendChoice){render({...session,backend});modelSelection();} $('message').focus();return;}
+  saveDraft();saveQuote();++switchNumber;unsubscribe?.();unsubscribe=null;selected=null;
+  localStorage.setItem('flowcanvas.session','__new__');
+  $('message').value=drafts.get('__new__')||'';quoteDraft=quotes.get('__new__')||[];paintQuote();resizeDraft();
+  render({id:null,backend,status:'idle',items:[],queue:[],permission_mode:'workflow',title:'',attachment:null});
+  $('reconnect-notice').hidden=true;paintSessions();await loadBackends();$('message').focus();
+}
+let creatingSession=null;
+/** Materialize a draft only for its first send, retaining text and settings on failure. */
+async function ensureSession(){
+  if(session?.id)return session;
+  if(creatingSession)return creatingSession;
+  creatingSession=(async()=>{
+    const draft=session,model=$('model').value,effort=$('effort').value,speed=speedMode;
+    saveDraft();saveQuote();
+    const data=await request('/sessions',{backend:backendChoice});
+    drafts.set(data.id,$('message').value);quotes.set(data.id,[...quoteDraft]);
+    await choose(data.id);
+    $('model').value=model;efforts(effort);speedMode=speed;updateSpeed();
+    // Once an ID exists, retries reuse it even if applying settings or sending fails.
+    if(draft?.permission_mode&&draft.permission_mode!==data.permission_mode)render(await request('/sessions/'+data.id+'/permissions',{mode:draft.permission_mode}));
+    if(draft?.attachment)render(await request('/sessions/'+data.id+'/attachment',{workflow_id:draft.attachment.workflow_id}));
+    drafts.delete('__new__');quotes.delete('__new__');saveDraft();saveQuote();
+    return session;
+  })();
+  try{return await creatingSession;}finally{creatingSession=null;}
+}
 /** Submit or interrupt exactly one turn; keep a draft when submission is rejected. */
 async function send(){
   if(busy)return;busy=true;controls();error('');
@@ -559,7 +605,7 @@ async function send(){
     if((active.has(session?.status)||session?.children_running>0)&&!$('message').value.trim()){render(await request('/sessions/'+session.id+'/stop',{}));}
     else{
       const text=$('message').value;if(!text.trim())return;
-      if(!session)await create();
+      if(!session?.id)await ensureSession();
       const id=session.id;
       rememberModel();
       const data=await request('/sessions/'+id+'/messages',{text,quote:quoteText(),model:$('model').value,effort:$('effort').value,speed:speedMode});
@@ -606,7 +652,7 @@ async function loadWorkflowMenu(){
       const name=document.createElement('div');name.className='workflow-menu-name';name.textContent=item.name;
       const description=document.createElement('p');description.textContent=item.description;info.append(name,description);
       const footer=document.createElement('div');footer.className='workflow-choice-footer';
-      const canAttach=item.can_start&&Boolean(selected)&&session?.permission_mode!=='readonly';
+      const canAttach=item.can_start&&Boolean(session)&&session?.permission_mode!=='readonly';
       const attach=document.createElement('span');attach.className='workflow-attach-action';attach.classList.toggle('is-disabled',!canAttach);
       const label=document.createElement('span');label.textContent=session?.permission_mode==='readonly'?'只读模式不可附加':'附加到当前对话';
       const plus=document.createElementNS('http://www.w3.org/2000/svg','svg');plus.setAttribute('viewBox','0 0 20 20');plus.setAttribute('aria-hidden','true');const path=document.createElementNS(plus.namespaceURI,'path');path.setAttribute('d','m7 11 5-5a2.1 2.1 0 0 1 3 3l-7 7a3.5 3.5 0 0 1-5-5l7-7a4.9 4.9 0 0 1 7 7l-6 6');plus.append(path);attach.append(plus,label);footer.append(attach);
@@ -623,7 +669,7 @@ async function loadWorkflowMenu(){
 async function init(){
   try{
     const rows=await list();const saved=localStorage.getItem('flowcanvas.session');
-    const visible=rows.filter(row=>!row.archived);if(visible.length)await choose(visible.some(r=>r.id===saved)?saved:visible[0].id);else await create();
+    const visible=rows.filter(row=>!row.archived);if(saved==='__new__')await create();else if(visible.length)await choose(visible.some(r=>r.id===saved)?saved:visible[0].id);else await create();
   }catch(exc){error(exc.message);$('connection').textContent='连接失败 · 刷新页面重试';}
 }
 /** Append selected context without discarding an unfinished draft. */
@@ -674,20 +720,21 @@ window.FlowCanvasAI={
   open:async id=>{await list();await choose(id);},
   async startCase({text,current=true,project,requirements,design=null}){
     const model=$('model').value,effort=$('effort').value;
-    const caseAction=['run-testcase','delete-testcase','add-goal','delete-goal'].includes(design?.kind);
-    const taskTitle=design?.kind==='add-goal'?'新增验证目标':design?.kind==='delete-goal'?'删除验证目标':design?.kind==='functional-coverage'?'分析功能覆盖率':design?.kind==='run-testcase'?'运行测试用例':design?.kind==='delete-testcase'?'删除测试用例':design?.kind==='line-coverage'?'分析行覆盖率':design?'解释设计':'新增测试用例';
+    const caseAction=['run-testcase','delete-testcase','add-goal','delete-goal','import-goals','plan-goals'].includes(design?.kind);
+    const taskTitle=design?.kind==='plan-goals'?'规划验证目标':design?.kind==='import-goals'?'从项目导入验证目标':design?.kind==='add-goal'?'新增验证目标':design?.kind==='delete-goal'?'删除验证目标':design?.kind==='functional-coverage'?'分析功能覆盖率':design?.kind==='run-testcase'?'运行测试用例':design?.kind==='delete-testcase'?'删除测试用例':design?.kind==='line-coverage'?'分析行覆盖率':design?'解释设计':'新增测试用例';
     if(!model)throw Error('请先选择可用模型');
     let owner=session;
     if(current){
       if(!owner)throw Error('请先打开一个对话');
       if(active.has(owner.status))throw Error('当前对话正在执行，请使用独立任务对话');
       if((!design||caseAction)&&owner.permission_mode!=='full')throw Error('请先将当前对话切换为完全访问，或使用独立任务对话');
-      if(owner.attachment&&(design||owner.attachment.workflow_id!=='generate-testcase'))throw Error('当前对话已附加其他工作流，请使用独立任务对话');
+      if(owner.attachment&&!owner.attachment_sent&&(design||owner.attachment.workflow_id!=='generate-testcase'))throw Error('当前对话已附加其他工作流，请使用独立任务对话');
     }else{
       owner=await request('/sessions',{backend:backendChoice});
       await request('/sessions/'+owner.id+'/settings',{title:design?taskTitle+' · '+design.module:'AI 新增测试用例'});
       await request('/sessions/'+owner.id+'/permissions',{mode:design&&!caseAction?'readonly':'full'});
     }
+    if(current&&!owner.id)owner=await ensureSession();
     if(!design)await request('/sessions/'+owner.id+'/attachment',{workflow_id:'generate-testcase',task_only:true,rtl_file:project.rtl?.top_file?project.path+'/'+project.rtl.top_file:'',dut:project.rtl?.top||'RTL'});
     const result=await request('/sessions/'+owner.id+'/messages',{text,model,effort,speed:speedMode,task_card:{title:taskTitle,workflow:design?'':'新增测试用例',project:project.name,requirements:design?design.instance+(requirements?'\n'+requirements:''):requirements||''}});
     await list();await choose(owner.id);
