@@ -51,6 +51,21 @@ class WorkflowHostTests(unittest.IsolatedAsyncioTestCase):
                     started = await runtime.run('rtl-summary', str(rtl), 'Probe')
                     self.assertTrue(started['tools'])
                     self.assertEqual(requests, [])
+                    identity = started['card']['id']
+                    original_pid = runtime.processes[identity].pid
+                    await runtime.pause()
+                    self.assertFalse(started['card']['alive'])
+                    self.assertIsNotNone(runtime.processes[identity].returncode)
+                    resumed = await runtime.run(card_id=identity)
+                    self.assertEqual(resumed['card']['id'], identity)
+                    self.assertNotEqual(runtime.processes[identity].pid, original_pid)
+                    self.assertTrue(resumed['tools'])
+                    owner['status'] = 'completed'
+                    owner['children_pending'] = False
+                    await runtime.inspect()
+                    self.assertEqual(resumed['card']['status'], 'paused')
+                    self.assertFalse(resumed['card']['alive'])
+
                 finally:
                     await runtime.close()
                     await service.close()

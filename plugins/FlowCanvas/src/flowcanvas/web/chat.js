@@ -1,3 +1,4 @@
+function workflowMcpStatus(run){return run.alive===true?(run.status==='starting'?'启动中':'在线'):run.alive===false?'离线':'未记录';}
 function formatStageDuration(value){return value==null?value:String(value).replace(/(\d+(?:\.\d+)?)\s*(?:秒|s)(?![a-z])/g,(_,seconds)=>Math.round(Number(seconds))+'s');}
 /** Conversation controller: sessions, drafts, model capabilities and turn lifecycle. */
 import {request, subscribe} from './chat-api.js';
@@ -140,12 +141,12 @@ function paintWorkflowDetail(){
   if(run){
     const make=(tag,text)=>{const node=document.createElement(tag);node.textContent=text;return node;};
     const section=(title,open=false)=>{const block=document.createElement('details');block.className='workflow-info-section';block.dataset.section=title;block.open=expanded.get(title)??open;block.append(make('summary',title));const body=document.createElement('div');body.className='workflow-info-body';block.append(body);detail.append(block);return body;};
-    const pairs=(block,rows)=>{const dl=document.createElement('dl');dl.className='run-metadata';for(const [label,value]of rows){if(value!==undefined&&value!==null&&value!=='')dl.append(make('dt',label),make('dd',String(value)));}block.append(dl);};
+    const pairs=(block,rows)=>{const dl=document.createElement('dl');dl.className='run-metadata';for(const [label,value]of rows){if(value!==undefined&&value!==null&&value!==''){const cell=make('dd',String(value));if(label==='MCP 服务'){cell.className='workflow-mcp-status';cell.dataset.state={'在线':'online','离线':'offline','启动中':'starting'}[value]||'unknown';}dl.append(make('dt',label),cell);}}block.append(dl);};
     const overview=document.createElement('section');overview.className='workflow-info-section workflow-overview';
     overview.append(make('h4','运行概览'));
     const runtime=document.createElement('div');runtime.className='workflow-info-body';overview.append(runtime);detail.prepend(overview);
     const runningTime=workflowRunningTime(run);
-    pairs(runtime,[['任务',run.tui?.mission],['后端',run.backend],['模型',run.model],['推理强度',run.effort],['开始时间',run.started_at?new Date(run.started_at*1000).toLocaleString():null],['运行时间',runningTime],['工作目录',run.workspace]]);
+    pairs(runtime,[['任务',run.tui?.mission],['后端',run.backend],['模型',run.model],['推理强度',run.effort],['开始时间',run.started_at?new Date(run.started_at*1000).toLocaleString():null],['运行时间',runningTime],['MCP 服务',workflowMcpStatus(run)],['工作目录',run.workspace]]);
     if(!run.tui){runtime.append(make('p','此历史任务未采集 TUI 详情；新启动或恢复的任务会提供。'));}
     else{
       const stageInfo=section('阶段详情');
@@ -248,8 +249,11 @@ function paintWorkflowRun(){
   const signature=JSON.stringify(runs);if(signature===workflowCardSignature)return;
   workflowCardSignature=signature;
   const executing=new Set(runs.filter(run=>!run.dismissed&&['starting','running','stopping'].includes(run.status)).map(run=>run.id));
-  if(previousExecutingRuns===null||[...executing].some(id=>!previousExecutingRuns.has(id)))capsulesVisible=executing.size>0;
-  else if(previousExecutingRuns.size>0&&!executing.size)capsulesVisible=false;
+  const visibleRuns=runs.filter(run=>!run.dismissed);
+  const unfinished=visibleRuns.some(run=>run.status!=='completed');
+  if(previousExecutingRuns===null)capsulesVisible=unfinished;
+  else if([...executing].some(id=>!previousExecutingRuns.has(id)))capsulesVisible=true;
+  else if(visibleRuns.length&&!unfinished)capsulesVisible=false;
   previousExecutingRuns=executing;paintCapsuleVisibility();
   const focused=document.activeElement?.closest('.run-capsule')?.dataset.id;
   const previousScroll=host.querySelector('.run-track')?.scrollLeft||0;
@@ -289,7 +293,7 @@ function paintWorkflowRun(){
     for(const [stageIndex,stage] of stages.entries()){const current=stage.name===run.current_stage&&!stage.completed;const row=element('li',stage.completed?'done':current?'current':'pending');row.classList.toggle('near-current',stageIndex>=first&&stageIndex<last);row.append(element('span','run-stage-dot',stage.completed?'✓':''));const text=element('div','');text.append(element('strong','',stage.name));if(stage.completed||current){const duration=element('small','run-stage-duration',formatStageDuration(stage.time_cost)||(stage.kind==='startup'&&run.startup?.started_at&&run.status==='starting'?Math.max(0,Math.floor(Date.now()/1000-run.startup.started_at))+'s':run.historical?'未记录':'0s'));duration.title='阶段耗时';text.append(duration);}if(current)text.append(element('small','run-stage-state',run.status==='paused'?'暂停':'执行中'));row.append(text);timeline.append(row);}
     if(!stages.length)timeline.append(element('li','run-empty',run.historical?'旧版记录未保存阶段详情':'正在读取工作流阶段…'));expanded.append(timeline);
     const metadata=element('dl','run-metadata');
-    for(const [key,value]of [['任务',run.tui?.mission||run.name],['开始时间',run.started_at?new Date(run.started_at*1000).toLocaleString():null],['运行时间',workflowRunningTime(run)],['工作目录',run.workspace]]){if(value){metadata.append(element('dt','',key),element('dd','',value));}}
+    for(const [key,value]of [['任务',run.tui?.mission||run.name],['开始时间',run.started_at?new Date(run.started_at*1000).toLocaleString():null],['运行时间',workflowRunningTime(run)],['MCP 服务',workflowMcpStatus(run)],['工作目录',run.workspace]]){if(value){const cell=element('dd','',value);if(key==='MCP 服务'){cell.className='workflow-mcp-status';cell.dataset.state={'在线':'online','离线':'offline','启动中':'starting'}[value]||'unknown';}metadata.append(element('dt','',key),cell);}}
     expanded.append(metadata);
     expanded.setAttribute('popover','manual');
     let closeTimer;

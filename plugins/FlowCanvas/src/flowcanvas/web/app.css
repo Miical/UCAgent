@@ -1530,3 +1530,21 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .composer .workflow-menu-item small,.composer .workflow-attach-action{font-size:9px;}
 .composer .workflow-direct{width:26px;height:26px;}
 .composer .workflow-direct svg{width:21px;height:21px;}
+
+.workflow-mcp-status{display:flex;align-items:center;gap:6px}
+.workflow-mcp-status::before{content:"";flex:0 0 6px;width:6px;height:6px;border-radius:50%;background:#94a3b8}
+.workflow-mcp-status[data-state="online"]::before{background:#22b573}
+.workflow-mcp-status[data-state="offline"]::before{background:#ef5b5b}
+.workflow-mcp-status[data-state="starting"]::before{background:#e6a429}
+
+/* A quiet halo marks active workflow capsules without moving their contents. */
+.run-capsule[data-status="running"]>.run-compact .run-ring{
+  animation:workflow-ring-breathe 2.6s ease-in-out infinite;
+}
+@keyframes workflow-ring-breathe{
+  0%,100%{box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 4%,transparent),0 0 5px color-mix(in srgb,var(--accent) 5%,transparent)}
+  50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 10%,transparent),0 0 11px color-mix(in srgb,var(--accent) 16%,transparent)}
+}
+@media(prefers-reduced-motion:reduce){
+  .run-capsule[data-status="running"]>.run-compact .run-ring{animation:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 9%,transparent)}
+}

@@ -1,8 +1,12 @@
 """Conversation-owned MCP processes; no worker model or hidden conversation."""
 from jsonschema import Draft202012Validator
 import asyncio
+import os
+import signal
+import hashlib
 from .subagents import execution_active
 import json
+import re
 from pathlib import Path
 import shutil
 import socket
@@ -37,11 +41,30 @@ class WorkflowRuntime:
         self.processes = {}
         self.lock = asyncio.Lock()
         self.running_clocks = {}
+        self.stage_clocks = {}
+        self.retiring = {}
+        self.stop_locks = {}
+        self.stopped_processes = set()
 
     def update_running_time(self):
         """Accumulate active intervals only; monotonic clocks never survive a restart."""
         now = time.monotonic()
         for card in self.session.get('workflow_runs', []):
+            stages = card.setdefault('stage_running_seconds', {})
+            previous_stage = self.stage_clocks.pop(card['id'], None)
+            if previous_stage:
+                name, timestamp = previous_stage
+                stages[name] = stages.get(name, 0) + max(0, now - timestamp)
+            for stage in card.get('stages', []):
+                if stage.get('kind') == 'startup':
+                    continue
+                name = stage['name']
+                if name not in stages:
+                    parts = re.findall(r'(\d+(?:\.\d+)?)\s*(h|m|s|秒)', str(stage.get('time_cost') or ''))
+                    stages[name] = sum(float(value) * {'h': 3600, 'm': 60, 's': 1, '秒': 1}[unit] for value, unit in parts)
+                stage['time_cost'] = f"{int(stages[name])}s"
+                if name == card.get('current_stage') and not stage.get('completed') and card.get('status') == 'running':
+                    self.stage_clocks[card['id']] = (name, now)
             previous = self.running_clocks.pop(card['id'], None)
             if previous is not None:
                 card['running_seconds'] = card.get('running_seconds', 0) + max(0, now - previous)
@@ -55,10 +78,41 @@ class WorkflowRuntime:
         self.service.changed(self.session)
         self.service.save(self.session)
 
+    async def stop_host(self, card):
+        """Terminate the owned process group, including shell/compiler descendants."""
+        async with self.stop_locks.setdefault(card['id'], asyncio.Lock()):
+            proc = self.processes.get(card['id'])
+            if proc is None or proc in self.stopped_processes:
+                return
+            # The host is a session leader; its group remains ours even after it exits.
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                await asyncio.wait_for(asyncio.shield(proc.wait()), 3)
+            except TimeoutError:
+                pass
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            await proc.wait()
+            self.stopped_processes.add(proc)
+            card['alive'] = False
+
+    async def retire_completed(self, card):
+        """Allow the final tool response to drain before closing an accepted host."""
+        await asyncio.sleep(2)
+        async with self.lock:
+            await self.stop_host(card)
+            self.publish()
+
     async def inspect(self):
         """Read authoritative host receipts and reconcile process/turn liveness."""
         cards = self.session.setdefault('workflow_runs', [])
         before = json.dumps(cards)
+        self.update_running_time()
         for card in cards:
             root = Path(card['root'])
             proc = self.processes.get(card['id'])
@@ -73,6 +127,10 @@ class WorkflowRuntime:
                 card.update(status='completed', pause_reason='')
             elif card['status'] != 'paused' and (not card['alive'] or not execution_active(self.session)):
                 card.update(status='paused', pause_reason='MCP 服务停止' if not card['alive'] else '对话已停止')
+            if card['status'] == 'paused':
+                await self.stop_host(card)
+            elif card['status'] == 'completed' and card['id'] not in self.retiring:
+                self.retiring[card['id']] = asyncio.create_task(self.retire_completed(card))
             if card['status'] == 'completed' or not card['alive']:
                 for tool in (card.get('tui') or {}).get('tools', []):
                     tool['busy'] = False
@@ -82,10 +140,11 @@ class WorkflowRuntime:
         return {'cards': cards}
 
     async def pause(self):
-        """Pause cards on user stop; hosts stay available but no autonomous work runs."""
+        """Stop workflow execution while retaining durable stage checkpoints."""
         for card in self.session.get('workflow_runs', []):
             if card['status'] != 'completed':
                 card.update(status='paused', pause_reason='对话已停止')
+            await self.stop_host(card)
         self.publish()
 
     async def run(self, workflow_id='', rtl_file='', dut='', card_id=''):
@@ -113,13 +172,15 @@ class WorkflowRuntime:
             # Availability applies equally to new starts, resumed cards and tool calls.
             attachment(WorkflowInput(workflow_id=identity))
             await self.inspect()
+            if card and card['status'] == 'completed' and tool_name == 'Exit':
+                return {'card': card, 'result': {'content': [{'type': 'text', 'text': '{"exit": true, "reason": "Workflow already accepted; MCP closes automatically."}'}], 'isError': False}}
             if card and card['status'] == 'completed' and not tool_name:
                 return {'card': card, 'accepted': True}
             if card is None:
                 project_root = None
-                if identity == 'rtl-summary':
+                if identity in {'rtl-summary', 'picker-compile'}:
                     if not self.session.get('project_root'):
-                        raise ValueError('Open a FlowCanvas project before running RTL summary')
+                        raise ValueError('Open a FlowCanvas project before running this RTL workflow')
                     project_root = Path(self.session['project_root']).resolve()
                     project = await asyncio.to_thread(self.service.projects.inspect, project_root)
                     rtl = project.get('rtl') or {}
@@ -141,7 +202,7 @@ class WorkflowRuntime:
                 dut = spec['dut']
                 root = self.service.root / 'workflow_runs' / uuid.uuid4().hex
                 report = None
-                if project_root:
+                if project_root and identity == 'rtl-summary':
                     report = project_root / 'output' / 'rtl-summary' / dut / root.name / 'summary.md'
                     if not report.resolve().is_relative_to(project_root):
                         raise ValueError('Summary output must remain inside the bound project')
@@ -150,6 +211,13 @@ class WorkflowRuntime:
                 shutil.copyfile(spec['rtl_file'], root / 'workspace' / relative)
                 config = next(w.config_file for w in get_plugin().workflows if w.name == identity)
                 request = {'dut': dut, 'rtl': str(relative), 'config': str(config)}
+                if identity == 'picker-compile':
+                    output = project_root / 'verification' / dut
+                    if not output.resolve().is_relative_to(project_root):
+                        raise ValueError('DUT output must remain inside the bound project')
+                    request.update(project_root=str(project_root), source_file=spec['rtl_file'], dut_output=str(output),
+                                   source_hash=hashlib.sha256(Path(spec['rtl_file']).read_bytes()).hexdigest(),
+                                   build_started_at=time.time())
                 if report:
                     request.update(project_root=str(project_root), report_file=str(report))
                 (root / 'request.json').write_text(json.dumps(request))
@@ -159,6 +227,8 @@ class WorkflowRuntime:
                 if report:
                     card.update(project_root=str(project_root), source_file=spec['rtl_file'],
                                 top_module=dut, report_file=str(report))
+                if identity == 'picker-compile':
+                    card.update(project_root=str(project_root), source_file=spec['rtl_file'], top_module=dut, dut_output=str(output))
             root = Path(card['root'])
             proc = self.processes.get(card['id'])
             if not proc or proc.returncode is not None:
@@ -171,7 +241,7 @@ class WorkflowRuntime:
                 (root / 'request.json').write_text(json.dumps(spec))
                 (root / 'ready.json').unlink(missing_ok=True)
                 with (root / 'host.log').open('ab') as log:
-                    proc = await asyncio.create_subprocess_exec(sys.executable, '-m', 'flowcanvas.workflow_host', str(root), stdout=log, stderr=log)
+                    proc = await asyncio.create_subprocess_exec(sys.executable, '-m', 'flowcanvas.workflow_host', str(root), stdout=log, stderr=log, start_new_session=True)
                 self.processes[card['id']] = proc
                 card.update(pid=proc.pid, mcp_instance=uuid.uuid4().hex, url=f'http://127.0.0.1:{port}/mcp', alive=True, status='starting')
                 card['startup'] = {'completed': False, 'started_at': time.time()}
@@ -197,7 +267,7 @@ class WorkflowRuntime:
                 card.update(status='running', pause_reason='')
             self.publish()
             # This endpoint is an owned loopback host, never a remote proxy target.
-            async with (httpx2.AsyncClient(trust_env=False, timeout=httpx2.Timeout(30, read=300)) as http,
+            async with (httpx2.AsyncClient(trust_env=False, timeout=httpx2.Timeout(30, read=1900 if identity == 'picker-compile' else 300)) as http,
                         streamable_http_client(card['url'], http_client=http) as streams):
                 read, write = streams[:2]
                 async with ClientSession(read, write) as client:
@@ -218,7 +288,7 @@ class WorkflowRuntime:
                                 f"{'.'.join(map(str, error.absolute_path)) or 'arguments'}: {error.message}"
                                 for error in errors[:5])
                             raise ValueError(f'Invalid arguments for {tool_name}: {details}')
-                        result = (await client.call_tool(tool_name, arguments)).model_dump(mode='json')
+                        result = (await client.call_tool(tool_name, arguments, read_timeout_seconds=1900 if identity == 'picker-compile' else 300)).model_dump(mode='json')
                     await self.inspect()
                     if tool_name:
                         return {'card': card, 'result': result}
@@ -227,12 +297,13 @@ class WorkflowRuntime:
                             'next': 'Execute these instructions yourself. Use call_workflow_tool(card_id, tool_name, arguments) with this card ID and the returned tool schemas. Do not call stage tools directly or reconnect to load them. run_workflow is only for lifecycle operations. Completion requires host acceptance.'}
 
     async def close(self):
-        """Stop owned processes on detach/shutdown without deleting cards or checkpoints."""
-        for proc in self.processes.values():
-            if proc.returncode is None:
-                proc.terminate()
-                try:
-                    await asyncio.wait_for(proc.wait(), 5)
-                except TimeoutError:
-                    proc.kill(); await proc.wait()
+        """Stop all owned process groups and retirement tasks without deleting records."""
+        for job in self.retiring.values():
+            job.cancel()
+        await asyncio.gather(*self.retiring.values(), return_exceptions=True)
+        for card in self.session.get('workflow_runs', []):
+            await self.stop_host(card)
         await self.inspect()
+        for job in self.retiring.values():
+            job.cancel()
+        await asyncio.gather(*self.retiring.values(), return_exceptions=True)

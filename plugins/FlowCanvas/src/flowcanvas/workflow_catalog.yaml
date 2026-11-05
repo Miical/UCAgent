@@ -1,5 +1,10 @@
 # Curated menu entries, displayed in file order. Execution lives in workflow YAML.
 workflows:
+  - id: picker-compile
+    name: Picker 编译 RTL
+    description: 用 Picker 将指定 RTL 编译为 Python DUT 包，检查加载并保存到项目 verification/<模块名>/，供后续验证使用。
+    workflow: flowcanvas:picker-compile
+    enabled: true
   - id: generate-testcase
     name: 新增测试用例
     description: 分析现有验证环境、编写用例并登记源码绑定

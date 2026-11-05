@@ -15,6 +15,10 @@ def main():
     if spec.get('report_file'):
         overrides.update({'template_overwrite.PROJECT_ROOT': spec['project_root'],
                           'template_overwrite.SUMMARY_REPORT': spec['report_file']})
+    if spec.get('dut_output'):
+        overrides.update({'template_overwrite.PROJECT_ROOT': spec['project_root'],
+                          'template_overwrite.SOURCE_RTL': spec['source_file'],
+                          'template_overwrite.DUT_OUTPUT': spec['dut_output']})
     agent = VerifyAgent(str(root / 'workspace'), spec['dut'], 'summary',
                         config_file=spec['config'], cfg_override=overrides,
                         no_history=False, no_embed_tools=True, exit_on_completion=False)
