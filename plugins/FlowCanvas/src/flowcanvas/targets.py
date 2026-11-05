@@ -90,8 +90,8 @@ class Targets:
 
     def file(self, relative):
         path = (self.root / relative).resolve()
-        if not path.is_relative_to(self.root) or path.suffix not in {'.sv', '.svh', '.py'} or not path.is_file():
-            raise ValueError('绑定必须指向项目中的现有 .sv/.svh/.py 源文件')
+        if not path.is_relative_to(self.root) or path.suffix not in {'.v', '.sv', '.svh', '.py'} or not path.is_file():
+            raise ValueError('绑定必须指向项目中的现有 .v/.sv/.svh/.py 源文件')
         return path
 
     def read(self):
@@ -273,12 +273,13 @@ class Targets:
                 raise ValueError('父目标正在删除')
             if set(values) - {'description'}: raise ValueError('新建仅接受 description')
             row = Target(id=new_id(self.prefixes[kind]),kind=kind,name=name,parent=parent or None,
-                         **values,lifecycle='creating',operation_status='running',operation_session=owner)
+                         **values,origin='ai',lifecycle='creating',operation_status='running',operation_session=owner)
             data.targets.append(row)
             saved = self.save(data,revision)
             return {**row.model_dump(),'revision':saved.revision}
 
-    def operation(self, target_id, operation, revision, owner, cascade=False):
+    def operation(self, target_id, operation, revision, owner, cascade=False, planned=False):
+        """Finish a bound implementation or explicitly retain an unbound plan."""
         with LOCK:
             data = self.read()
             row = next((n for n in data.targets if n.id == target_id),None)
@@ -292,8 +293,13 @@ class Targets:
                 if len(affected)>1 and not cascade: raise ValueError('需要明确 values.cascade=true')
             if operation == 'finish_create':
                 if row.lifecycle != 'creating': raise ValueError('目标不在创建中')
-                if not row.description.strip() or self.status()['reports'][target_id]['status'] != 'bound':
-                    raise ValueError('先完成说明和有效源码绑定')
+                if not row.description.strip():
+                    raise ValueError('A description is required before finish_create')
+                if planned:
+                    if row.bindings:
+                        raise ValueError('Planned completion requires no bindings; validate existing bindings instead')
+                elif self.status()['reports'][target_id]['status'] != 'bound':
+                    raise ValueError('Valid source binding required; for an unimplemented plan use finish_create with values.planned=true')
                 row.lifecycle='ready';row.operation_status='paused';row.operation_session=''
             else:
                 if operation == 'resume_operation' and row.lifecycle == 'ready': raise ValueError('没有待恢复操作')
@@ -433,14 +439,14 @@ def execute(root, request, owner=""):
     if r.operation == 'inspect': return store.inspect(r.files)
     if r.operation == 'import': return store.import_files(r.files, r.expected_revision)
     if r.operation == 'begin_create': return store.begin_create(r.kind,r.name,r.parent,r.expected_revision,r.values,owner)
-    if r.operation in {'begin_delete','finish_create','resume_operation'}: return store.operation(r.target_id,r.operation,r.expected_revision,owner,r.values.get('cascade') is True)
+    if r.operation in {'begin_delete','finish_create','resume_operation'}: return store.operation(r.target_id,r.operation,r.expected_revision,owner,r.values.get('cascade') is True,r.values.get('planned') is True)
     if r.operation == 'create': return store.create(r.kind,r.name,r.parent,r.expected_revision,**r.values)
     if r.operation == 'delete': return store.delete(r.target_id,r.expected_revision,r.values.get('cascade') is True)
     if r.operation == 'update': return store.update(r.target_id,r.values,r.expected_revision)
     if r.operation == 'accept': return store.accept(r.target_id,r.expected_revision,r.values)
     if r.operation == 'bind': return store.bind(r.target_id,r.values,r.expected_revision)
     if r.operation == 'source': return store.source(r.binding_id)
-    if r.operation == 'guide': return {'skill':SKILL.read_text()+'\nAI 新建先 begin_create 注册占位，再 update/bind 同一 ID，最后 finish_create。AI 删除首先 read 获取 revision 并定位指定 ID，立即 begin_delete（含子目标需 cascade=true）登记卡片；登记成功后才检查源码、共享引用和删除范围，最后清理代码并 delete。不要检查完才登记。中断后 resume_operation 恢复同一 ID。均需最新 expected_revision。'+'\n删除使用 delete(target_id, expected_revision)。含子目标时必须明确 values.cascade=true；仅删除登记定义，源码须单独核对处理，保留共享代码和历史产物。', 'schema':Definition.model_json_schema()}
+    if r.operation == 'guide': return {'skill':SKILL.read_text()+'\nAI 新建先 begin_create 注册占位，再 update/bind 同一 ID，最后 finish_create；尚无验证实现时明确使用 values={planned:true} 完成待实现规划，不伪造绑定。AI 删除首先 read 获取 revision 并定位指定 ID，立即 begin_delete（含子目标需 cascade=true）登记卡片；登记成功后才检查源码、共享引用和删除范围，最后清理代码并 delete。不要检查完才登记。中断后 resume_operation 恢复同一 ID。均需最新 expected_revision。'+'\n删除使用 delete(target_id, expected_revision)。含子目标时必须明确 values.cascade=true；仅删除登记定义，源码须单独核对处理，保留共享代码和历史产物。', 'schema':Definition.model_json_schema()}
     raise ValueError('未知操作')
 
 

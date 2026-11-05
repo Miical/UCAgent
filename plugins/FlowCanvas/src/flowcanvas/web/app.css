@@ -1506,3 +1506,28 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 
 .message-workflow-binding{display:flex;justify-content:flex-end;margin-top:6px;padding-right:2px}
 .message-workflow-binding .ai-workflow-binding{max-width:100%}
+
+.permission-note{margin:8px 10px 5px;padding-top:9px;border-top:1px solid var(--border);font-size:10px;color:var(--text-dim);line-height:1.6;}
+
+/* Compact composer menus without changing sidebar pickers or task cards. */
+.composer .model-popover{box-sizing:border-box;width:min(280px,calc(100vw - 32px));max-height:min(440px,65vh);padding:6px;border-radius:12px;bottom:calc(100% + 8px);}
+.composer .backend-popover{width:min(190px,calc(100vw - 32px));}
+.composer .picker-heading{padding:5px 8px;font-size:10px;}
+.composer .picker-heading span{font-size:9px;}
+.composer .model-options{max-height:240px;}
+.composer .model-option{min-height:30px;padding:7px 8px;gap:8px;border-radius:6px;font-size:11px;line-height:1.4;}
+.composer .model-check{flex:none;width:13px;font-size:11px;}
+.composer .permission-option small{margin-top:2px;font-size:9px;line-height:1.45;}
+.composer .permission-note{margin:5px 8px 3px;padding-top:6px;font-size:9px;line-height:1.5;}
+.composer .model-effort-section .effort-options{gap:4px;padding:2px 8px 5px;}
+.composer .model-effort-section .effort-options button{padding:5px 3px;font-size:10px;border-radius:5px;}
+.composer .model-speed-section{margin:4px 0 0;padding-top:3px;}
+.composer #speed-options{gap:4px;padding:2px 8px;}
+.composer #speed-options .model-option{min-height:26px;padding:5px 3px;font-size:10px;}
+.composer .speed-note{margin:5px 8px 3px;font-size:9px;line-height:1.5;}
+.composer .workflow-menu-item{padding:7px 8px;border-radius:6px;}
+.composer .workflow-menu-name{font-size:11px;}
+.composer .workflow-menu-item p{margin:3px 0;font-size:10px;line-height:1.45;}
+.composer .workflow-menu-item small,.composer .workflow-attach-action{font-size:9px;}
+.composer .workflow-direct{width:26px;height:26px;}
+.composer .workflow-direct svg{width:21px;height:21px;}

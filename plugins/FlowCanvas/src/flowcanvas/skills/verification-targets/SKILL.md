@@ -20,7 +20,7 @@ description: 在 FlowCanvas 中规划、导入和维护功能组、功能点、�
 
 ## 从头创建
 
-调用 `create`，顺序为组、点、测试点；每次写入带最新 expected_revision。提供 kind/name/parent，说明放在 values.description 内。无代码的目标是待实现，不得伪造绑定。
+AI 调用 `begin_create` 登记占位，顺序为组、点、测试点；每次写入带最新 expected_revision。提供 kind/name/parent，说明放在 values.description 内。无代码的目标是待实现，不得伪造绑定。名称和说明完成后，调用 `finish_create` 并传入 `values: {planned: true}`，结束创建动画并保留待实现状态；仅适用于没有任何绑定的规划。已有实现则完成有效绑定后调用普通 `finish_create`。不要用 `resume_operation` 重试绑定校验错误。
 
 实现代码后先 `inspect` 指定相对路径 files。用返回的 start 和 fingerprint 调用 `bind`，values 包含 file/start/fingerprint/role。role 可选 definition、stimulus、check、coverage、rtl。每个位置分配独立 bind ID，目标可以关联多处代码。只有得到绑定成功的返回才能声称已关联。
 
@@ -46,7 +46,7 @@ Python 默认映射：class → group，方法/模块函数 → point，assert �
 
 SV 使用 pyslang 的源码语法解析，内置仅对 UVM 注册和日志宏做语法占位；不展开未知覆盖宏，也不证明 elaboration 成功。宏生成的目标要补充真实解析输入或显式维护，不能忽略诊断后伪造成功。
 
-修改工具当前要求完全访问模式；只读和工作流执行模式下可以查看、定位、解析，但不能通过此通用工具改源码。未经修改权限不要用 shell 绕过。
+项目内修改可在工作区访问或完全访问模式下进行；路径必须位于当前项目。
 
 ## 完成条件
 

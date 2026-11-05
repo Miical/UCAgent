@@ -113,18 +113,14 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                 print('full tools and streaming: passed', flush=True)
 
                 await backend.close()
-                await backend.open(thread, model, 'readonly')
-                blocks = await turn('What marker did I tell you to remember? Read probe.txt and report both values. Do not modify files.', 'readonly')
+                await backend.open(thread, model, 'full')
+                blocks = await turn('What marker did I tell you to remember? Read probe.txt and report both values. Do not modify files.', 'full')
                 texts = '\n'.join(x['text'] for x in blocks.values() if x['kind'] == 'text')
                 self.assertIn('FC_HISTORY_471', texts)
                 self.assertIn('FC_TOOL_471', texts)
-                print('history resume and readonly read: passed', flush=True)
+                print('history resume and read: passed', flush=True)
 
-                await turn('Create forbidden.txt with content denied. Use any available tool. If access is denied, stop and state that.', 'readonly')
-                self.assertFalse((root / 'forbidden.txt').exists())
-                print('readonly write rejected: passed', flush=True)
-
-                blocks = await turn('Call the ucagent_list_workflow_runs tool once and tell me how many workflow cards exist. Do not use shell commands.', 'workflow')
+                blocks = await turn('Call the ucagent_list_workflow_runs tool once and tell me how many workflow cards exist. Do not use shell commands.', 'full')
                 self.assertTrue(any('list_workflow_runs' in x['title'] and x['status'] == 'completed' for x in blocks.values()))
                 print('FlowCanvas MCP: passed', flush=True)
 
@@ -204,12 +200,12 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                 entered.set(); await release.wait()
 
             try:
-                native = await backend.open(None, '', 'readonly'); threads.append(native)
+                native = await backend.open(None, '', 'full'); threads.append(native)
                 child = (await backend.http('POST', '/session', {'parentID': native, 'title': 'Observer fixture'}))['id']
                 threads.append(child)
                 await backend.http('POST', '/session/' + child + '/message', {
                     'noReply': True, 'parts': [{'type': 'text', 'text': 'Observer history fixture'}]})
-                owner.update(thread=native, status='completed', permission_mode='readonly')
+                owner.update(thread=native, status='completed', permission_mode='full')
                 service.session_backends[owner['id']] = backend
                 process = backend.process
                 with patch.object(backend, 'close', side_effect=close):
@@ -335,10 +331,10 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                 models = await backend.models()
                 model = next((row for row in models if row['default']), models[0])
                 effort = 'low' if 'low' in model['efforts'] else 'default'
-                thread = await backend.open(None, model['id'], 'readonly')
+                thread = await backend.open(None, model['id'], 'full')
                 turn = await backend.send(thread,
                     'Reply FIRST_840 followed by twelve numbered one-sentence descriptions of verification checks. '
-                    'Do not use tools, modify files or delegate.', model['id'], effort, mode='readonly')
+                    'Do not use tools, modify files or delegate.', model['id'], effort, mode='full')
                 backend.http = delay_guidance
                 steering = asyncio.create_task(backend.steer(thread, turn,
                     'Now reply SECOND_840 followed by the marker from my previous request. Do not use tools or delegate.'))
@@ -394,10 +390,10 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                 models = await backend.models()
                 model = next((row for row in models if row['default']), models[0])
                 effort = 'low' if 'low' in model['efforts'] else 'default'
-                thread = await backend.open(None, model['id'], 'readonly')
+                thread = await backend.open(None, model['id'], 'full')
                 turn = await backend.send(thread,
                     'Write 100 numbered one-sentence descriptions of verification checks. '
-                    'Do not use tools, modify files or delegate.', model['id'], effort, mode='readonly')
+                    'Do not use tools, modify files or delegate.', model['id'], effort, mode='full')
                 async with asyncio.timeout(30):
                     while (await original_http('GET', '/session/status')).get(thread, {}).get('type') != 'busy':
                         await asyncio.sleep(.05)
@@ -487,10 +483,10 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
             try:
                 await bridge.start()
                 backend.mcp_url = bridge.url
-                thread = await backend.open(None, 'flowcanvas-fixture/fixture', 'readonly')
+                thread = await backend.open(None, 'flowcanvas-fixture/fixture', 'full')
                 native_process, native_readers = backend.process, set(backend.tasks)
                 backend.http = add_preparation_barrier
-                turn = await backend.send(thread, 'Reply without tools.', 'flowcanvas-fixture/fixture', 'default', mode='readonly')
+                turn = await backend.send(thread, 'Reply without tools.', 'flowcanvas-fixture/fixture', 'default', mode='full')
                 await asyncio.wait_for(entered.wait(), 15)
                 states = await original_http('GET', '/session/status')
                 self.assertEqual(states.get(thread, {}).get('type', 'idle'), 'idle')
@@ -512,7 +508,7 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotEqual(backend.process.pid, native_process.pid)
                 states = await original_http('GET', '/session/status')
                 self.assertEqual(states.get(thread, {}).get('type', 'idle'), 'idle')
-                await backend.send(thread, 'New request: reply without tools.', 'flowcanvas-fixture/fixture', 'default', mode='readonly')
+                await backend.send(thread, 'New request: reply without tools.', 'flowcanvas-fixture/fixture', 'default', mode='full')
                 async with asyncio.timeout(10):
                     while thread in backend.active:
                         await asyncio.sleep(.01)
@@ -592,7 +588,7 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                 models = await service.backends['opencode'].models()
                 service.catalogs[('opencode', str(service.workspace))] = models
                 owner = service.get((await client.post('/api/chat/sessions', json={'backend': 'opencode'})).json()['id'])
-                owner['permission_mode'] = 'readonly'
+                owner['permission_mode'] = 'full'
                 endpoint = '/api/chat/sessions/' + owner['id']
                 model = 'flowcanvas-fixture/fixture'
                 sent = await client.post(endpoint + '/messages', json={
@@ -715,8 +711,8 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                 await bridge.start()
                 backend.mcp_url = bridge.url
                 model = 'flowcanvas-fixture/fixture'
-                thread = await backend.open(None, model, 'readonly')
-                await backend.send(thread, 'List the workflow cards once.', model, 'default', mode='readonly')
+                thread = await backend.open(None, model, 'full')
+                await backend.send(thread, 'List the workflow cards once.', model, 'default', mode='full')
                 await asyncio.wait_for(waiting.wait(), 10)
                 self.assertIn('ucagent_list_workflow_runs', calls[0])
 
@@ -738,7 +734,7 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn('ucagent_published_after_start', calls[0])
                 await backend.reload_tools()
                 events.clear(); terminal.clear()
-                await backend.send(thread, 'Reply REFRESH_OK.', model, 'default', mode='readonly')
+                await backend.send(thread, 'Reply REFRESH_OK.', model, 'default', mode='full')
                 await asyncio.wait_for(terminal.wait(), 20)
                 self.assertEqual(len(calls), 3)
                 self.assertIn('ucagent_published_after_start', calls[-1])
@@ -804,11 +800,11 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
             backend.event = transport
             try:
                 model = 'flowcanvas-fixture/fixture'
-                thread = await backend.open(None, model, 'readonly')
+                thread = await backend.open(None, model, 'full')
                 for drop_metadata in (False, True):
                     with self.subTest(metadata_events=not drop_metadata):
                         events.clear(); terminal.clear()
-                        turn = await backend.send(thread, 'Reply USAGE_OK without tools.', model, 'default', mode='readonly')
+                        turn = await backend.send(thread, 'Reply USAGE_OK without tools.', model, 'default', mode='full')
                         await asyncio.wait_for(terminal.wait(), 20)
                         self.assertEqual([e['status'] for e in events if e['kind'] == 'turn'], ['inProgress', 'completed'])
                         records = await backend.http('GET', '/session/' + thread + '/message')
@@ -904,12 +900,12 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
             try:
                 backend.event = observe_native
                 model = 'flowcanvas-fixture/fixture'
-                thread = await backend.open(None, model, 'readonly')
-                await backend.send(thread, 'Remember FC_CTX_709. Reply READY without tools.', model, 'default', mode='readonly')
+                thread = await backend.open(None, model, 'full')
+                await backend.send(thread, 'Remember FC_CTX_709. Reply READY without tools.', model, 'default', mode='full')
                 await asyncio.wait_for(terminal.wait(), 20)
                 self.assertEqual([e['status'] for e in events if e['kind'] == 'turn'], ['inProgress', 'completed'])
                 events.clear(); terminal.clear()
-                turn = await backend.send(thread, 'FOLLOWUP_FC_CTX_709: reply FINAL without tools.', model, 'default', mode='readonly')
+                turn = await backend.send(thread, 'FOLLOWUP_FC_CTX_709: reply FINAL without tools.', model, 'default', mode='full')
                 await asyncio.wait_for(terminal.wait(), 30)
                 self.assertIn('ContextOverflowError', overflow_signals)
                 expected = 'completed' if auto and not fail_summary else 'failed'
@@ -1022,9 +1018,9 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
             try:
                 backend.event = defer_failure
                 model = 'flowcanvas-fixture/fixture'
-                thread = await backend.open(None, model, 'readonly')
+                thread = await backend.open(None, model, 'full')
                 native_process, native_readers = backend.process, set(backend.tasks)
-                turn = await backend.send(thread, 'Reply with one word. Do not use tools.', model, 'default', mode='readonly')
+                turn = await backend.send(thread, 'Reply with one word. Do not use tools.', model, 'default', mode='full')
                 await asyncio.wait_for(failed.wait(), 30)
                 backend.http = delay_guidance
                 steering = asyncio.create_task(backend.steer(thread, turn, 'Use another word instead.'))
@@ -1051,7 +1047,7 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(calls)
                 terminal.clear(); release_provider.set()
                 recovered = await backend.send(thread, 'Now reply successfully without tools.',
-                                               model, 'default', mode='readonly')
+                                               model, 'default', mode='full')
                 await asyncio.wait_for(terminal.wait(), 20)
                 states = [e for e in events if e['kind'] == 'turn']
                 self.assertEqual([e['status'] for e in states], ['inProgress', 'failed', 'inProgress', 'completed'])
@@ -1101,12 +1097,12 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                 provider_id, model_id = model['id'].split('/', 1)
                 providers = await backend.http('GET', '/provider')
                 native_model = next(p for p in providers['all'] if p['id'] == provider_id)['models'][model_id]
-                thread = await backend.open(None, model['id'], 'readonly')
+                thread = await backend.open(None, model['id'], 'full')
                 filler = '\n'.join(hashlib.sha256(str(index).encode()).hexdigest() for index in range(512))
                 await backend.send(thread, 'Remember marker FC_COMPACT_471 and the constraint never modify files. '
                                    'The following fixture data is irrelevant and must not be preserved in summaries. '
                                    'Reply exactly READY_471. Do not use tools.\n<fixture>\n' + filler + '\n</fixture>',
-                                   model['id'], effort, mode='readonly')
+                                   model['id'], effort, mode='full')
                 await asyncio.wait_for(terminal.wait(), 120)
                 self.assertEqual([e['status'] for e in events if e['kind'] == 'turn'], ['inProgress', 'completed'])
                 self.assertIn('READY_471', '\n'.join(visible.values()))
@@ -1128,7 +1124,7 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                     'compaction': {'auto': True, 'prune': False, 'tail_turns': 0, 'reserved': 0},
                 }))
                 await backend.close()
-                await backend.open(thread, model['id'], 'readonly')
+                await backend.open(thread, model['id'], 'full')
                 refreshed = await backend.http('GET', '/provider')
                 actual = next(p for p in refreshed['all'] if p['id'] == provider_id)['models'][model_id]['limit']
                 self.assertEqual(actual['input'], used - 1)
@@ -1137,7 +1133,7 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(config['compaction']['auto'])
                 events.clear(); visible.clear(); terminal.clear()
                 turn = await backend.send(thread, 'Return the marker I asked you to remember, followed by the file modification constraint. '
-                                          'No tools or other explanation.', model['id'], effort, mode='readonly')
+                                          'No tools or other explanation.', model['id'], effort, mode='full')
                 await asyncio.wait_for(terminal.wait(), 180)
                 self.assertEqual([e['status'] for e in events if e['kind'] == 'turn'], ['inProgress', 'completed'])
                 self.assertTrue(all(e.get('turn', turn) == turn for e in events))
@@ -1198,7 +1194,7 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                             'Then reply with the remembered marker. Do not invoke workflows.',
                     'model': model['id'], 'effort': effort})
                 self.assertEqual(response.status_code, 202)
-                self.assertEqual((await client.post(endpoint + '/permissions', json={'mode': 'readonly'})).status_code, 409)
+                self.assertEqual((await client.post(endpoint + '/permissions', json={'mode': 'full'})).status_code, 409)
                 self.assertEqual((await client.post(endpoint + '/reconnect')).status_code, 409)
                 await completed()
                 self.assertEqual((service.workspace / 'allowed.txt').read_text().strip(), 'FC_ALLOWED_923')
@@ -1213,7 +1209,7 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                     closing.set(); await release.wait(); await native_close()
 
                 with patch.object(old, 'close', side_effect=close):
-                    changing = asyncio.create_task(client.post(endpoint + '/permissions', json={'mode': 'readonly'}))
+                    changing = asyncio.create_task(client.post(endpoint + '/permissions', json={'mode': 'full'}))
                     try:
                         await asyncio.wait_for(closing.wait(), 5)
                         response = await client.post(endpoint + '/messages', json={
@@ -1239,7 +1235,7 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(any(rule['permission'] in {'write', 'edit', 'bash', 'task'} and rule['action'] == 'allow' for rule in policy))
                 replies = [row['text'] for row in owner['items'] if row['kind'] == 'text']
                 self.assertIn('FC_POLICY_923', replies[-1])
-                self.assertEqual(owner['permission_mode'], 'readonly')
+                self.assertEqual(owner['permission_mode'], 'full')
 
                 self.assertEqual((await client.post(endpoint + '/permissions', json={'mode': 'full'})).status_code, 200)
                 response = await client.post(endpoint + '/messages', json={
@@ -1276,9 +1272,9 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                 model = next((m for m in models if m['default']), models[0])
                 if 'low' not in model['efforts']:
                     self.skipTest('Configured model does not expose a low reasoning variant')
-                thread = await backend.open(None, model['id'], 'readonly')
+                thread = await backend.open(None, model['id'], 'full')
                 turn = await backend.send(thread, 'Reply with exactly FC_VARIANT_OK. Do not use tools.',
-                                          model['id'], 'low', mode='readonly')
+                                          model['id'], 'low', mode='full')
                 async with asyncio.timeout(10):
                     while True:
                         records = await backend.http('GET', '/session/' + thread + '/message')
@@ -1331,8 +1327,8 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                 models = await backend.models()
                 model = next((row for row in models if row['default']), models[0])
                 effort = 'low' if 'low' in model['efforts'] else 'default'
-                thread = await backend.open(None, model['id'], 'readonly')
-                await backend.send(thread, 'Write the integers from 1 to 250 in ascending order, each on a separate line. No tools, no explanation, no omissions.', model['id'], effort, mode='readonly')
+                thread = await backend.open(None, model['id'], 'full')
+                await backend.send(thread, 'Write the integers from 1 to 250 in ascending order, each on a separate line. No tools, no explanation, no omissions.', model['id'], effort, mode='full')
                 await asyncio.wait_for(streaming.wait(), 90)
                 self.assertFalse(terminal.is_set(), 'Need an active stream to inject a transport gap')
                 native_pid = backend.process.pid
@@ -1386,13 +1382,13 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
                 models = await backend.models()
                 model = next((row for row in models if row['default']), models[0])
                 effort = 'low' if 'low' in model['efforts'] else 'default'
-                thread = await backend.open(None, model['id'], 'readonly')
-                owner.update(thread=thread, status='starting', permission_mode='readonly',
+                thread = await backend.open(None, model['id'], 'full')
+                owner.update(thread=thread, status='starting', permission_mode='full',
                              queue=[{'message': {'text': 'queued fixture'}, 'tier': None}])
                 await backend.send(thread,
                     'Remember marker FC_PROCESS_RESUME_683. Write it first, then write the integers from 1 to 500, '
                     'one per line. Do not use any tools. No explanation, no omissions.',
-                    model['id'], effort, mode='readonly')
+                    model['id'], effort, mode='full')
                 await asyncio.wait_for(streaming.wait(), 90)
                 self.assertFalse(terminal.is_set(), 'Need a live reply to exercise process failure')
                 self.assertTrue(any(row['status'] == 'running' for row in owner['items']))
@@ -1411,10 +1407,10 @@ class OpenCodeLiveTests(unittest.IsolatedAsyncioTestCase):
 
                 terminal.clear()
                 owner['status'] = 'starting'
-                self.assertEqual(await backend.open(thread, model['id'], 'readonly'), thread)
+                self.assertEqual(await backend.open(thread, model['id'], 'full'), thread)
                 self.assertNotEqual(backend.process.pid, failed_pid)
                 await backend.send(thread, 'Do not continue counting. What marker did I ask you to remember? '
-                                   'Reply with that marker only, and do not use tools.', model['id'], effort, mode='readonly')
+                                   'Reply with that marker only, and do not use tools.', model['id'], effort, mode='full')
                 await asyncio.wait_for(terminal.wait(), 120)
                 self.assertEqual(owner['status'], 'completed', owner.get('error'))
                 replies = [row for row in owner['items'] if row['kind'] == 'text' and row['id'] not in partial]

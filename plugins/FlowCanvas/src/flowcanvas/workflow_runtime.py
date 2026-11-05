@@ -59,11 +59,11 @@ class WorkflowRuntime:
         cards = self.session.setdefault('workflow_runs', [])
         before = json.dumps(cards)
         # A completed native turn can hand off to a refreshed tool catalog without
-        # ending the user task. Explicit stop and read-only mode still take precedence.
+        # ending the user task. Explicit stop still takes precedence.
         reconnecting = (self.session.get('status') == 'completed'
                         and self.session['id'] in self.service.catalog_reconnect
                         and not self.session.get('delegation_stopped')
-                        and self.session.get('permission_mode') != 'readonly')
+                        and self.session.get('permission_mode') in {'workspace', 'full'})
         for card in cards:
             root = Path(card['root'])
             proc = self.processes.get(card['id'])
@@ -104,20 +104,17 @@ class WorkflowRuntime:
         return await self._dispatch('', '', 'RTL', card_id, tool_name, arguments)
 
     async def _dispatch(self, workflow_id, rtl_file, dut, card_id, tool_name, arguments):
-        """Authorize every operation, reuse a card and proxy only host-advertised tools."""
+        """Validate availability and ownership; proxy only host-advertised tools."""
         async with self.lock:
             cards = self.session.setdefault('workflow_runs', [])
             card = next((c for c in cards if c['id'] == card_id), None) if card_id else None
             if card_id and card is None:
                 raise ValueError('Card does not belong to this conversation')
             identity = card['workflow_id'] if card else workflow_id
-            allowed = self.session.get('attachment')
-            attached = bool(allowed and allowed['workflow_id'] == identity)
-            card_grant = bool(card and card.get('authorized') is True)
-            if self.session.get('permission_mode', 'workflow') == 'readonly' or not (attached or card_grant):
-                raise ValueError('This workflow is not authorized in the current conversation')
-            if card and attached:
-                card['authorized'] = True
+            if self.session.get('permission_mode') not in {'workspace', 'full'}:
+                raise ValueError('Select a supported access mode before running a workflow')
+            # Availability applies equally to new starts, resumed cards and tool calls.
+            attachment(WorkflowInput(workflow_id=identity))
             await self.inspect()
             if card and card['status'] == 'completed' and not tool_name:
                 return {'card': card, 'accepted': True}
@@ -132,7 +129,7 @@ class WorkflowRuntime:
                 config = next(w.config_file for w in get_plugin().workflows if w.name == identity)
                 (root / 'request.json').write_text(json.dumps({'dut': dut, 'rtl': str(relative), 'config': str(config)}))
                 card = {'id': root.name, 'conversation_id': self.session['id'], 'workflow_id': identity,
-                        'authorized': True, 'name': spec['name'], 'root': str(root), 'workspace': str(root / 'workspace'),
+                        'name': spec['name'], 'root': str(root), 'workspace': str(root / 'workspace'),
                         'status': 'starting', 'stages': [], 'current_stage': '', 'started_at': time.time()}
             root = Path(card['root'])
             proc = self.processes.get(card['id'])

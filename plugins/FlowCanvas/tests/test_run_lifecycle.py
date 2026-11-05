@@ -75,7 +75,7 @@ class RunLifecycleTests(unittest.IsolatedAsyncioTestCase):
                         'build_id_command': python + ' -c ' + shlex.quote('print("fixture-build")')}}})
                 service = ChatService(root / 'state'); service.test_runs = TestRuns()
                 service.projects.activate({'id': 'fixture', 'path': str(project), 'name': 'Lifecycle fixture', 'needs_import': False})
-                owner = service.create(); owner['permission_mode'] = 'full'
+                owner = service.create(); self.assertEqual(owner['permission_mode'], 'workspace')
                 bridge = WorkflowBridge(service, owner); service.workflow_bridges[owner['id']] = bridge
                 try:
                     await bridge.start()

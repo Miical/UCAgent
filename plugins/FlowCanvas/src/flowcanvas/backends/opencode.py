@@ -14,13 +14,10 @@ import aiohttp
 
 
 def permissions(mode):
-    """Enforce read-only tools without claiming an OS sandbox OpenCode does not supply."""
-    if mode not in {'full', 'workflow', 'readonly'}:
-        raise ValueError('Unknown permission mode')
-    rules = [{'permission': '*', 'pattern': '*', 'action': 'allow' if mode == 'full' else 'deny'}]
+    """OpenCode exposes full access only; tool prompts are not an OS sandbox."""
     if mode != 'full':
-        rules += [{'permission': name, 'pattern': '*', 'action': 'allow'} for name in
-                  ('read', 'glob', 'grep', 'list', 'webfetch', 'websearch', 'codesearch', 'todowrite', 'ucagent_*')]
+        raise ValueError('OpenCode supports full access only')
+    rules = [{'permission': '*', 'pattern': '*', 'action': 'allow'}]
     # Questions are ordinary assistant messages in FlowCanvas; never strand a native dialog.
     rules.append({'permission': 'question', 'pattern': '*', 'action': 'deny'})
     return rules
@@ -179,7 +176,7 @@ class OpenCodeBackend:
                                'default_effort': 'default', 'speed_tiers': {}})
         return sorted(result, key=lambda row: (not row['default'], row['name'].casefold()))
 
-    async def open(self, thread_id, model, mode='workflow'):
+    async def open(self, thread_id, model, mode='full'):
         """Resume native history with the current tool policy, or create a fresh session."""
         await self.connect()
         policy = permissions(mode)
@@ -189,7 +186,7 @@ class OpenCodeBackend:
             thread_id = (await self.http('POST', '/session', {'title': 'FlowCanvas', 'permission': policy}))['id']
         return thread_id
 
-    async def send(self, thread_id, text, model, effort, service_tier=None, mode='workflow'):
+    async def send(self, thread_id, text, model, effort, service_tier=None, mode='full'):
         """Submit asynchronously; one native user message identifies a FlowCanvas turn."""
         if service_tier:
             raise ValueError('OpenCode does not expose Codex service tiers')

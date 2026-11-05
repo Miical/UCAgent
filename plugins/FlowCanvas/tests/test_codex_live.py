@@ -46,7 +46,7 @@ class CodexLiveTests(unittest.IsolatedAsyncioTestCase):
                 selected = {'model': model['id'], 'effort': effort}
                 owner = (await client.post('/api/chat/sessions', json={'backend': 'codex'})).json()
                 identity = owner['id']; endpoint = '/api/chat/sessions/' + identity
-                self.assertEqual((await client.post(endpoint + '/permissions', json={'mode': 'readonly'})).status_code, 200)
+                self.assertEqual((await client.post(endpoint + '/permissions', json={'mode': 'workspace'})).status_code, 200)
 
                 async def completed(user_count):
                     """Observe this same session until its queued turns and child check settle."""
@@ -77,9 +77,9 @@ class CodexLiveTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn('CODEX_MEMORY_732', texts)
                 self.assertTrue(any(i['kind'] == 'tool' and i['status'] == 'completed' for i in current['items']))
                 self.assertEqual(current['items'][0]['task_run']['status'], 'completed')
-                self.assertEqual(current['permission_mode'], 'readonly')
+                self.assertEqual(current['permission_mode'], 'workspace')
                 backend = service.session_backends[identity]
-                self.assertEqual(backend.loaded[native], 'readonly')
+                self.assertEqual(backend.loaded[native], 'workspace')
                 old_process = backend.process
                 before = [(i['id'], i['text']) for i in current['items']]
                 response = await client.post(endpoint + '/reconnect')
@@ -95,7 +95,7 @@ class CodexLiveTests(unittest.IsolatedAsyncioTestCase):
                 restored = service.get(identity)
                 self.assertEqual(restored['thread'], native)
                 self.assertEqual(restored['backend'], 'codex')
-                self.assertEqual(restored['permission_mode'], 'readonly')
+                self.assertEqual(restored['permission_mode'], 'workspace')
                 self.assertEqual([(i['id'], i['text']) for i in restored['items']], before)
                 self.assertTrue(restored['queue_paused'])
                 app = FastAPI(); app.include_router(routes(service))
@@ -110,7 +110,7 @@ class CodexLiveTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn('CODEX_MEMORY_732', text)
                 self.assertIn('CODEX_FILE_732', text)
                 backend = service.session_backends[identity]
-                self.assertEqual(backend.loaded[native], 'readonly')
+                self.assertEqual(backend.loaded[native], 'workspace')
                 entries = await thread_items(backend, native)
                 self.assertEqual(sum(i['item']['type'] == 'userMessage' for i in entries), 3)
                 turns = await backend.request('thread/turns/list', {

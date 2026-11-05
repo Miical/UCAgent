@@ -51,7 +51,7 @@ class Message(BaseModel):
     speed: Literal["standard", "fast", "ultrafast"] = "standard"
 
 
-PermissionMode = Literal['full', 'workflow', 'readonly']
+PermissionMode = Literal['full', 'workspace']
 
 
 class PermissionSettings(BaseModel):
@@ -154,10 +154,6 @@ class ChatService:
         if session.get('ended_at') and session['status'] in {'completed', 'interrupted', 'error', 'failed'}:
             if ((session.get('attachment') or {}).get('task_only') and session.get('task_attachment_started')
                     and not execution_active(session)):
-                workflow_id = session['attachment']['workflow_id']
-                for card in session.get('workflow_runs', []):
-                    if card['workflow_id'] == workflow_id:
-                        card['authorized'] = True
                 session.pop('attachment', None)
                 session.pop('task_attachment_started', None)
             for item in reversed(session['items']):
@@ -210,7 +206,7 @@ class ChatService:
                         # its grant before scheduling a continuation of the same task.
                         if (session['id'] in self.catalog_reconnect and not session.get('delegation_stopped')
                                 and card and card['status'] != 'completed'
-                                and session.get('permission_mode') != 'readonly' and not session.get('queue')):
+                                and session.get('permission_mode') in {'workspace', 'full'} and not session.get('queue')):
                             session.update(status='starting', turn=None, ended_at=None)
                             self.changed(session)
                             job = asyncio.create_task(self.run(session, Message(
@@ -310,7 +306,7 @@ class ChatService:
         session = {'id': uuid.uuid4().hex, 'backend': backend, 'title': '', 'thread': None,
                    'turn': None, 'status': 'idle', 'items': [], 'model': '', 'effort': '',
                    'revision': 0, 'updated': time.time(), 'error': '', 'usage': None,
-                   'permission_mode': 'workflow',
+                   'permission_mode': 'workspace' if backend == 'codex' else 'full',
                    'project_root': (self.projects.current or {}).get('path'),
                    'workspace': (self.projects.current or {}).get('path', str(self.workspace))}
         self.sessions[session['id']] = session
@@ -410,7 +406,7 @@ class ChatService:
     async def run(self, session, message):
         """Open the native thread and start generation, respecting early cancellation."""
         try:
-            mode = session.get('permission_mode', 'workflow')
+            mode = session.get('permission_mode')
             backend = self.session_backends.get(session['id'])
             if backend is None:
                 backend = BACKENDS[session['backend']](Path(session.get('workspace') or self.workspace), lambda event: self.event({**event, 'session_id': session['id']}))
@@ -422,36 +418,36 @@ class ChatService:
                     self.workflow_bridges[session['id']] = bridge
                 backend.mcp_url = bridge.url
                 self.session_backends[session['id']] = backend
-            allowed = session.get('attachment')
+            attached = session.get('attachment')
             from .catalog import workflow_menu
-            workflow_meta = next((item for item in workflow_menu() if allowed and item['id'] == allowed['workflow_id']), None)
+            workflow_meta = next((item for item in workflow_menu() if attached and item['id'] == attached['workflow_id']), None)
             backend.workflow_instructions = (
                 'You are the FlowCanvas assistant. A user-attached workflow expresses intent to use that workflow for their task. '
                 'For the next task request, use the attached workflow without requiring the user to repeat an explicit run command. '
                 'If required inputs are missing, ask only for those inputs, then call run_workflow when ready. '
                 'Do not run again for questions about results, explanations, or unrelated conversation. '
                 'run_workflow starts an MCP, not another model. Execute its returned instructions yourself in this conversation, using the separately named workflow tools (such as ReadTextFile or Complete), with their original MCP arguments. FlowCanvas binds these tools to the most recently started or resumed card. Do not pass card_id to stage tools and do not use run_workflow to execute those operations. Use list_workflow_runs to inspect bound cards, and run_workflow(card_id) to resume or restart them. Never claim success without acceptance. '
-                'You cannot modify the whitelist. Authorized workflow: ' +
-                (allowed['workflow_id'] if allowed else 'none') + '. ' +
+                'All enabled workflows may be started without prior attachment or separate authorization. '
+                'Use list_workflow_runs to discover available_workflows and existing cards. Select a workflow appropriate to the user task and follow its tool permissions and stage requirements. ' +
                 ('User-attached workflow metadata: ' + json.dumps({
-                    'id': allowed['workflow_id'], 'name': workflow_meta['name'],
+                    'id': attached['workflow_id'], 'name': workflow_meta['name'],
                     'description': workflow_meta['description'],
-                    'inputs': {key: allowed[key] for key in ('rtl_file', 'dut') if allowed.get(key)},
+                    'inputs': {key: attached[key] for key in ('rtl_file', 'dut') if attached.get(key)},
                     'required_inputs': ['rtl_file: existing RTL file path', 'dut: module name']
-                }, ensure_ascii=False) + '. ' if allowed and workflow_meta else '') +
+                }, ensure_ascii=False) + '. ' if attached and workflow_meta else '') +
                 'Determine available capabilities from the current runtime sandbox information and actual tool responses. '
-                'Workflow execution authorization is checked by the server. '
+                'The server checks enabled workflows and card ownership; workflow hosts enforce their tool permissions. '
                 'For bug records, first call bug_records(operation=guide); persist descriptions and evidence with that tool. For test-case import, definitions and bindings, first call test_cases(operation=guide), then use test_cases to persist them. For verification groups, functional points, testpoints and source bindings, first call verification_targets(operation=guide) and follow that skill. Use that tool to persist definitions; do not edit the definition file directly. '
                 'Answer in the user language.')
             previous_thread = session.get('thread')
             session['thread'] = await backend.open(session['thread'], message.model, mode)
-            if session['backend'] == 'codex' and previous_thread and session.get('runtime_permission_policy') != 1:
+            if session['backend'] == 'codex' and previous_thread and session.get('runtime_permission_policy') != 2:
                 # One-time retirement of the old prompt policy, not a mode-specific
                 # permission grant. Future switches only change the native sandbox.
                 await backend.request('thread/inject_items', {'threadId': session['thread'], 'items': [{
                     'type': 'message', 'role': 'developer', 'content': [{'type': 'input_text', 'text':
-                        'FlowCanvas configuration migration: earlier FlowCanvas prompt restrictions requiring workflow-only writes/builds/tests are retired. Determine capabilities from current runtime sandbox information and actual tool responses. Workflow authorization is enforced by the server. This message does not grant filesystem or tool permissions.'}]}]})
-            session['runtime_permission_policy'] = 1
+                        'Current FlowCanvas policy: all enabled workflows can be started without attachment or separate authorization. Use list_workflow_runs to discover available_workflows. Attachments express task intent only. Follow each workflow MCP tool permissions and stage requirements. Native file and command capabilities remain governed by the current sandbox.'}]}]})
+            session['runtime_permission_policy'] = 2
             self.changed(session)
             if session.get('delegation_stopped') or session['status'] == 'stopping':
                 session['status'] = 'error' if session.get('stop_error') else 'interrupted'
@@ -583,7 +579,8 @@ def routes(service):
         session = service.get(identity)
         if session['thread'] or session['items'] or session.get('queue') or identity in service.launching:
             raise HTTPException(409, 'Start a new conversation to change backend')
-        session.update(backend=value.backend, model='', effort='')
+        session.update(backend=value.backend, model='', effort='',
+                       permission_mode='workspace' if value.backend == 'codex' else 'full')
         service.changed(session)
         service.save(session)
         return session
@@ -625,6 +622,8 @@ def routes(service):
     async def permissions(identity: str, settings: PermissionSettings):
         """Change policy only between turns; clients cannot mutate an executing turn."""
         session = service.get(identity)
+        if session['backend'] == 'opencode' and settings.mode != 'full':
+            raise HTTPException(400, 'OpenCode supports full access only')
         # A loaded native thread retains its old developer instructions on resume.
         # Reconnect cold so the persisted thread resumes with the new policy, while
         # keeping the conversation-owned workflow hosts and cards intact.
@@ -649,12 +648,12 @@ def routes(service):
 
     @router.post('/sessions/{identity}/attachment')
     async def attach(identity: str, value: WorkflowInput):
-        """Grant only the explicitly selected enabled workflow to this conversation."""
+        """Attach a workflow as task context without changing execution permissions."""
         session = service.get(identity)
-        if session.get('permission_mode', 'workflow') == 'readonly':
-            raise HTTPException(403, 'Read-only conversations cannot attach executable workflows')
+        if session.get('permission_mode') not in {'workspace', 'full'}:
+            raise HTTPException(403, 'Select an access mode before attaching a workflow')
         resolved = attachment(value)
-        async with service.reconfigure(session, workflow=True):
+        async with service.reconfigure(session):
             session['attachment'] = resolved
             session['attachment_sent'] = False
             service.changed(session)
@@ -663,13 +662,11 @@ def routes(service):
 
     @router.post('/sessions/{identity}/attachment/remove')
     async def detach(identity: str):
-        """Revoke workflow authorization without deleting its recorded result."""
+        """Remove composer context while preserving workflow cards and their hosts."""
         session = service.get(identity)
-        async with service.reconfigure(session, workflow=True):
-            removed = session.pop('attachment', None)
-            for card in session.get('workflow_runs', []):
-                if not removed or card['workflow_id'] == removed['workflow_id']:
-                    card['authorized'] = False
+        async with service.reconfigure(session):
+            session.pop('attachment', None)
+            session.pop('attachment_sent', None)
             service.changed(session)
             service.save(session)
         return session
@@ -691,6 +688,10 @@ def routes(service):
     async def send(identity: str, message: Message):
         """Accept one turn atomically; reject duplicates while a turn is active."""
         session = service.get(identity)
+        allowed_modes = {'workspace', 'full'} if session['backend'] == 'codex' else {'full'}
+        if session.get('permission_mode') not in allowed_modes:
+            raise HTTPException(400, 'Select a supported access mode before sending')
+
         backend = session['backend']
         models = await service.models(backend, session.get('workspace') or service.workspace)
         if service.get(identity) is not session or session['backend'] != backend:
@@ -705,7 +706,7 @@ def routes(service):
         if not message.text.strip():
             raise HTTPException(400, 'Message is empty')
         tier = model.get('speed_tiers', {}).get(message.speed)
-        # Consume the composer chip only after validation; authorization stays with the session.
+        # Consume the composer chip only after validation; workflow execution remains available.
         if len(session.get('queue', [])) >= 20:
             raise HTTPException(409, 'Message queue is full')
         attached = session.get('attachment')

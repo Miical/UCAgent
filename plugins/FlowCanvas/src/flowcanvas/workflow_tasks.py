@@ -1,4 +1,4 @@
-"""Server-authorized workflow attachments and conversation-bound MCP task execution."""
+"""Workflow task context attachments and conversation-bound MCP task execution."""
 from pathlib import Path
 from fastapi import HTTPException
 from pydantic import BaseModel, Field

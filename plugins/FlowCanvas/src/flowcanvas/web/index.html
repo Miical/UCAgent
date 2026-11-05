@@ -73,10 +73,11 @@
             <section id="attach-popover" class="model-popover" role="dialog" aria-label="添加工作流" hidden><div class="picker-heading">工作流</div><div id="workflow-options" class="model-options"><p class="session-empty">加载中…</p></div></section>
           </div>
           <div class="model-picker">
-            <button id="permission-toggle" class="model-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="permission-popover"><span id="permission-label">工作流执行</span><svg class="picker-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+            <button id="permission-toggle" class="model-trigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="permission-popover"><span id="permission-label">工作区访问</span><svg class="picker-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
             <section id="permission-popover" class="model-popover" role="dialog" aria-label="权限模式" hidden>
               <div class="picker-heading">权限模式</div>
               <div id="permission-options" class="model-options" role="group" aria-label="权限模式"></div>
+              <p class="permission-note">所有模式均可启动工作流，并按工作流的工具权限执行。</p>
             </section>
           </div>
           <div id="attached-workflows" class="attached-workflows" aria-label="已附加工作流"></div>
@@ -87,7 +88,6 @@
             <section id="backend-popover" class="model-popover backend-popover" role="dialog" aria-label="选择后端" hidden>
               <div class="picker-heading">选择后端</div>
               <div id="backend-options" class="model-options" role="group" aria-label="可用后端"></div>
-              <button id="backend-refresh" class="model-option" type="button">刷新连接</button>
             </section>
           </div>
           <div class="model-picker">

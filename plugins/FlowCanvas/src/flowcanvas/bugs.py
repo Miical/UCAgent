@@ -69,7 +69,7 @@ class Bugs(Targets):
 def execute(root,request):
     r=Request.model_validate(request) if isinstance(request,dict) else request
     store=Bugs(root)
-    if r.operation=='guide':return {'instructions':'先 read 获取 revision。create/update 填写名称、description、condition（复现步骤）、expected、actual、severity、status、evidence 和 case_ids。未知内容留空，不能把猜测当作确认缺陷。初始状态 unverified；confirmed/fixing/resolved 必须提供证据，resolved 需要修复及回归依据。example=true 仅用于用户要求的演示，保持 unverified，不得转为真实缺陷。inspect/bind 可关联已确认的源码位置，source 查看完整源码；不能给假设 Bug 捏造定位。写操作需要完全访问。','schema':Definition.model_json_schema()}
+    if r.operation=='guide':return {'instructions':'先 read 获取 revision。create/update 填写名称、description、condition（复现步骤）、expected、actual、severity、status、evidence 和 case_ids。未知内容留空，不能把猜测当作确认缺陷。初始状态 unverified；confirmed/fixing/resolved 必须提供证据，resolved 需要修复及回归依据。example=true 仅用于用户要求的演示，保持 unverified，不得转为真实缺陷。inspect/bind 可关联已确认的源码位置，source 查看完整源码；不能给假设 Bug 捏造定位。项目内写操作支持工作区访问和完全访问。','schema':Definition.model_json_schema()}
     if r.operation=='read':return store.status()
     if r.operation in {'create','update'}:return store.write_bug(r)
     if r.operation=='inspect':return store.inspect(r.files)

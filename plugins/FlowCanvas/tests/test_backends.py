@@ -37,6 +37,80 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
         await self.service.close()
         self.temp.cleanup()
 
+    async def test_workflows_need_no_attachment_but_keep_ownership_and_enabled_checks(self):
+        """Enabled workflows start without grants; disabled and foreign cards fail."""
+        from fastapi import HTTPException
+        owner = self.service.create('codex')
+        runtime = WorkflowRuntime(self.service, owner)
+        runtime.inspect = AsyncMock(return_value={'cards': []})
+        card = {'id': 'owned', 'workflow_id': 'rtl-summary', 'status': 'completed'}
+        owner['workflow_runs'] = [card]
+        result = await runtime.run(card_id='owned')
+        self.assertTrue(result['accepted'])
+        owner['attachment'] = {'workflow_id': 'default'}
+        result = await runtime.run(card_id='owned')
+        self.assertTrue(result['accepted'])
+        with self.assertRaisesRegex(ValueError, 'does not belong'):
+            await runtime.run(card_id='foreign')
+        with patch('flowcanvas.workflow_tasks.workflow_menu', return_value=[]):
+            with self.assertRaises(HTTPException):
+                await runtime.run(card_id='owned')
+        owner.pop('attachment')
+        with self.assertRaisesRegex(ValueError, 'existing RTL'):
+            await runtime.run(workflow_id='rtl-summary')
+        with self.assertRaises(HTTPException):
+            await runtime.run(workflow_id='nonexistent')
+        owner['permission_mode'] = 'unsupported'
+        with self.assertRaisesRegex(ValueError, 'access mode'):
+            await runtime.run(card_id='owned')
+
+    async def test_backend_access_modes(self):
+        """Enforce backend-specific defaults and reject unsupported grants at the API."""
+        codex = self.service.create('codex')
+        opencode = self.service.create('opencode')
+        self.assertEqual(codex['permission_mode'], 'workspace')
+        self.assertEqual(opencode['permission_mode'], 'full')
+        endpoint = '/api/chat/sessions/'
+        for mode in ('workspace', 'full'):
+            response = await self.client.post(endpoint + codex['id'] + '/permissions', json={'mode': mode})
+            self.assertEqual(response.status_code, 200)
+        response = await self.client.post(endpoint + opencode['id'] + '/permissions', json={'mode': 'workspace'})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(opencode['permission_mode'], 'full')
+        for mode in ('readonly', 'workflow'):
+            response = await self.client.post(endpoint + codex['id'] + '/permissions', json={'mode': mode})
+            self.assertEqual(response.status_code, 422)
+        switched = await self.client.post(endpoint + codex['id'] + '/backend', json={'backend': 'opencode'})
+        self.assertEqual(switched.json()['permission_mode'], 'full')
+        switched = await self.client.post(endpoint + codex['id'] + '/backend', json={'backend': 'codex'})
+        self.assertEqual(switched.json()['permission_mode'], 'workspace')
+        codex['permission_mode'] = 'retired-mode'
+        response = await self.client.post(endpoint + codex['id'] + '/messages',
+                                         json={'text': 'hello', 'model': 'codex-model', 'effort': 'low'})
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(codex['items'])
+
+    async def test_codex_workspace_policy_on_start_resume_and_turn(self):
+        """Every turn resets the native sandbox, including a downgrade from full."""
+        from flowcanvas.backends.codex import CodexBackend
+        backend = CodexBackend(Path(self.temp.name), lambda event: None)
+        backend.connect = AsyncMock()
+        backend.request = AsyncMock(return_value={'thread': {'id': 'native'}, 'turn': {'id': 'turn'}})
+        for mode, sandbox in [('full', 'danger-full-access'), ('workspace', 'workspace-write')]:
+            await backend.open('native', 'model', mode)
+            self.assertEqual(backend.request.call_args.args[1]['sandbox'], sandbox)
+            await backend.send('native', 'hello', 'model', 'low', mode=mode)
+            policy = backend.request.call_args.args[1]['sandboxPolicy']
+            if mode == 'workspace':
+                self.assertEqual(policy['type'], 'workspaceWrite')
+                self.assertEqual(policy['writableRoots'], [self.temp.name])
+                self.assertTrue(policy['networkAccess'])
+            else:
+                self.assertEqual(policy, {'type': 'dangerFullAccess'})
+        for mode in ('readonly', 'workflow'):
+            with self.assertRaises(ValueError):
+                await backend.open(None, 'model', mode)
+
     async def test_catalog_failure_is_isolated(self):
         """An offline Codex installation must not hide a configured OpenCode backend."""
         self.service.backends['codex'].models.side_effect = RuntimeError('CLI unavailable')
@@ -319,10 +393,10 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
         await runtime.inspect()
         self.assertEqual(card['status'], 'paused')
         owner['delegation_stopped'] = False
-        owner['permission_mode'] = 'readonly'; card['status'] = 'running'
+        owner['permission_mode'] = 'unsupported'; card['status'] = 'running'
         await runtime.inspect()
         self.assertEqual(card['status'], 'paused')
-        owner['permission_mode'] = 'workflow'
+        owner['permission_mode'] = 'workspace'
         card['status'] = 'running'; runtime.processes['card'].returncode = 1
         await runtime.inspect()
         self.assertEqual(card['status'], 'paused')
@@ -554,7 +628,7 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(operation=operation):
                 owner = self.service.create('opencode')
                 owner.update(status='completed', thread='native-history', permission_mode='full',
-                             attachment={'workflow_id': 'original'}, workflow_runs=[{'id': 'card', 'workflow_id': 'original', 'authorized': True}])
+                             attachment={'workflow_id': 'original'}, workflow_runs=[{'id': 'card', 'workflow_id': 'original'}])
                 endpoint = '/api/chat/sessions/' + owner['id']
                 closing, release, bridge_closing, release_bridge = (asyncio.Event() for _ in range(4))
 
@@ -571,14 +645,14 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
                 self.service.session_backends[owner['id']] = backend
                 self.service.workflow_bridges[owner['id']] = bridge
                 self.service.run = AsyncMock()
-                payload = {'mode': 'readonly'} if operation == 'permissions' else {'workflow_id': 'replacement'}
+                payload = {'mode': 'full'} if operation == 'permissions' else {'workflow_id': 'replacement'}
                 with patch('flowcanvas.chat.attachment', return_value={'workflow_id': 'replacement'}):
                     changing = asyncio.create_task(self.client.post(endpoint + '/' + operation, json=payload))
                     try:
                         await asyncio.wait_for(closing.wait(), 2)
                         self.assertIs(self.service.session_backends.get(owner['id']), backend)
                         self.assertIn(owner['id'], self.service.launching)
-                        competing = await self.client.post(endpoint + '/permissions', json={'mode': 'workflow'})
+                        competing = await self.client.post(endpoint + '/permissions', json={'mode': 'full'})
                         self.assertEqual(competing.status_code, 409)
                         response = await self.client.post(endpoint + '/messages', json={
                             'text': 'after transition', 'model': 'provider/model', 'effort': 'default'})
@@ -588,23 +662,19 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(owner['permission_mode'], 'full')
                         self.assertEqual(owner['attachment']['workflow_id'], 'original')
                         release.set()
-                        if operation != 'permissions':
-                            await asyncio.wait_for(bridge_closing.wait(), 2)
-                            self.assertIs(self.service.workflow_bridges.get(owner['id']), bridge)
-                            self.assertIn(owner['id'], self.service.launching)
-                            self.service.run.assert_not_awaited()
-                            release_bridge.set()
                         self.assertEqual((await changing).status_code, 200)
                         self.assertNotIn(owner['id'], self.service.launching)
                         self.assertNotIn(owner['id'], self.service.session_backends)
                         if operation == 'permissions':
-                            self.assertEqual(owner['permission_mode'], 'readonly')
+                            self.assertEqual(owner['permission_mode'], 'full')
                             self.assertIs(self.service.workflow_bridges[owner['id']], bridge)
                         elif operation == 'attachment':
                             self.assertEqual(owner['attachment']['workflow_id'], 'replacement')
                         else:
                             self.assertNotIn('attachment', owner)
-                            self.assertFalse(owner['workflow_runs'][0]['authorized'])
+                            self.assertEqual(owner['workflow_runs'][0]['id'], 'card')
+                        self.assertIs(self.service.workflow_bridges[owner['id']], bridge)
+                        bridge.close.assert_not_awaited()
                     finally:
                         release.set(); release_bridge.set()
                         await asyncio.gather(changing, return_exceptions=True)
@@ -625,7 +695,7 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
         backend = SimpleNamespace(close=AsyncMock(side_effect=close), emit=emit)
         self.service.session_backends[owner['id']] = backend
         self.service.run = AsyncMock()
-        changing = asyncio.create_task(self.client.post(endpoint + '/permissions', json={'mode': 'readonly'}))
+        changing = asyncio.create_task(self.client.post(endpoint + '/permissions', json={'mode': 'full'}))
         try:
             await asyncio.wait_for(closing.wait(), 2)
             response = await self.client.post(endpoint + '/messages', json={
@@ -1611,8 +1681,8 @@ class OpenCodeEventTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(block['text'], 'partial')
         self.assertEqual(block['input'], 'sleep 1')
         self.assertEqual(block['started_at'], 2)
-        self.assertEqual(permissions('readonly')[0]['action'], 'deny')
-        self.assertFalse(any(r['permission'] in {'bash', 'edit', 'write', 'task'} and r['action'] == 'allow' for r in permissions('readonly')))
+        for mode in ('workspace', 'readonly', 'workflow'):
+            with self.assertRaises(ValueError): permissions(mode)
         self.assertEqual(permissions('full')[0]['action'], 'allow')
         with self.assertRaises(ValueError): permissions('invalid')
 

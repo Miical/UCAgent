@@ -31,10 +31,11 @@ class CodexBackend:
             if not executable:
                 raise RuntimeError('Codex CLI not found. Install and sign in with codex login.')
             args = [executable, 'app-server', '--listen', 'stdio://',
-                    '-c', 'project_doc_max_bytes=0', '-c', 'features.fast_mode=true']
+                    '-c', 'project_doc_max_bytes=0', '-c', 'features.fast_mode=true',
+                    '-c', 'sandbox_workspace_write.network_access=true']
             # Override the entire table: CLI dotted keys do not parse TOML-quoted names.
-            # Only our conversation-owned dispatcher or authorized workflow host is
-            # trusted here. The dispatcher enforces the live attachment whitelist;
+            # Only our conversation-owned dispatcher or enabled workflow host is
+            # trusted here. The dispatcher enforces card ownership and enabled workflows;
             # the workflow host enforces its configured tools and write scope.
             # "never" alone rejects MCP writes instead of authorizing them.
             mcp_config = ('mcp_servers={ucagent={url=' + json.dumps(self.mcp_url)
@@ -131,15 +132,15 @@ class CodexBackend:
                          'speed_tiers': {t['name'].lower(): t['id'] for t in m.get('serviceTiers', [])
                                          if t['name'].lower() in {'fast', 'ultrafast'}}} for m in models if not m['hidden']]
 
-    async def open(self, thread_id, model, mode='workflow'):
+    async def open(self, thread_id, model, mode='workspace'):
         """Resume with the selected policy, refreshing instructions on permission changes."""
-        if mode not in {'full', 'workflow', 'readonly'}:
+        if mode not in {'full', 'workspace'}:
             raise ValueError('Unknown permission mode')
         await self.connect()
         if thread_id and self.loaded.get(thread_id) == mode:
             return thread_id
         params = {'cwd': str(self.workspace), 'model': model,
-                  'sandbox': 'danger-full-access' if mode == 'full' else 'read-only',
+                  'sandbox': 'danger-full-access' if mode == 'full' else 'workspace-write',
                   'approvalPolicy': 'never', 'developerInstructions':
                   self.workflow_instructions or 'You are the FlowCanvas assistant. Use runtime sandbox information and tool responses to determine available capabilities. Answer in the user language.'}
         if thread_id:
@@ -149,14 +150,16 @@ class CodexBackend:
         self.loaded[identity] = mode
         return identity
 
-    async def send(self, thread_id, text, model, effort, service_tier=None, mode='workflow'):
+    async def send(self, thread_id, text, model, effort, service_tier=None, mode='workspace'):
         """Explicitly set every turn's sandbox, including when downgrading from full access."""
-        if mode not in {'full', 'workflow', 'readonly'}:
+        if mode not in {'full', 'workspace'}:
             raise ValueError('Unknown permission mode')
         result = await self.request('turn/start', {'threadId': thread_id,
             'input': [{'type': 'text', 'text': text}], 'model': model, 'effort': effort, 'serviceTier': service_tier,
             'summary': 'auto', 'approvalPolicy': 'never',
-            'sandboxPolicy': {'type': 'dangerFullAccess' if mode == 'full' else 'readOnly'}})
+            'sandboxPolicy': ({'type': 'dangerFullAccess'} if mode == 'full' else {
+                'type': 'workspaceWrite', 'writableRoots': [str(self.workspace)],
+                'networkAccess': True, 'excludeTmpdirEnvVar': True, 'excludeSlashTmp': False})})
         return result['turn']['id']
 
     async def steer(self, thread_id, turn_id, text):
