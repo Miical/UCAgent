@@ -279,3 +279,18 @@ Picker 工作流每次默认重新编译。只有用户明确要求复用时，A
 `stage_args.reuse_existing=true`；仍验收实际加载能力，并在结果中标明本次未编译。
 
 暂停保留工作目录及阶段检查点；恢复重新启动 MCP，不保留后台编译进程。工作流命令应经 MCP 的命令工具执行，保证其子进程纳入同一生命周期。
+
+
+### 规划并实现验证目标
+
+plan-goals 工作流由功能覆盖率空列表的“规划验证目标”AI 卡片或工作流菜单启动。
+五个阶段为需求/设计理解、FG/FC/CK 定义、边界细化与列表核对、覆盖模型实现、独立自检。
+复用 UCAgent 的 dut_functions_and_checks.md、dut_function_coverage_def.md，
+以及 Markdown、标签结构和 Toffee 覆盖组检查器，不运行默认工作流的 fixture/DUT 回归验收。
+
+项目 verification/coverage/<模块名>/ 保存 requirements.md、design.md、
+functions_and_checks.md、coverage.py、target-map.json、selftest.py 和接入说明 README.md。
+target-map.json 将完整 FG、FG/FC、FG/FC/CK 路径映射到 FlowCanvas 的稳定目标 ID。
+创建先登记占位，再通过目标工具更新、绑定独立源码节点并 finish_create；已有目标复用原 ID。
+验收核对整个项目列表、文档、代码和有效绑定，实际执行人工数据自检，不提交覆盖率命中。
+RTL、测试入口及测试用例运行配置保持不变；后续编写测试时再调用 get_coverage_groups(dut)。

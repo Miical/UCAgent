@@ -19,6 +19,11 @@ def main():
         overrides.update({'template_overwrite.PROJECT_ROOT': spec['project_root'],
                           'template_overwrite.SOURCE_RTL': spec['source_file'],
                           'template_overwrite.DUT_OUTPUT': spec['dut_output']})
+    if spec.get('goal_output'):
+        overrides.update({'template_overwrite.PROJECT_ROOT': spec['project_root'],
+                          'template_overwrite.SOURCE_RTL': spec['source_file'],
+                          'template_overwrite.GOAL_OUTPUT': spec['goal_output'],
+                          'template_overwrite.GOAL_RELATIVE': str(Path(spec['goal_output']).relative_to(spec['project_root']))})
     agent = VerifyAgent(str(root / 'workspace'), spec['dut'], 'summary',
                         config_file=spec['config'], cfg_override=overrides,
                         no_history=False, no_embed_tools=True, exit_on_completion=False)

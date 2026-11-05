@@ -1,5 +1,10 @@
 # Curated menu entries, displayed in file order. Execution lives in workflow YAML.
 workflows:
+  - id: plan-goals
+    name: 规划并实现验证目标
+    description: 梳理完整验证目标，维护功能覆盖率列表并实现独立覆盖模型，暂不接入测试用例。
+    workflow: flowcanvas:plan-goals
+    enabled: true
   - id: picker-compile
     name: Picker 编译 RTL
     description: 用 Picker 将指定 RTL 编译为 Python DUT 包，检查加载并保存到项目 verification/<模块名>/，供后续验证使用。

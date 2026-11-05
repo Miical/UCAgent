@@ -1,0 +1,75 @@
+template: null
+template_overwrite:
+  PROJECT_ROOT: "{WORKSPACE}"
+  SOURCE_RTL: "{DUT}/{DUT}.v"
+  GOAL_OUTPUT: "{WORKSPACE}/verification/coverage/{DUT}"
+  GOAL_RELATIVE: "verification/coverage/{DUT}"
+guide_doc:
+  enable: true
+  core_copy_policy:
+    default_action: ignore
+    retain: [dut_functions_and_checks.md, dut_function_coverage_def.md]
+skill:
+  use_skill: false
+  general_skill_list: []
+mission:
+  name: 规划并实现验证目标
+  prompt:
+    system: |
+      为当前 FlowCanvas 项目完整规划验证目标并实现独立的 Toffee 功能覆盖模型，暂不接入测试用例。
+      项目：{PROJECT_ROOT}；RTL：{SOURCE_RTL}；模块：{DUT}；所有文档、覆盖代码和独立自检保存到 {GOAL_OUTPUT}。
+      先调用 verification_targets(operation=guide/read)，读取规格、真实 RTL、层级和已有 DUT 接口。规格与实现分开记录；缺失规格标出假设，不能把 RTL 行为自动当作正确行为。
+      复用 Guide_Doc/dut_functions_and_checks.md 和 Guide_Doc/dut_function_coverage_def.md 的定义与代码规范。本流程仅执行覆盖模型定义和独立自检，不执行指南里的测试集成、DUT 采样或覆盖率发布。
+      FG/FC/CK 对应界面 group/point/testpoint。先 begin_create 占位，按父子顺序更新名称、说明；实现后 inspect/bind，finish_create。同一目标始终更新原 ID，不重复导入，不直接修改 .flowcanvas 管理文件。
+      用 target-map.json 保存“完整标签路径:目标ID”的映射，包含 FG、FG/FC、FG/FC/CK 全部层级；已有目标应先核对并复用。
+      每个目标提供可定位的独立源码节点，例如组工厂函数、功能点注册函数、检查点谓词函数，按 coverage 或 definition 角色绑定，禁止把所有目标都绑定到同一个总入口。
+      coverage.py 沿用 get_coverage_groups(dut) -> list[CovGroup] 接口，按指南使用 DUT 引用。说明采样条件、时机、信号和后续调用方式；涉及历史状态时提供明确的状态维护接口。
+      不修改 RTL、测试用例、fixture 或运行入口，不运行 DUT 仿真。selftest.py 只用人工构造的信号对象验证命中与不命中、边界和状态逻辑，不向项目提交覆盖率命中。
+      使用 CurrentTips 查看阶段要求，SetCurrentStageJournal 记录进展，Complete 验收推进。最后核对列表、文档、源码一致，说明尚未接入测试，Exit 退出。
+    tips:
+      always: []
+      random: []
+tools:
+  selected_tools: [ReadTextFile, EditTextFile, CurrentTips, Status, SetCurrentStageJournal, Check, Complete, Exit]
+write_dirs: ["{OUT}"]
+stage:
+  - name: understand_requirements_and_design
+    desc: 需求分析与设计理解
+    task:
+      - "阅读规格、RTL、现有目标及接口，将验证范围、风险、假设写入 {GOAL_OUTPUT}/requirements.md，将端口与行为整理为 {GOAL_OUTPUT}/design.md。"
+    checker:
+      - name: requirements
+        clss: flowcanvas.goal_planning.GoalPlanningChecker
+        args: {project_root: "{PROJECT_ROOT}", output_dir: "{GOAL_RELATIVE}", phase: understand}
+  - name: define_functional_targets
+    desc: 定义功能组、功能点和测试点
+    task:
+      - "按 UCAgent 标签规范编写 {GOAL_OUTPUT}/functions_and_checks.md，覆盖完整设计范围。同步通过 verification_targets 登记界面占位，维护 target-map.json。"
+    checker:
+      - name: structure
+        clss: flowcanvas.goal_planning.GoalPlanningChecker
+        args: {project_root: "{PROJECT_ROOT}", output_dir: "{GOAL_RELATIVE}", phase: define}
+  - name: refine_boundaries_and_mapping
+    desc: 细化边界条件并核对列表
+    task:
+      - "逐项补充边界、异常、组合和可观察条件，消除重复，明确需要后续测试断言验证的正确性。核对文档与页面 ID 映射及父子关系。"
+    checker:
+      - name: mapping
+        clss: flowcanvas.goal_planning.GoalPlanningChecker
+        args: {project_root: "{PROJECT_ROOT}", output_dir: "{GOAL_RELATIVE}", phase: refine}
+  - name: implement_coverage_model
+    desc: 实现独立功能覆盖模型
+    task:
+      - "按覆盖率指南实现 {GOAL_OUTPUT}/coverage.py，覆盖所有 FG/FC/CK。为全部目标绑定独立源码节点，完成占位卡片。"
+    checker:
+      - name: implementation
+        clss: flowcanvas.goal_planning.GoalPlanningChecker
+        args: {project_root: "{PROJECT_ROOT}", output_dir: "{GOAL_RELATIVE}", phase: implement}
+  - name: verify_model_and_handoff
+    desc: 独立自检与交付核对
+    task:
+      - "编写 {GOAL_OUTPUT}/selftest.py，使用人工构造输入检查覆盖条件和状态逻辑；在 README.md 记录后续测试接入的 API、采样时机和注意事项。再次 read 核对列表和绑定，不产生真实覆盖命中。"
+    checker:
+      - name: handoff
+        clss: flowcanvas.goal_planning.GoalPlanningChecker
+        args: {project_root: "{PROJECT_ROOT}", output_dir: "{GOAL_RELATIVE}", phase: verify}

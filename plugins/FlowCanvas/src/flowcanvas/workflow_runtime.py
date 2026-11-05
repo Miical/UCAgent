@@ -178,7 +178,7 @@ class WorkflowRuntime:
                 return {'card': card, 'accepted': True}
             if card is None:
                 project_root = None
-                if identity in {'rtl-summary', 'picker-compile'}:
+                if identity in {'rtl-summary', 'picker-compile', 'plan-goals'}:
                     if not self.session.get('project_root'):
                         raise ValueError('Open a FlowCanvas project before running this RTL workflow')
                     project_root = Path(self.session['project_root']).resolve()
@@ -218,6 +218,14 @@ class WorkflowRuntime:
                     request.update(project_root=str(project_root), source_file=spec['rtl_file'], dut_output=str(output),
                                    source_hash=hashlib.sha256(Path(spec['rtl_file']).read_bytes()).hexdigest(),
                                    build_started_at=time.time())
+                if identity == 'plan-goals':
+                    goal_output = project_root / 'verification' / 'coverage' / dut
+                    if not goal_output.resolve().is_relative_to(project_root):
+                        raise ValueError('Coverage output must remain inside the project')
+                    from .goal_planning import integration_snapshot
+                    request.update(project_root=str(project_root), source_file=spec['rtl_file'],
+                                   goal_output=str(goal_output),
+                                   goal_baseline=integration_snapshot(project_root, goal_output, spec['rtl_file']))
                 if report:
                     request.update(project_root=str(project_root), report_file=str(report))
                 (root / 'request.json').write_text(json.dumps(request))

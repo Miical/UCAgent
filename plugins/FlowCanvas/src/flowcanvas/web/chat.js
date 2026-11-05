@@ -738,8 +738,8 @@ window.FlowCanvasAI={
       await request('/sessions/'+owner.id+'/permissions',{mode:backendChoice==='opencode'?'full':'workspace'});
     }
     if(current&&!owner.id)owner=await ensureSession();
-    if(!design)await request('/sessions/'+owner.id+'/attachment',{workflow_id:'generate-testcase',task_only:true,rtl_file:project.rtl?.top_file?project.path+'/'+project.rtl.top_file:'',dut:project.rtl?.top||'RTL'});
-    const result=await request('/sessions/'+owner.id+'/messages',{text,model,effort,speed:speedMode,task_card:{title:taskTitle,workflow:design?'':'新增测试用例',project:project.name,requirements:design?design.instance+(requirements?'\n'+requirements:''):requirements||''}});
+    if(!design||design.kind==='plan-goals')await request('/sessions/'+owner.id+'/attachment',{workflow_id:design?.kind==='plan-goals'?'plan-goals':'generate-testcase',task_only:true,rtl_file:project.rtl?.top_file?project.path+'/'+project.rtl.top_file:'',dut:project.rtl?.top||'RTL'});
+    const result=await request('/sessions/'+owner.id+'/messages',{text,model,effort,speed:speedMode,task_card:{title:taskTitle,workflow:design?.kind==='plan-goals'?'规划验证目标':design?'':'新增测试用例',project:project.name,requirements:design?design.instance+(requirements?'\n'+requirements:''):requirements||''}});
     await list();await choose(owner.id);
     return result;
   }
