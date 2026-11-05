@@ -1,36 +1,10 @@
 """Conversation-scoped MCP tools for enabled workflows and project operations."""
 import asyncio
-import json
 import socket
 from mcp.server.mcpserver import MCPServer
-from mcp.types import Tool, CallToolResult
+from mcp.types import CallToolResult
 import uvicorn
 from .workflow_runtime import WorkflowRuntime
-
-
-class WorkflowMCP(MCPServer):
-    """Publish the active host's real schemas alongside stable lifecycle tools."""
-
-    def __init__(self, owner):
-        self.owner = owner
-        super().__init__('flowcanvas-workflows')
-
-    async def list_tools(self):
-        return await super().list_tools() + list(self.owner.host_tools.values())
-
-    def _tool_input_schema(self, name):
-        tool = self.owner.host_tools.get(name)
-        return tool.input_schema if tool else super()._tool_input_schema(name)
-
-    async def call_tool(self, name, arguments, context=None):
-        if name not in self.owner.host_tools:
-            return await super().call_tool(name, arguments, context)
-        self.owner.call = asyncio.current_task()
-        try:
-            result = await self.owner.runtime.invoke(self.owner.active_card, name, arguments)
-            return CallToolResult.model_validate(result['result'])
-        finally:
-            self.owner.call = None
 
 
 class WorkflowBridge:
@@ -43,10 +17,7 @@ class WorkflowBridge:
         self.task = None
         self.call = None
         self.url = None
-        self.host_tools = {}
-        self.active_card = None
-        self.refresh_task = None
-        self.mcp = WorkflowMCP(self)
+        self.mcp = MCPServer("flowcanvas-workflows")
 
         self.runtime = WorkflowRuntime(service, session)
 
@@ -61,27 +32,33 @@ class WorkflowBridge:
             return result
 
         @self.mcp.tool()
-        async def run_workflow(workflow_id: str = '', rtl_file: str = '', dut: str = 'RTL',
+        async def run_workflow(workflow_id: str = '', rtl_file: str = '', dut: str = '',
                                card_id: str = '') -> dict:
-            """Start any enabled workflow without prior attachment or separate authorization, or resume this conversation's card. Returns card_id, instructions and tool argument schemas. Execute with the separately named workflow tools, never by calling this tool repeatedly. Inspect cards with list_workflow_runs."""
+            """Start any enabled workflow without prior attachment or separate authorization, or resume this conversation's card. For rtl-summary, omitted rtl_file uses the bound project top module and source; explicit relative paths are project-relative. Provide dut when selecting another RTL module. Returns card_id, instructions and tool argument schemas. Execute tools via call_workflow_tool(card_id, tool_name, arguments), never by calling this tool repeatedly. Inspect cards with list_workflow_runs."""
             self.call = asyncio.current_task()
             try:
                 result = await self.runtime.run(workflow_id, rtl_file, dut, card_id)
-                if result.get('tools'):
-                    changed = json.dumps(session.get('workflow_tool_catalog', {}).get('tools', []), sort_keys=True) != json.dumps(result['tools'], sort_keys=True)
-                    if changed:
-                        service.catalog_reconnect.add(session['id'])
-                    self.active_card = result['card']['id']
-                    self.host_tools = {tool.name: tool for raw in result['tools']
-                                       if (tool := Tool.model_validate(raw)).name not in {'run_workflow', 'list_workflow_runs', 'verification_targets', 'test_cases', 'test_case_runs', 'bug_records'}}
-                    session['workflow_tool_catalog'] = {'card_id': self.active_card, 'tools': result['tools']}
-                    service.changed(session)
-                    service.save(session)
-                    if self.refresh_task:
-                        self.refresh_task.cancel()
-                    self.refresh_task = asyncio.create_task(self.refresh_backend())
-                    result['next'] = 'If these tools are not callable in this turn, end this turn briefly. FlowCanvas will reconnect and continue the same conversation automatically; do not use shell workarounds. Workflow tools are now published with their original argument schemas. The host refreshes the backend catalog automatically. Call tools such as CurrentTips directly with their original arguments; no card_id wrapper. Do not repeatedly call run_workflow to discover tools.'
                 return result
+            finally:
+                self.call = None
+
+        @self.mcp.tool()
+        async def call_workflow_tool(card_id: str, tool_name: str, arguments: dict) -> CallToolResult:
+            """Execute a tool from this conversation's workflow card. Use the card ID and tool input schemas returned by run_workflow. Each call checks the live UCAgent tool catalog and arguments; UCAgent enforces tool permissions and stage acceptance. Resume a stopped host with run_workflow first."""
+            self.call = asyncio.current_task()
+            try:
+                result = await self.runtime.invoke(card_id, tool_name, arguments)
+                if 'result' not in result:
+                    raise ValueError('Workflow is paused because this conversation is not executing. Resume the conversation before invoking tools.')
+                return CallToolResult.model_validate(result['result'])
+            except (ValueError, ExceptionGroup) as exc:
+                def messages(error):
+                    if isinstance(error, BaseExceptionGroup):
+                        return [message for child in error.exceptions for message in messages(child)]
+                    return [str(error)]
+                return CallToolResult(isError=True, content=[{
+                    'type': 'text', 'text': '\n'.join(dict.fromkeys(messages(exc)))
+                }])
             finally:
                 self.call = None
 
@@ -163,25 +140,6 @@ class WorkflowBridge:
             return await asyncio.to_thread(execute,root,dict(operation=operation,expected_revision=expected_revision,
                 files=files or [],name=name,target_id=target_id,binding_id=binding_id,values=values or {}))
 
-        # Retain discovery across backend reconnects; invocation still checks host
-        # liveness, enabled status and conversation ownership on every call.
-        cached = session.get('workflow_tool_catalog', {})
-        self.active_card = cached.get('card_id')
-        self.host_tools = {tool.name: tool for raw in cached.get('tools', [])
-                           if (tool := Tool.model_validate(raw)).name not in {'run_workflow', 'list_workflow_runs', 'verification_targets', 'test_cases', 'test_case_runs', 'bug_records'}}
-
-    async def refresh_backend(self):
-        """Reload after the lifecycle tool response has left the MCP connection."""
-        await asyncio.sleep(.5)
-        backend = self.service.session_backends.get(self.session['id'])
-        if backend:
-            try:
-                await backend.reload_tools()
-            except Exception as exc:
-                self.session['error'] = '工作流工具刷新失败：' + str(exc)
-                self.service.changed(self.session)
-
-
     async def start(self):
         """Bind an owned ephemeral socket and wait for the MCP transport to be ready."""
         sock = socket.socket()
@@ -206,9 +164,6 @@ class WorkflowBridge:
         if self.call and self.call is not asyncio.current_task():
             self.call.cancel()
             await asyncio.gather(self.call, return_exceptions=True)
-        if self.refresh_task:
-            self.refresh_task.cancel()
-            await asyncio.gather(self.refresh_task, return_exceptions=True)
         await self.runtime.close()
         if self.server:
             self.server.should_exit = True

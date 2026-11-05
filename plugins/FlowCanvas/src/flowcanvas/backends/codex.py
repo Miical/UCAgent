@@ -19,6 +19,7 @@ class CodexBackend:
         self.lock = asyncio.Lock()
         self.tasks = []
         self.loaded = {}
+        self.loaded_instructions = {}
         self.mcp_url = None
         self.workflow_instructions = None
 
@@ -49,6 +50,7 @@ class CodexBackend:
                                     for name in data.get('plugins', {}))
                 args += ['-c', 'plugins={' + plugins + '}']
             self.loaded.clear()
+            self.loaded_instructions.clear()
             self.process = await asyncio.create_subprocess_exec(
                 *args, cwd=self.workspace, stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
@@ -137,7 +139,8 @@ class CodexBackend:
         if mode not in {'full', 'workspace'}:
             raise ValueError('Unknown permission mode')
         await self.connect()
-        if thread_id and self.loaded.get(thread_id) == mode:
+        if (thread_id and self.loaded.get(thread_id) == mode
+                and self.loaded_instructions.get(thread_id) == self.workflow_instructions):
             return thread_id
         params = {'cwd': str(self.workspace), 'model': model,
                   'sandbox': 'danger-full-access' if mode == 'full' else 'workspace-write',
@@ -148,6 +151,7 @@ class CodexBackend:
         result = await self.request('thread/resume' if thread_id else 'thread/start', params)
         identity = result['thread']['id']
         self.loaded[identity] = mode
+        self.loaded_instructions[identity] = self.workflow_instructions
         return identity
 
     async def send(self, thread_id, text, model, effort, service_tier=None, mode='workspace'):
@@ -229,8 +233,12 @@ def normalize(method, params):
                 text = json.dumps(item['result'], ensure_ascii=False, indent=2)
             if item.get('error'):
                 text = json.dumps(item['error'], ensure_ascii=False)
+        title = item.get('command') or item.get('tool') or typ
+        arguments = item.get('arguments')
+        if item.get('tool') == 'call_workflow_tool' and isinstance(arguments, dict):
+            title = arguments.get('tool_name') or title
         return {**base, 'kind': 'item', 'item': {'id': item['id'], 'kind': kind,
-                'text': text, 'title': item.get('command') or item.get('tool') or typ,
+                'text': text, 'title': title,
                 'input': item.get('command') or (json.dumps(item['arguments'], ensure_ascii=False, indent=2) if 'arguments' in item else ''),
                 'status': item.get('status') or ('completed' if method.endswith('completed') else 'running')}}
     deltas = {'item/agentMessage/delta': 'text', 'item/reasoning/summaryTextDelta': 'reasoning',

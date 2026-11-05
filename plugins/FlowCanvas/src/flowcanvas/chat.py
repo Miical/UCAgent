@@ -81,7 +81,6 @@ class ChatService:
         self.jobs = set()
         self.session_backends = {}
         self.workflow_bridges = {}
-        self.catalog_reconnect = set()
         self.launching = set()
         self.deleting = set()
         self.steering = set()
@@ -195,32 +194,6 @@ class ChatService:
             for session in list(self.sessions.values()):
                 if self.sessions.get(session['id']) is not session:
                     continue
-                if session['id'] in self.catalog_reconnect and session['status'] == 'completed' and session['id'] not in self.launching and not execution_active(session):
-                    bridge = self.workflow_bridges.get(session['id'])
-                    card = next((c for c in session.get('workflow_runs', []) if bridge and c['id'] == bridge.active_card), None)
-                    self.launching.add(session['id'])
-                    continued = False
-                    try:
-                        await self.close_connection(session['id'])
-                        # Stop can arrive while the native process is closing. Recheck
-                        # its grant before scheduling a continuation of the same task.
-                        if (session['id'] in self.catalog_reconnect and not session.get('delegation_stopped')
-                                and card and card['status'] != 'completed'
-                                and session.get('permission_mode') in {'workspace', 'full'} and not session.get('queue')):
-                            session.update(status='starting', turn=None, ended_at=None)
-                            self.changed(session)
-                            job = asyncio.create_task(self.run(session, Message(
-                                text='The workflow MCP tool catalog has been refreshed in this same conversation. Continue the user-requested workflow using its now-available stage tools. Inspect list_workflow_runs for the active card and resume it only if its host is stopped. Do not restart completed work.',
-                                model=session['model'], effort=session['effort'], speed=session.get('speed', 'standard'))))
-                            self.jobs.add(job)
-                            job.add_done_callback(self.jobs.discard)
-                            continued = True
-                    finally:
-                        # Retain the reconnect marker and client ownership throughout
-                        # the await so observers and shutdown cannot lose the handoff.
-                        self.catalog_reconnect.discard(session['id'])
-                        if not continued:
-                            self.launching.discard(session['id'])
                 if (session.get('queue') and not session.get('queue_paused')
                         and session['status'] not in ACTIVE and session['id'] not in self.launching
                         and session['id'] not in self.steering):
@@ -349,7 +322,6 @@ class ChatService:
                     if block.get('status') in {'running', 'inProgress'}:
                         block.update(status=session['status'], ended_at=time.time())
             if session['status'] in {'interrupted', 'error'}:
-                self.catalog_reconnect.discard(session['id'])
                 for item in session['items']:
                     if item.get('status') in {'running', 'inProgress'}:
                         item['status'] = session['status']
@@ -418,27 +390,46 @@ class ChatService:
                     self.workflow_bridges[session['id']] = bridge
                 backend.mcp_url = bridge.url
                 self.session_backends[session['id']] = backend
+            # Resolve the conversation's project, never the currently selected UI project.
+            project_context = ''
+            if session.get('project_root'):
+                project = await asyncio.to_thread(self.projects.inspect, Path(session['project_root']))
+                context = {'workspace': session['project_root']}
+                rtl = project.get('rtl') or {}
+                if rtl.get('top'):
+                    context['top_module'] = rtl['top']
+                if rtl.get('top_file'):
+                    context['top_file'] = rtl['top_file']
+                project_context = (
+                    'The following is the project FlowCanvas is processing in this conversation. '
+                    'workspace is the project root, and relative top_file paths are resolved against it. '
+                    'Inspect the project to confirm unknown information.\n\nProject context:\n' +
+                    json.dumps(context, ensure_ascii=False, indent=2) + '\n\n')
             attached = session.get('attachment')
             from .catalog import workflow_menu
             workflow_meta = next((item for item in workflow_menu() if attached and item['id'] == attached['workflow_id']), None)
             backend.workflow_instructions = (
-                'You are the FlowCanvas assistant. A user-attached workflow expresses intent to use that workflow for their task. '
-                'For the next task request, use the attached workflow without requiring the user to repeat an explicit run command. '
-                'If required inputs are missing, ask only for those inputs, then call run_workflow when ready. '
-                'Do not run again for questions about results, explanations, or unrelated conversation. '
-                'run_workflow starts an MCP, not another model. Execute its returned instructions yourself in this conversation, using the separately named workflow tools (such as ReadTextFile or Complete), with their original MCP arguments. FlowCanvas binds these tools to the most recently started or resumed card. Do not pass card_id to stage tools and do not use run_workflow to execute those operations. Use list_workflow_runs to inspect bound cards, and run_workflow(card_id) to resume or restart them. Never claim success without acceptance. '
-                'All enabled workflows may be started without prior attachment or separate authorization. '
-                'Use list_workflow_runs to discover available_workflows and existing cards. Select a workflow appropriate to the user task and follow its tool permissions and stage requirements. ' +
-                ('User-attached workflow metadata: ' + json.dumps({
+                'FlowCanvas is a visual chip design verification workbench built on UCAgent. '
+                'It supports design inspection, verification target and test case management, coverage and bug tracking, '
+                'and launching and managing UCAgent staged verification workflows. '
+                'Each workflow defines task steps, available tools, and acceptance criteria.\n\n'
+                'You are the AI assistant in FlowCanvas, collaborating with the user on the current project. '
+                'Use tools to perform tasks and update workbench records. Answer in the user language.\n\n'
+                'Use list_workflow_runs to find available workflows and existing runs, '
+                'and run_workflow to start or resume a workflow. Call workflow tools through call_workflow_tool using the returned card ID and tool schemas.\n\n'
+                'When the user attaches a workflow, use it to complete the task; otherwise choose one as needed. '
+                'No separate authorization is required. Obtain necessary inputs from the project first, '
+                'and ask the user only for what is missing. Follow workflow instructions and tool permissions; '
+                'do not restart tasks in response to progress or result questions.\n\n'
+                'Before managing verification targets, test cases, or bugs, call the corresponding tool with operation=guide. '
+                'Use tools to save records and source bindings rather than editing management files directly.\n\n'
+                'Report completion and unresolved issues based on actual checks. '
+                'Plans or source bindings do not establish verification success; '
+                'report a workflow complete only after it passes acceptance.\n\n' + project_context +
+                ('Attached workflow:\n' + json.dumps({
                     'id': attached['workflow_id'], 'name': workflow_meta['name'],
-                    'description': workflow_meta['description'],
-                    'inputs': {key: attached[key] for key in ('rtl_file', 'dut') if attached.get(key)},
-                    'required_inputs': ['rtl_file: existing RTL file path', 'dut: module name']
-                }, ensure_ascii=False) + '. ' if attached and workflow_meta else '') +
-                'Determine available capabilities from the current runtime sandbox information and actual tool responses. '
-                'The server checks enabled workflows and card ownership; workflow hosts enforce their tool permissions. '
-                'For bug records, first call bug_records(operation=guide); persist descriptions and evidence with that tool. For test-case import, definitions and bindings, first call test_cases(operation=guide), then use test_cases to persist them. For verification groups, functional points, testpoints and source bindings, first call verification_targets(operation=guide) and follow that skill. Use that tool to persist definitions; do not edit the definition file directly. '
-                'Answer in the user language.')
+                    'description': workflow_meta['description']
+                }, ensure_ascii=False, indent=2) if attached and workflow_meta else ''))
             previous_thread = session.get('thread')
             session['thread'] = await backend.open(session['thread'], message.model, mode)
             if session['backend'] == 'codex' and previous_thread and session.get('runtime_permission_policy') != 2:
@@ -772,7 +763,6 @@ def routes(service):
         session['delegation_stopped'] = True
         session['child_activity_epoch'] = session.get('child_activity_epoch', 0) + 1
         session.update(children_running=0, children_pending=False)
-        service.catalog_reconnect.discard(identity)
         if session['status'] in ACTIVE:
             session['status'] = 'stopping'
         service.changed(session)

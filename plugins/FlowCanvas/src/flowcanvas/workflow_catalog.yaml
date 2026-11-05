@@ -7,7 +7,7 @@ workflows:
     enabled: true
   - id: rtl-summary
     name: RTL 功能简述
-    description: 阅读 RTL，简要总结设计功能
+    description: 分析 RTL 的模块职责、接口与关键行为，生成简洁的功能说明并保存到项目输出目录。默认分析项目顶层模块。
     workflow: flowcanvas:rtl-summary
     enabled: true
   - id: default

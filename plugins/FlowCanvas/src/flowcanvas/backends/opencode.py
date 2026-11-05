@@ -35,7 +35,10 @@ def item(part, completed=False):
               'text': part.get('text', ''), 'title': '', 'input': ''}
     if kind == 'tool':
         arguments = state.get('input', {})
-        result.update(title=arguments.get('command') or part.get('tool', 'tool'),
+        title = arguments.get('command') or part.get('tool', 'tool')
+        if part.get('tool') in {'call_workflow_tool', 'ucagent_call_workflow_tool'}:
+            title = arguments.get('tool_name') or title
+        result.update(title=title,
                       input=arguments.get('command') or json.dumps(arguments, ensure_ascii=False, indent=2),
                       text=state.get('output') or state.get('error') or state.get('metadata', {}).get('output', ''))
     if timing.get('start'):
@@ -280,7 +283,7 @@ class OpenCodeBackend:
         await self.cancel_turn(thread_id, status='interrupted')
 
     async def reload_tools(self):
-        """Refresh MCP only between turns; active workflows use the existing catalog handoff."""
+        """Refresh MCP only between turns for explicit connection maintenance."""
         # Native tool closures retain their client for the current model step.
         # Replacing that client mid-turn makes an already selected tool fail.
         async with self.delivery_lock:

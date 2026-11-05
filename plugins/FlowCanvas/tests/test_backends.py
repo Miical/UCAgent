@@ -56,13 +56,66 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(HTTPException):
                 await runtime.run(card_id='owned')
         owner.pop('attachment')
-        with self.assertRaisesRegex(ValueError, 'existing RTL'):
+        with self.assertRaisesRegex(ValueError, 'Open a FlowCanvas project'):
             await runtime.run(workflow_id='rtl-summary')
         with self.assertRaises(HTTPException):
             await runtime.run(workflow_id='nonexistent')
         owner['permission_mode'] = 'unsupported'
         with self.assertRaisesRegex(ValueError, 'access mode'):
             await runtime.run(card_id='owned')
+
+    async def test_prompt_uses_bound_project_and_omits_unknown_top(self):
+        """Both backends receive the bound project's context, independent of UI selection."""
+        root = Path(self.temp.name) / 'bound-project'
+        (root / '.flowcanvas').mkdir(parents=True)
+        marker = root / '.flowcanvas/project.json'
+        metadata = {'schema_version': 1, 'id': 'project', 'name': 'Adder',
+                    'rtl': {'top': 'Adder', 'top_file': 'rtl/Adder.v'}}
+        marker.write_text(json.dumps(metadata))
+        for name in ('codex', 'opencode'):
+            self.service.projects.state['current'] = {'path': str(root)}
+            owner = self.service.create(name)
+            self.service.projects.state['current'] = {'path': '/another/project'}
+            backend = SimpleNamespace(open=AsyncMock(return_value='native'), send=AsyncMock(return_value='turn'),
+                                      close=AsyncMock(), emit=lambda event: None)
+            self.service.session_backends[owner['id']] = backend
+            from flowcanvas.chat import Message
+            await self.service.run(owner, Message(text='Explain the design', model='model', effort='low'))
+            prompt = backend.workflow_instructions
+            self.assertIn('project FlowCanvas is processing in this conversation', prompt)
+            self.assertIn(json.dumps(str(root)), prompt)
+            self.assertIn('"top_module": "Adder"', prompt)
+            self.assertIn('"top_file": "rtl/Adder.v"', prompt)
+            self.assertNotIn('/another/project', prompt)
+            metadata.pop('rtl', None)
+            marker.write_text(json.dumps(metadata))
+            await self.service.run(owner, Message(text='Continue', model='model', effort='low'))
+            self.assertNotIn('"top_module":', backend.workflow_instructions)
+            self.assertNotIn('"top_file":', backend.workflow_instructions)
+            metadata['rtl'] = {'top': 'Adder', 'top_file': 'rtl/Adder.v'}
+            marker.write_text(json.dumps(metadata))
+
+    async def test_rtl_summary_requires_known_top_and_project_output(self):
+        """Unknown tops are not guessed and project output cannot escape via symlinks."""
+        root = Path(self.temp.name) / 'rtl-project'
+        (root / '.flowcanvas').mkdir(parents=True)
+        marker = root / '.flowcanvas/project.json'
+        metadata = {'schema_version': 1, 'id': 'fixture', 'name': 'Probe'}
+        marker.write_text(json.dumps(metadata))
+        self.service.projects.state['current'] = {'path': str(root)}
+        owner = self.service.create()
+        runtime = WorkflowRuntime(self.service, owner)
+        with self.assertRaisesRegex(ValueError, 'top is unknown'):
+            await runtime.run('rtl-summary')
+        (root / 'Probe.v').write_text('module Probe; endmodule')
+        with self.assertRaisesRegex(ValueError, 'Provide dut'):
+            await runtime.run('rtl-summary', 'Probe.v')
+        metadata['rtl'] = {'top': 'Probe', 'top_file': 'Probe.v'}
+        marker.write_text(json.dumps(metadata))
+        (root / 'output').symlink_to(Path(self.temp.name), target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'inside the bound project'):
+            await runtime.run('rtl-summary')
+        self.assertEqual(runtime.processes, {})
 
     async def test_backend_access_modes(self):
         """Enforce backend-specific defaults and reject unsupported grants at the API."""
@@ -107,6 +160,13 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(policy['networkAccess'])
             else:
                 self.assertEqual(policy, {'type': 'dangerFullAccess'})
+        backend.workflow_instructions = 'Updated bound project context'
+        await backend.open('native', 'model', 'workspace')
+        self.assertEqual(backend.request.call_args.args[0], 'thread/resume')
+        self.assertEqual(backend.request.call_args.args[1]['developerInstructions'], backend.workflow_instructions)
+        backend.request.reset_mock()
+        await backend.open('native', 'model', 'workspace')
+        backend.request.assert_not_awaited()
         for mode in ('readonly', 'workflow'):
             with self.assertRaises(ValueError):
                 await backend.open(None, 'model', mode)
@@ -191,7 +251,6 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
                 {'id': 'reply', 'kind': 'text', 'text': 'partial reply', 'status': 'inProgress'},
                 {'id': 'finished', 'kind': 'tool', 'text': 'previous result', 'status': 'completed', 'ended_at': 10},
             ]
-            self.service.catalog_reconnect.add(owner['id'])
         self.service.event({'kind': 'disconnected', 'session_id': owners[0]['id'], 'error': 'process exited'})
         self.assertEqual(owners[1]['status'], 'running')
         self.service.event({'kind': 'disconnected', 'session_id': owners[1]['id'], 'error': 'process exited'})
@@ -206,7 +265,6 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual([row['text'] for row in saved['items']], ['partial output', 'partial reply', 'previous result'])
                 self.assertTrue(all(row.get('ended_at') for row in saved['items']))
                 self.assertEqual(saved['items'][-1]['ended_at'], 10)
-                self.assertNotIn(owner['id'], self.service.catalog_reconnect)
         flusher = asyncio.create_task(self.service.flush())
         try:
             with patch.object(self.service, 'launch') as launch:
@@ -330,112 +388,6 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
             self.service.run.assert_not_awaited()
         finally:
             self.service.steering.discard(owner['id'])
-
-    async def test_catalog_handoff_remains_owned_until_continuation_is_scheduled(self):
-        """A slow client close must not expose a finished task or orphan its process."""
-        owner = self.service.create('opencode')
-        owner.update(status='completed', model='provider/model', effort='default',
-                     workflow_runs=[{'id': 'card', 'status': 'running'}])
-        closing, release = asyncio.Event(), asyncio.Event()
-
-        async def close():
-            """Hold the native client shutdown at an observable asynchronous boundary."""
-            closing.set()
-            await release.wait()
-
-        backend = SimpleNamespace(close=AsyncMock(side_effect=close), emit=lambda event: None)
-        self.service.session_backends[owner['id']] = backend
-        self.service.workflow_bridges[owner['id']] = SimpleNamespace(
-            active_card='card', runtime=SimpleNamespace(inspect=AsyncMock()), close=AsyncMock())
-        self.service.catalog_reconnect.add(owner['id'])
-        self.service.run = AsyncMock()
-        self.service.flusher = asyncio.create_task(self.service.flush())
-        try:
-            await asyncio.wait_for(closing.wait(), 3)
-            self.assertIn(owner['id'], self.service.catalog_reconnect)
-            self.assertIs(self.service.session_backends[owner['id']], backend)
-            self.service.run.assert_not_awaited()
-            release.set()
-            async with asyncio.timeout(3):
-                while not self.service.run.await_count:
-                    await asyncio.sleep(.01)
-            self.assertNotIn(owner['id'], self.service.catalog_reconnect)
-            self.assertNotIn(owner['id'], self.service.session_backends)
-            self.assertEqual(owner['status'], 'starting')
-            self.assertIn(owner['id'], self.service.launching)
-        finally:
-            release.set()
-
-    async def test_catalog_handoff_preserves_live_card_but_not_stopped_tasks(self):
-        """Internal reconnection preserves activity; user stop and host exit still pause."""
-        owner = self.service.create('opencode')
-        owner.update(status='completed', delegation_stopped=False, children_pending=False)
-        root = Path(self.temp.name) / 'card'; root.mkdir()
-        card = {'id': 'card', 'root': str(root), 'status': 'running'}
-        owner['workflow_runs'] = [card]
-        runtime = WorkflowRuntime(self.service, owner)
-        runtime.processes['card'] = SimpleNamespace(returncode=None)
-        self.service.catalog_reconnect.add(owner['id'])
-        await runtime.inspect()
-        self.assertEqual(card['status'], 'running')
-        self.assertTrue(card['alive'])
-        # The next native turn takes ownership before the reconnect marker clears.
-        owner['status'] = 'starting'
-        self.service.catalog_reconnect.discard(owner['id'])
-        await runtime.inspect()
-        self.assertEqual(card['status'], 'running')
-        owner['status'] = 'completed'
-        await runtime.inspect()
-        self.assertEqual(card['status'], 'paused')
-        card['status'] = 'running'
-        self.service.catalog_reconnect.add(owner['id'])
-        owner['delegation_stopped'] = True
-        await runtime.inspect()
-        self.assertEqual(card['status'], 'paused')
-        owner['delegation_stopped'] = False
-        owner['permission_mode'] = 'unsupported'; card['status'] = 'running'
-        await runtime.inspect()
-        self.assertEqual(card['status'], 'paused')
-        owner['permission_mode'] = 'workspace'
-        card['status'] = 'running'; runtime.processes['card'].returncode = 1
-        await runtime.inspect()
-        self.assertEqual(card['status'], 'paused')
-        self.assertFalse(card['alive'])
-
-    async def test_stop_during_catalog_handoff_cancels_continuation(self):
-        """A stop arriving during native shutdown must win over automatic resumption."""
-        owner = self.service.create('opencode')
-        owner.update(status='completed', model='provider/model', effort='default',
-                     delegation_stopped=False, workflow_runs=[{'id': 'card', 'status': 'running'}])
-        closing, release = asyncio.Event(), asyncio.Event()
-
-        async def close():
-            """Allow the user stop request to interleave with backend shutdown."""
-            closing.set()
-            await release.wait()
-
-        backend = SimpleNamespace(close=AsyncMock(side_effect=close), emit=lambda event: None)
-        self.service.session_backends[owner['id']] = backend
-        self.service.workflow_bridges[owner['id']] = SimpleNamespace(active_card='card', call=None,
-            runtime=SimpleNamespace(inspect=AsyncMock(), pause=AsyncMock()), close=AsyncMock())
-        self.service.catalog_reconnect.add(owner['id'])
-        self.service.run = AsyncMock()
-        self.service.flusher = asyncio.create_task(self.service.flush())
-        try:
-            await asyncio.wait_for(closing.wait(), 3)
-            self.assertIn(owner['id'], self.service.launching)
-            response = await self.client.post('/api/chat/sessions/' + owner['id'] + '/stop')
-            self.assertEqual(response.status_code, 200)
-            release.set()
-            async with asyncio.timeout(3):
-                while owner['id'] in self.service.launching:
-                    await asyncio.sleep(.01)
-            self.service.run.assert_not_awaited()
-            self.assertTrue(owner['queue_paused'])
-            self.assertTrue(owner['delegation_stopped'])
-            self.assertNotIn(owner['id'], self.service.catalog_reconnect)
-        finally:
-            release.set()
 
     async def test_stop_rejects_new_guidance_before_workflow_pause_returns(self):
         """The stop boundary is visible before awaiting workflow or descendant cleanup."""

@@ -83,7 +83,7 @@ OpenCode 仅支持完全访问，允许原生工具；交互式 question 工具�
 
 停止会中断本轮及原生记录中仍在运行的子会话，并回收该对话的执行进程，取消尚未进入执行循环的准备请求。失败终止也会回收执行连接；下次发送或读取历史时重新连接同一原生会话，等待旧进程退出后才建立新连接。子 Agent 侧栏只读取当前父会话的原生后代，不能用任意 session ID 查看其他会话。事件流断开后重连并核对原生消息与状态，本轮剩余输出按消息快照持续更新，避免重连缓冲区中的增量重复拼接；服务重启保留历史与已保存输出，队列不会自动重新执行。工作流发布阶段工具后继续使用现有的目录刷新与同会话恢复流程。
 
-活动轮次中不替换 OpenCode 的 MCP 连接，避免已选中的工具失去连接；新增阶段工具在现有轮次交接时加载。这个处理保留原有的自动续接行为，尚未改成模型开始前预备全部工作流工具。
+工作流使用固定的 call_workflow_tool 入口，启动后无需替换后端 MCP 连接或自动续接对话。
 
 上下文压缩沿用 OpenCode 原生机制，压缩后的续写仍属于同一次任务。内部摘要和自动续写指令不作为普通聊天内容展示，压缩用量与失败仍正常处理。自定义模型需在原生配置中声明真实的上下文限制；`limit.context` 为零时，原生机制不会按用量阈值提前压缩，适配器不根据模型名称猜测上限。
 
@@ -128,22 +128,26 @@ Light 为默认主题，主题选择由 FlowCanvas 独立保存。
 
 ## RTL 功能简述工作流
 
-`flowcanvas:rtl-summary` 从实验版迁入，配置位于 `src/flowcanvas/workflows/rtl-summary.yaml`。
-单阶段读取 RTL、生成一句中文功能摘要，写入 `{OUT}/rtl_summary.md`，记录阶段日志并验收退出。
-默认输入为 `{DUT}/{DUT}.v`；使用原生文件工具，后端没有原生读写工具时回退到 UCAgent 文件工具。
-不要求登记已读文件，不启用指导文档、Skill 或额外阶段。
+配置位于 src/flowcanvas/workflows/rtl-summary.yaml。工作流读取 RTL，以模块名为标题，
+用一段中文说明职责、主要输入输出与关键行为，不将设计说明当作验证结论。
 
-安装插件后，通过 UCAgent 启动（路径按实际项目替换）：
+从 FlowCanvas 启动时，未指定 RTL 就使用当前对话绑定项目的顶层模块及源码。
+指定相对路径时，以该项目根目录为基准；选择其他源码时需提供模块名。
+项目未识别顶层时要求补充输入，不猜测模块，也不使用后来切换到的其他项目。
 
-```bash
-python -m pip install -e ./plugins/FlowCanvas
-ucagent /absolute/path/to/workspace MyModule \
-  --plugin flowcanvas --plugin-workflow flowcanvas:rtl-summary \
-  --backend codex --output summary --loop --exit-on-completion
-```
+验收后的项目输出路径固定为：
 
-输入文件为 `/absolute/path/to/workspace/MyModule/MyModule.v`，结果在该工作区的
-`summary/rtl_summary.md`。网页“＋”支持直接运行，或附加到当前对话后发送消息执行。
+    output/rtl-summary/<模块名>/<运行ID>/summary.md
+
+每次运行独立保存。工作流先在任务工作区生成 summary/summary.md，验收后由工作台发布到
+上述项目路径；文件发布成功后才生成完成回执。源码和项目 .flowcanvas 配置不被改写。
+卡片的 report_file 返回最终路径，回复中应展示简述及文件链接。
+
+不启用指导文档、Skill 或额外阶段。网页“＋”支持直接运行或附加到对话，也可由 AI 通过
+run_workflow(workflow_id="rtl-summary") 启动。
+
+独立使用 UCAgent CLI 时，默认输入仍为工作区中的 <DUT>/<DUT>.v，结果直接写入
+所选输出目录的 summary.md；项目顶层自动选择和按运行 ID 发布结果由 FlowCanvas 提供。
 
 
 ## 维护＋号菜单
@@ -162,7 +166,7 @@ ucagent /absolute/path/to/workspace MyModule \
 
 - `run_workflow(workflow_id, rtl_file, dut)` 启动 UCAgent MCP，返回卡片、任务指导和工具清单。
 - `run_workflow(card_id)` 恢复同一卡片；MCP 存活时复用，停止时在原工作目录恢复进度并重启。
-- 工作流启动后读取实际 MCP `tools/list`，发布原始名称、说明和参数结构；`ReadTextFile`、`Complete` 等直接使用原始参数，不接受额外 card_id 包装。工具绑定最近启动或恢复的卡片；不会自行启动或重启进程。
+- `call_workflow_tool(card_id, tool_name, arguments)` 执行指定卡片的工具，例如 `{"card_id":"…","tool_name":"ReadTextFile","arguments":{"path":"Adder/Adder.v"}}`。每次查询宿主实际工具清单并校验参数 Schema，再交给 UCAgent 执行权限检查和阶段验收；不会自行启动或重启进程。
 - `list_workflow_runs()` 返回可启动的 available_workflows，以及当前对话的全部卡片、MCP 索引、存活状态、阶段和结果。
 
 每次启动、恢复和工具调用都检查工作流是否启用及卡片所属对话。附加工作流仅指定任务上下文，移除附件不撤销权限、不停止已有 MCP。
@@ -179,7 +183,7 @@ Codex 的完全访问使用 danger-full-access，工作区访问使用 workspace
 工作流 MCP 仍逐次检查对话模式、工作流可用性及卡片归属。提示词不写入随模式变化的读写/构建禁令。
 Codex 旧原生线程首次恢复时只做一次旧提示词策略退役通知；之后权限切换只更新沙箱，不注入模式指令。
 
-工具发现不再依赖入口 YAML 的 selected_tools。FlowCanvas 发布实际工具清单后刷新所选后端的 MCP 连接（Codex 使用 `config/mcpServer/reload`，OpenCode 重新注册当前对话的 MCP），并保存发现结果供同一对话重新连接时加载；每次执行仍检查工作流可用性、卡片归属与 MCP 存活状态。
+FlowCanvas 初始注册七个固定工具：list_workflow_runs、run_workflow、call_workflow_tool、verification_targets、test_cases、test_case_runs、bug_records。工作流工具的名称、说明和参数 Schema 由 run_workflow 返回，后端不再动态注册阶段工具，也不因工具变化重连或自动续接。
 
 
 ## 项目管理

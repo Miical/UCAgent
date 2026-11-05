@@ -2,6 +2,8 @@
 template: null
 template_overwrite:
   RTL_FILE: "{DUT}/{DUT}.v"
+  PROJECT_ROOT: "{WORKSPACE}"
+  SUMMARY_REPORT: "{WORKSPACE}/{OUT}/summary.md"
 
 guide_doc:
   enable: false
@@ -13,9 +15,13 @@ mission:
   name: "RTL 功能简述"
   prompt:
     system: |
-      你的任务是阅读 RTL，并用中文一句话说明它实现的功能。
+      你的任务是阅读 RTL，并用一段简洁的中文说明模块的职责、主要输入输出和关键行为。只描述源码可确认的内容，不将设计说明当作验证结论。
+      用户未指定 RTL 时，默认分析当前 FlowCanvas 项目的顶层模块；输入源码已由工作台选定。
       优先使用后端原生的文件读写工具；没有内置读写工具时，使用 ReadTextFile 和 EditTextFile。
-      阅读 {RTL_FILE}，以源码为依据生成简述，保存到 {OUT}/rtl_summary.md，并在回复中展示。
+      阅读 {RTL_FILE}；需要查看依赖时，以 {PROJECT_ROOT} 为原始项目根目录。
+      将简述保存到 {OUT}/summary.md，使用模块名作为 Markdown 标题，正文只写一段话，不拆分小节或列表。
+      验收后，工作台将简述保存到项目输出文件 {SUMMARY_REPORT}；不要将输出写入项目 .flowcanvas 配置目录。
+      完成后在回复中展示简述并提供项目输出文件的链接。
       用 SetCurrentStageJournal 记录输入与产物，调用 Complete，成功后调用 Exit 退出。
     tips:
       always: []
@@ -32,7 +38,7 @@ tools:
 un_write_dirs:
   - "{DUT}"
 write_dirs:
-  - "{OUT}/rtl_summary.md"
+  - "{OUT}/summary.md"
 
 stage:
   - name: rtl_summary
@@ -40,7 +46,7 @@ stage:
     task: []
     reference_files: []
     output_files:
-      - "{OUT}/rtl_summary.md"
+      - "{OUT}/summary.md"
     need_human_check: false
     need_fail_llm_suggestion: false
     need_pass_llm_suggestion: false
@@ -52,4 +58,4 @@ stage:
       - name: summary_file_check
         clss: UnityChipCheckerMarkdownFileFormat
         args:
-          markdown_file_list: "{OUT}/rtl_summary.md"
+          markdown_file_list: "{OUT}/summary.md"

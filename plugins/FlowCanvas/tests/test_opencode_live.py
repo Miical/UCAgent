@@ -2118,7 +2118,7 @@ else:
                         cards = owner.get('workflow_runs', [])
                         if cards and all(c['status'] == 'completed' for c in cards) and owner['status'] == 'completed':
                             break
-                        if owner['status'] == 'completed' and owner['id'] not in service.catalog_reconnect and not owner.get('children_pending'):
+                        if owner['status'] == 'completed' and not owner.get('children_pending'):
                             self.fail('Authoring ended without workflow acceptance: ' + str([c['status'] for c in cards]))
                         now = asyncio.get_running_loop().time()
                         if now - last_report >= 30:
@@ -2175,6 +2175,7 @@ else:
             rtl = root / 'Probe.v'
             rtl.write_text('module Probe(input wire a, output wire y); assign y = ~a; endmodule\n')
             service = ChatService(root / 'state')
+            service.projects.state['current'] = {'path': str(root)}
             service.flusher = asyncio.create_task(service.flush())
             app = FastAPI(); app.include_router(routes(service))
             client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test')
@@ -2197,7 +2198,7 @@ else:
                         cards = owner.get('workflow_runs', [])
                         if cards and all(c['status'] == 'completed' for c in cards) and owner['status'] == 'completed':
                             break
-                        if owner['status'] == 'completed' and owner['id'] not in service.catalog_reconnect and not owner.get('children_pending'):
+                        if owner['status'] == 'completed' and not owner.get('children_pending'):
                             self.fail('Workflow ended without host acceptance: ' + str([(c['status'], c.get('pause_reason')) for c in cards]) + '\n' + '\n'.join(i.get('text', '') for i in owner['items'] if i['kind'] == 'text'))
                         now = asyncio.get_running_loop().time()
                         if now - last_report >= 30 and owner.get('thread'):
@@ -2216,7 +2217,7 @@ else:
                 self.assertEqual(len(cards), 1)
                 card = cards[0]
                 self.assertTrue((Path(card['root']) / 'complete.json').is_file())
-                summary = Path(card['workspace']) / 'summary/rtl_summary.md'
+                summary = Path(card['report_file'])
                 self.assertTrue(summary.is_file())
                 self.assertTrue(summary.read_text().strip())
                 self.assertEqual(rtl.read_text(), 'module Probe(input wire a, output wire y); assign y = ~a; endmodule\n')

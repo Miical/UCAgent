@@ -1,4 +1,5 @@
 """Conversation-owned MCP processes; no worker model or hidden conversation."""
+from jsonschema import Draft202012Validator
 import asyncio
 from .subagents import execution_active
 import json
@@ -58,12 +59,6 @@ class WorkflowRuntime:
         """Read authoritative host receipts and reconcile process/turn liveness."""
         cards = self.session.setdefault('workflow_runs', [])
         before = json.dumps(cards)
-        # A completed native turn can hand off to a refreshed tool catalog without
-        # ending the user task. Explicit stop still takes precedence.
-        reconnecting = (self.session.get('status') == 'completed'
-                        and self.session['id'] in self.service.catalog_reconnect
-                        and not self.session.get('delegation_stopped')
-                        and self.session.get('permission_mode') in {'workspace', 'full'})
         for card in cards:
             root = Path(card['root'])
             proc = self.processes.get(card['id'])
@@ -76,7 +71,7 @@ class WorkflowRuntime:
             project_startup_stage(card)
             if (root / 'complete.json').is_file():
                 card.update(status='completed', pause_reason='')
-            elif card['status'] != 'paused' and (not card['alive'] or not (execution_active(self.session) or reconnecting)):
+            elif card['status'] != 'paused' and (not card['alive'] or not execution_active(self.session)):
                 card.update(status='paused', pause_reason='MCP 服务停止' if not card['alive'] else '对话已停止')
             if card['status'] == 'completed' or not card['alive']:
                 for tool in (card.get('tui') or {}).get('tools', []):
@@ -93,12 +88,14 @@ class WorkflowRuntime:
                 card.update(status='paused', pause_reason='对话已停止')
         self.publish()
 
-    async def run(self, workflow_id='', rtl_file='', dut='RTL', card_id=''):
+    async def run(self, workflow_id='', rtl_file='', dut='', card_id=''):
         """Only start or resume a process and return its execution contract."""
         return await self._dispatch(workflow_id, rtl_file, dut, card_id, '', {})
 
     async def invoke(self, card_id, tool_name, arguments):
         """Execute a named tool without creating or restarting an MCP process."""
+        if not tool_name.strip():
+            raise ValueError('Provide a tool_name from the run_workflow tool catalog')
         if not card_id:
             raise ValueError('Start the workflow first and provide its card_id')
         return await self._dispatch('', '', 'RTL', card_id, tool_name, arguments)
@@ -119,18 +116,49 @@ class WorkflowRuntime:
             if card and card['status'] == 'completed' and not tool_name:
                 return {'card': card, 'accepted': True}
             if card is None:
-                spec = attachment(WorkflowInput(workflow_id=identity, rtl_file=rtl_file, dut=dut))
+                project_root = None
+                if identity == 'rtl-summary':
+                    if not self.session.get('project_root'):
+                        raise ValueError('Open a FlowCanvas project before running RTL summary')
+                    project_root = Path(self.session['project_root']).resolve()
+                    project = await asyncio.to_thread(self.service.projects.inspect, project_root)
+                    rtl = project.get('rtl') or {}
+                    if not rtl_file:
+                        if not rtl.get('top_file') or not rtl.get('top'):
+                            raise ValueError('Project top is unknown; provide rtl_file and dut')
+                        rtl_file, dut = str(project_root / rtl['top_file']), rtl['top']
+                    else:
+                        source = Path(rtl_file).expanduser()
+                        rtl_file = str(source if source.is_absolute() else project_root / source)
+                        if not dut:
+                            if rtl.get('top_file') and Path(rtl_file).resolve() == (project_root / rtl['top_file']).resolve():
+                                dut = rtl.get('top', '')
+                            if not dut:
+                                raise ValueError('Provide dut for the explicitly selected RTL file')
+                spec = attachment(WorkflowInput(workflow_id=identity, rtl_file=rtl_file, dut=dut or 'RTL'))
                 if not spec['rtl_file']:
                     raise ValueError('Provide an existing RTL path')
+                dut = spec['dut']
                 root = self.service.root / 'workflow_runs' / uuid.uuid4().hex
+                report = None
+                if project_root:
+                    report = project_root / 'output' / 'rtl-summary' / dut / root.name / 'summary.md'
+                    if not report.resolve().is_relative_to(project_root):
+                        raise ValueError('Summary output must remain inside the bound project')
                 relative = Path(dut) / Path(spec['rtl_file']).name
                 (root / 'workspace' / relative.parent).mkdir(parents=True)
                 shutil.copyfile(spec['rtl_file'], root / 'workspace' / relative)
                 config = next(w.config_file for w in get_plugin().workflows if w.name == identity)
-                (root / 'request.json').write_text(json.dumps({'dut': dut, 'rtl': str(relative), 'config': str(config)}))
+                request = {'dut': dut, 'rtl': str(relative), 'config': str(config)}
+                if report:
+                    request.update(project_root=str(project_root), report_file=str(report))
+                (root / 'request.json').write_text(json.dumps(request))
                 card = {'id': root.name, 'conversation_id': self.session['id'], 'workflow_id': identity,
                         'name': spec['name'], 'root': str(root), 'workspace': str(root / 'workspace'),
                         'status': 'starting', 'stages': [], 'current_stage': '', 'started_at': time.time()}
+                if report:
+                    card.update(project_root=str(project_root), source_file=spec['rtl_file'],
+                                top_module=dut, report_file=str(report))
             root = Path(card['root'])
             proc = self.processes.get(card['id'])
             if not proc or proc.returncode is not None:
@@ -181,15 +209,22 @@ class WorkflowRuntime:
                         self.publish()
                     result = None
                     if tool_name:
-                        if tool_name not in {t.name for t in catalog.tools}:
-                            raise ValueError('Tool is not exposed by this workflow')
+                        tool = next((t for t in catalog.tools if t.name == tool_name), None)
+                        if tool is None:
+                            raise ValueError('Tool is not exposed by this workflow. Use the tools returned by run_workflow.')
+                        errors = list(Draft202012Validator(tool.input_schema).iter_errors(arguments))
+                        if errors:
+                            details = '; '.join(
+                                f"{'.'.join(map(str, error.absolute_path)) or 'arguments'}: {error.message}"
+                                for error in errors[:5])
+                            raise ValueError(f'Invalid arguments for {tool_name}: {details}')
                         result = (await client.call_tool(tool_name, arguments)).model_dump(mode='json')
                     await self.inspect()
                     if tool_name:
                         return {'card': card, 'result': result}
                     return {'card': card, 'instruction': json.loads((root / 'ready.json').read_text())['instruction'],
                             'tools': [t.model_dump(mode='json') for t in catalog.tools], 'result': result,
-                            'next': 'Execute these instructions yourself. Call each named workflow tool with its original arguments. run_workflow is only for lifecycle operations. Completion requires host acceptance.'}
+                            'next': 'Execute these instructions yourself. Use call_workflow_tool(card_id, tool_name, arguments) with this card ID and the returned tool schemas. Do not call stage tools directly or reconnect to load them. run_workflow is only for lifecycle operations. Completion requires host acceptance.'}
 
     async def close(self):
         """Stop owned processes on detach/shutdown without deleting cards or checkpoints."""
