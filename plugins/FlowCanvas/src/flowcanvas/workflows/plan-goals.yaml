@@ -43,14 +43,18 @@ stage:
   - name: requirement_analysis_and_planning
     desc: "需求分析与验证规划"
     task:
-      - "第1步：读取{DUT}/README.md，理解用户的验证要求"
+      - "设计理解：没有规格时，在本阶段产物中注明“依据 RTL 实现推导”，区分代码事实、推断和待确认需求；检查位宽、截断、进位、复位与协议行为，不能把疑似设计错误自动当成正确需求。不伪造 README 或用户规格，不修改 RTL；只对影响后续判断的必要歧义向用户询问，其他部分继续。"
+      - "第1步：优先读取{DUT}/README.md及已有规格；如果没有 README，读取{DUT}内的 RTL 源码、__init__.py 和 signals.json（存在时），根据端口、逻辑、状态与时序理解功能并继续规划，不因 README 缺失停止。"
       - "第2步：确定验证目标 - 需要测试哪些功能？输入输出是什么？"
       - "第3步：识别风险点 - 哪些地方容易出错？边界条件有哪些？"
       - "第4步：制定验证计划 - 如何系统地测试所有功能？"
       - "第5步：写入验证规划文档到{OUT}/{DUT}_verification_needs_and_plan.md，请使用{DOC_GEN_LANG}编写"
       - "注意：{DUT}中可能有隐藏bug，测试用例失败时不要尝试修复{DUT}的实现，而是分析是否为设计缺陷并进行记录"
     reference_files:
-      - "{DUT}/README.md"
+      - "{DUT}/*.md"
+      - "{DUT}/*.v"
+      - "{DUT}/*.sv"
+      - "{DUT}/signals.json"
     checker:
           - name: markdown_file_check
             clss: "UnityChipCheckerMarkdownFileFormat"
@@ -68,7 +72,8 @@ stage:
   - name: dut_function_understanding
     desc: "{DUT}功能理解"
     task:
-      - "第1步：读取{DUT}/README.md，了解芯片基本信息"
+      - "设计理解：没有规格时，在本阶段产物中注明“依据 RTL 实现推导”，区分代码事实、推断和待确认需求；检查位宽、截断、进位、复位与协议行为，不能把疑似设计错误自动当成正确需求。不伪造 README 或用户规格，不修改 RTL；只对影响后续判断的必要歧义向用户询问，其他部分继续。"
+      - "第1步：有{DUT}/README.md时读取该文件；没有时依据{DUT}内的 RTL、__init__.py 和 signals.json（存在时）理解芯片基本信息，继续本阶段，不要求用户先补 README。"
       - "第2步：读取{DUT}/__init__.py，理解代码接口定义"
       - "第3步：分析输入输出端口 - 每个端口的作用是什么？"
       - "第4步：确定芯片类型 - 是时序电路(需要时钟)还是组合电路？"
@@ -76,7 +81,10 @@ stage:
       - "第6步：整理基本信息，写入{OUT}/{DUT}_basic_info.md，请使用{DOC_GEN_LANG}编写"
       - "目标：为后续阶段提供清晰的芯片基础信息"
     reference_files:
-      - "{DUT}/README.md"
+      - "{DUT}/*.md"
+      - "{DUT}/*.v"
+      - "{DUT}/*.sv"
+      - "{DUT}/signals.json"
       - "{DUT}/__init__.py"
     checker:
           - name: markdown_file_check
@@ -89,24 +97,26 @@ stage:
 
   - name: functional_specification_analysis
     desc: "功能规格分析与测试点定义"
+    checker:
+      - name: flowcanvas_panel_acceptance
+        clss: flowcanvas.planning_targets.PlanningTargetsChecker
+        args:
+          doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+          leaf: "CK"
     task:
       - "目标：将芯片功能拆解成可测试的小块，为后续测试做准备"
       - "第1步：阅读{DUT}/下的所有相关文档，理解芯片完整待验证功能"
       - "第2步：对待验证功能点按功能模块分组，每组用<FG-名称>标记"
       - "第3步：每组内定义具体功能点，用<FC-名称>标记"
       - "第4步：每个功能点设计检测点，用<CK-名称>标记"
-      - "把结果及时写入{OUT}/{DUT}_functions_and_checks.md，请使用{DOC_GEN_LANG}编写"
-      - "写入不依赖Skill脚本：可直接使用文本编辑工具按Guide_Doc/dut_functions_and_checks.md维护FG/FC/CK层级；若可用批量脚本，也只能作为等价的可选写入方式"
+      - "直接通过 verification_targets 维护 FlowCanvas 面板中的功能组、功能点、测试点及说明。面板是唯一目标定义来源；{OUT}/{DUT}_functions_and_checks.md 由验收器根据面板自动生成，仅供原生检查器和标签引用兼容，不手工编写或更新。"
+      - "FlowCanvas：用 {OUT}/flowcanvas-target-map.json 保存完整 FG/FC/CK 路径到目标 ID 的扁平对象；仅保存技术标签与 ID，不在文档或映射中另写一份测试点说明。所有项目卡片都需纳入映射，父级与面板一致；Check/Complete 会核对真实面板后生成兼容索引。"
       - "重要："
       - "   标签格式必须正确，这是后续自动化测试的基础"
       - "   必须覆盖所有功能点和边界条件"
       - "   功能点尽可能细化，检测点要具体"
       - "   检查点需要具有可测性，确保能通过测试用例验证"
       - "参考Guide_Doc/dut_functions_and_checks.md了解标准格式"
-    skill_list:
-      - "unitytest/functions-and-checks"
-    # skill_list is required by default when Skill support is enabled.
-    # Set `force_use_skill: false` only when this stage's Skills should be optional.
     reference_files:
       - "Guide_Doc/dut_functions_and_checks.md"
       - "{DUT}/*.md"
@@ -120,14 +130,20 @@ stage:
       - name: dut_function_grouping
         desc: "DUT功能分组与层次划分[{COUNT_FG}]"
         task:
+          - "FlowCanvas：开始分组前调用 verification_targets(operation=guide)，再 read 读取当前项目已有目标和最新 revision；读取 {OUT}/flowcanvas-target-map.json（存在时），复用已有目标，不重复创建。"
+          - "FlowCanvas：定义每个 FG 时同步登记 group 卡片。name 使用简短、明确的中文标题，根据该组说明概括，不把 FG 标签或代码函数名直接作为显示标题。详细说明写入 values.description，不新增 title 字段。"
+          - "FlowCanvas：新目标先 begin_create(kind=group, name=中文标题, values={description:详细说明}, expected_revision=最新版本) 注册占位；描述完成后以 finish_create(values={planned:true}) 结束无源码计划的创建。每次写入使用最新 revision。将完整 FG 路径到返回目标 ID 的映射保存到 {OUT}/flowcanvas-target-map.json，格式为扁平 JSON 对象（标签路径为 key，目标 ID 为 value）。只通过工具修改面板记录，不直接修改 .flowcanvas 管理文件。"
           - "基于{DUT}功能，将相关功能归类成组"
           - "为每组定义<FG-组名>标签，组名要有意义"
-          - "创建文档框架，先完成分组部分"
+          - "先完成面板功能组卡片及中文说明；将 FG 标签路径映射到卡片 ID，不编写功能分析文档。"
           - "例如：加法器可分为<FG-BASIC>基础运算，<FG-OVERFLOW>溢出处理等，栈结构可以有<FG-PUSH>、<FG-POP>、<FG-POP-PUSH>等"
           - "注意：必须有<FG-API>分组"
-        skill_list:
-          - "unitytest/functions-and-checks"
         checker:
+          - name: flowcanvas_panel_acceptance
+            clss: flowcanvas.planning_targets.PlanningTargetsChecker
+            args:
+              doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+              leaf: "FG"
           - name: group_structure_check
             clss: "UnityChipCheckerLabelStructure"
             args:
@@ -136,6 +152,8 @@ stage:
       - name: function_point_definition
         desc: "具体功能点识别与定义[{COUNT_FC}]"
         task:
+          - "FlowCanvas：定义每个 FC 时同步在对应 group ID 下登记 point 卡片。name 使用简短中文功能标题；缺少短标题时从功能说明概括简短中文标题。description 保留详细行为说明；标签和代码符号不直接代替标题。"
+          - "FlowCanvas：先读取最新目标和 {OUT}/flowcanvas-target-map.json，复用原 ID；新功能点先 begin_create(kind=point,parent=所属功能组ID)，补齐 name、description 后 finish_create(values={planned:true})。将完整 FG/FC 标签路径映射到原目标 ID，保存同一映射文件；每次写入带最新 expected_revision。"
           - "在每个功能分组内，定义具体的功能点"
           - "用<FC-功能名>标签标记每个功能"
           - "确保覆盖该组的所有功能"
@@ -144,9 +162,12 @@ stage:
           - " - 功能点要具体，不能过于笼统"
           - " - 功能点要可测试，确保能通过测试用例验证"
           - " - 如果功能点复杂，需要在该分组标记结束后，再次针对每个复杂功能点利用<FG-*>, <FC-*>, <CK-*>进行单独细化"
-        skill_list:
-          - "unitytest/functions-and-checks"
         checker:
+          - name: flowcanvas_panel_acceptance
+            clss: flowcanvas.planning_targets.PlanningTargetsChecker
+            args:
+              doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+              leaf: "FC"
           - name: function_point_check
             clss: "UnityChipCheckerLabelStructure"
             args:
@@ -155,18 +176,22 @@ stage:
       - name: check_point_design
         desc: "检测点设计与定义[{COUNT_CK}]"
         task:
+          - "FlowCanvas：定义每个 CK 时同步在对应 point ID 下登记 testpoint 卡片。name 是概括场景的简短中文标题，例如“双零输入”或“最大值进位”；description 保存具体条件和验证行为，不把 CK 标签、函数名或整段长说明直接作为标题，也不新增固定的条件、预期字段。"
+          - "FlowCanvas：read 获取最新 revision，读取 {OUT}/flowcanvas-target-map.json 复用已有卡片；新测试点先 begin_create(kind=testpoint,parent=所属功能点ID)，补齐名称和说明后 finish_create(values={planned:true})。保存完整 FG/FC/CK 路径到目标 ID 的映射；尚无覆盖代码时不伪造源码绑定或覆盖命中。"
           - "为每个功能点设计具体的检测点"
           - "用<CK-检测名>标签标记，如<CK-BASIC>基本功能，<CK-BOUNDARY>边界条件"
           - "检测点要包含：正常情况、边界条件、异常情况"
-          - "标签独立成行，与标题用空行分隔"
-          - "完成完整的功能分析文档"
+          - "在面板中完成全部测试点及中文说明，技术标签只保存在 ID 映射中；不要编写测试点文档。"
           - "列出的检查点必须具有可测试性，即能通过端口的输入输出进行验证"
           - "重要："
           - " - 检查点要具体，不能过于笼统"
           - " - 检查点要可测试，确保能通过测试用例验证"
-        skill_list:
-          - "unitytest/functions-and-checks"
         checker:
+          - name: flowcanvas_panel_acceptance
+            clss: flowcanvas.planning_targets.PlanningTargetsChecker
+            args:
+              doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+              leaf: "CK"
           - name: check_point_check
             clss: "UnityChipCheckerLabelStructure"
             args:
@@ -177,17 +202,16 @@ stage:
       - name: functional_line_mapping_gap_analysis
         desc: "功能规格逐行查漏补缺[{LINE_MAP_PROGRESS}|{COUNT_CK}]"
         task:
+          - "FlowCanvas：本阶段新增或调整 FG/FC/CK 时，先 begin_update 登记修改，再维护对应卡片的中文 name、description，完成后 finish_update；同步维护 {OUT}/flowcanvas-target-map.json；先 read 并复用已有 ID，重命名不创建替代卡片，不遗漏新发现的检测点。"
           - "目标：逐行审查当前批次的目标文档，把每条有功能意义的非空白内容映射到 {OUT}/{DUT}_functions_and_checks.md 中准确的 FG/FC/CK；只有确实不描述 DUT 功能、接口、约束、状态、时序、异常或边界行为的非空白内容才能使用带具体理由的 IGNORE。当前进度：{COMPLETED_LINE_BLOCKS}/{TOTAL_LINE_BLOCKS}；当前行块：{CURRENT_LINE_BLOCKS}"
           - "输入边界：当前规范目标文件为 {CURRENT_LINE_MAP_TARGETS}。物理行范围和原文以当前行块为准；Check/Complete 返回的 current_line_block_contents 或 next_line_block_contents 可提供同一批次的结构化内容。这些 content 只是当前行块，不是全文。Guide_Doc 只提供格式，不是覆盖目标；不得猜测未返回的文件，也不得修改、重排或插空行到目标文档来适配映射"
           - "执行循环：读取当前行块；仅在标题层级、表头、术语或前置条件不足以判断语义时，用 ReadTextFile 读取 file 指向的上下文；逐条分类并写入 map_file；随后调用 Check。每批通过后只处理返回的下一批，全部通过后再调用 Complete"
           - "语义责任：Checker 只能确认映射语法、物理行范围、CK 标签存在、IGNORE 有理由以及非空白行已覆盖，不能确认所选 CK 或 IGNORE 理由在语义上正确。必须依据 Spec 和权威接口文档判断；不能把功能行挂到语义相近但错误的 CK，也不能用 IGNORE 掩盖规格缺口"
-          - "CK 修正条件：只有当前行及其必要上下文证明 CK 缺失、含糊、重复、粒度错误或与 Spec 不符时，才修改 {OUT}/{DUT}_functions_and_checks.md；按可独立激励、观测和判定的行为拆分，并明确触发条件、输入/边界、接口或信号、状态/时序及预期结果。单纯的映射语法、路径或理由错误只修复诊断指定的映射项，不要无关地重写 CK"
+          - "CK 修正条件：只有当前行及其必要上下文证明 CK 缺失、含糊、重复、粒度错误或与 Spec 不符时，才通过 verification_targets 修改面板目标；更新映射后调用 Check 自动刷新兼容索引；按可独立激励、观测和判定的行为拆分，并明确触发条件、输入/边界、接口或信号、状态/时序及预期结果。单纯的映射语法、路径或理由错误只修复诊断指定的映射项，不要无关地重写 CK"
           - "引用迁移：新增、重命名、拆分或删除 CK 后，必须同步更新 {OUT}/line_map/ 中已有映射；若工作区已有覆盖率、测试用例或 Bug 证据引用该 CK，也要同步迁移。不能留下旧 CK、不存在的标签或用删除标签掩盖仍需验证的行为"
           - "映射格式：严格遵循 Guide_Doc/dut_line_func_map.md，只累计更新当前行块返回的唯一 map_file；每个区间使用包含端点的 start-end，源位置显示为 path:10-10 时，映射项区间写作 10-10，不能只写 10；区间不得跨越返回的行块边界。空白行无需映射；同一行确有多个独立行为时可映射到多个准确 CK；不得使用 MISSMT，也不得创建带行号后缀的映射文件"
           - "失败处理：先读取顶部 failure_summary 的 error_code、artifact/location、observed、expected 和 next_action，按 next_action 修复该确定问题后再调用 Check，不得在文件未变化时反复 Check/Complete。LINE_MAP_UNCOVERED_LINES 时使用 uncovered_blocks 和 uncovered_content 补齐全部未覆盖原文；若需要跨行块语义再读取源文件"
           - "进度失效：若诊断说明目标内容变化或已完成行块过期，重新读取受影响的当前源文档并按新行块审查；不得平移旧行号、修改目标文档或伪造进度。"
-        skill_list:
-          - "unitytest/functions-and-checks"
         reference_files:
           - "Guide_Doc/dut_functions_and_checks.md"
           - "Guide_Doc/dut_line_func_map.md"
@@ -196,6 +220,11 @@ stage:
           - "{OUT}/{DUT}_functions_and_checks.md"
           - "{OUT}/line_map/*_line_func_map.txt"
         checker:
+          - name: flowcanvas_panel_acceptance
+            clss: flowcanvas.planning_targets.PlanningTargetsChecker
+            args:
+              doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+              leaf: "CK"
           - name: functional_line_mapping_batch_check
             clss: "UnityChipBatchCheckerFileLineMap"
             args:
@@ -218,10 +247,11 @@ stage:
   - name: functional_specification_refine
     desc: "功能规格/测试点细化与边界条件补充[{COMPLETED_POINTS}/{TOTAL_POINTS}|{COUNT_CK}]"
     task:
+      - "FlowCanvas：细化、拆分或重命名目标时，先 begin_update 登记原卡片修改，再更新面板中文 name、description，完成后 finish_update；维护 {OUT}/flowcanvas-target-map.json；复用保留目标的 ID，新目标按层级先登记占位，计划说明完成后 finish_create(values={planned:true})。删除前先按目标工具 guide 登记删除状态并核对范围；不直接改管理文件。"
       - "目标：对功能规格进行细化，补充边界条件和异常情况"
       - "第1步：阅读{OUT}/{DUT}_functions_and_checks.md，理解已有功能点和检测点"
       - "第2步：分批次针对每个功能点，分析粒度是否太粗，是否覆盖了所有边界条件和异常情况"
-      - "第3步：细化太粗的功能点/检查点，补充遗漏的边界条件和异常情况，更新文档{OUT}/{DUT}_functions_and_checks.md"
+      - "第3步：细化太粗的功能点/检查点，补充遗漏的边界条件和异常情况，通过 verification_targets 更新面板目标及 ID 映射；Check 自动刷新兼容索引"
       - "第4步：确保每个功能点都有对应的检测点，并且检测点具有可测试性"
       - "第5步：每完成当前批次中的一部分或全部原始CK细化后，调用Check(stage_args={\"refined\":{...}})记录这些原始CK已完成复核与细化"
       - "第6步：所有批次都通过Check后，调用Complete完成阶段；如果最后一批尚未Check，也可以直接调用Complete(stage_args={\"refined\":{...}})"
@@ -232,11 +262,11 @@ stage:
       - "  - Check/Complete只有一个阶段自定义参数stage_args；优先传入真实JSON对象，不要传递顶层refined/generated/bug_list。当前阶段约定stage_args中的refined为CK映射：stage_args={\"refined\":{CK_KEY_1:Value1, CK_KEY_2:Value2, ...}}；如果调用端无法正确传递嵌套对象，stage_args可以改为内容为完整JSON对象的字符串"
       - "  - stage_args.refined中的CK_KEY必须来自当前批次待分析功能点（见下方{LIST_CURRENT_POINTS}），不能传入其他批次的CK，也不能传入细化后新增/拆分出的新CK"
       - "  - stage_args.refined的Value为该原始CK的细化说明；只要某个原始CK出现在stage_args.refined中，就表示该原始CK已经完成复核与细化"
-      - "  - 如果某个原始CK被拆分为多个更细的新CK，请在文档中新增这些新CK，并在stage_args.refined中使用原始CK作为key说明拆分情况"
+      - "  - 如果某个原始CK被拆分为多个更细的新CK，请在面板中新增这些新CK并更新 ID 映射，并在stage_args.refined中使用原始CK作为key说明拆分情况"
       - "  - 示例工具参数：Check(stage_args={\"refined\":{\"FG-A/FC-A-1/CK-A-1\":\"已补充边界条件，并拆分为CK-A-1-BOUND和CK-A-1-ERR\", \"FG-B/FC-B-2/CK-B-2\":\"粒度已足够，无需拆分，但补充了异常输入说明\"}})"
       - "  - 字符串fallback示例：Check(stage_args=\"{\\\"refined\\\":{\\\"FG-A/FC-A-1/CK-A-1\\\":\\\"已补充边界条件\\\"}}\")；字符串内容必须是完整合法JSON对象"
       - "  - 最后一批示例工具参数：Complete(stage_args={\"refined\":{\"FG-C/FC-C-3/CK-C-3\":\"已补充组合场景和预期结果\"}})；如果Check已经提示全部CK完成，则直接调用Complete()即可"
-      - "  - 对于需要进行组合测试的功能点，确保在文档中明确标注组合条件和预期结果，每种组合情况都要有对应的检测点"
+      - "  - 对于需要进行组合测试的功能点，确保在面板测试点说明中写明组合条件和预期结果，每种组合情况都要有对应的检测点"
       - "  - 你需要按Spec文档中定义的功能点和检测点进行细化，确保覆盖所有边界条件和异常情况"
       - "当前批次待分析功能点（stage_args.refined的key只能从这里选择）": "{LIST_CURRENT_POINTS}"
       - "当前分析进度": "{COMPLETED_POINTS}/{TOTAL_POINTS}"
@@ -246,6 +276,11 @@ stage:
       - "{OUT}/{DUT}_functions_and_checks.md"
       - "{OUT}/{DUT}_basic_info.md"
     checker:
+      - name: flowcanvas_panel_acceptance
+        clss: flowcanvas.planning_targets.PlanningTargetsChecker
+        args:
+          doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+          leaf: "CK"
       - name: functions_and_checks_refine_check
         clss: "UnityChipCheckerLabelStructureRefine"
         args:
@@ -255,12 +290,21 @@ stage:
 
   - name: coverage_model_implementation
     desc: "功能覆盖率模型实现"
+    checker:
+      - name: flowcanvas_panel_acceptance
+        clss: flowcanvas.planning_targets.PlanningTargetsChecker
+        args:
+          doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+          leaf: "CK"
+          bindings: true
+          cov_file: "{OUT}/tests/{DUT}_function_coverage_def.py"
     task:
+      - "FlowCanvas：读取面板和 ID 映射；已有卡片先 begin_update 登记修改，成功后才检查、修改实现和绑定，完成后 finish_update；创建中沿用原创建操作。为本阶段每张相应层级的卡片实现并绑定独立可定位的验证节点。将覆盖模型发布到 {PROJECT_ROOT}/verification/coverage/{DUT}/{DUT}_function_coverage_def.py，与 {OUT}/tests/{DUT}_function_coverage_def.py 保持一致（绑定标识注释除外）。功能组绑定 CovGroup 创建语句，功能点绑定独立赋值或函数，测试点优先使用独立命名检查函数；不要只绑定整个文件、通用入口或 RTL。inspect 项目内发布文件，再 bind 原卡片 ID，role 使用 coverage/check/definition。修改完成后 read 核对；changed 须阅读源码核对后 accept，不能盲目确认。最终验收要求所有卡片 ready 且绑定状态 bound，planned/missing/changed/conflict/unverified 均不能通过。尚不集成到测试用例或运行功能回归，绑定成功不代表验证通过。"
       - "目标：创建覆盖率统计系统，跟踪哪些功能已测试"
       - "第1步：读取功能分析文档{OUT}/{DUT}_functions_and_checks.md"
       - "第2步：为每个功能分组<FG-*>创建CovGroup覆盖组"
       - "第3步：为每个功能点<FC-*>添加watch_point监测点"
-      - "第4步：为每个检测点<CK-*>实现检查函数(尽可能的用lambda函数)"
+      - "第4步：为每个检测点<CK-*>实现可独立绑定的命名检查函数"
       - "第5步：实现get_coverage_groups(dut)主函数"
       - "参考Guide_Doc/dut_function_coverage_def.md了解实现方法"
       - "需要将结果及时写入{OUT}/tests/{DUT}_function_coverage_def.py，请使用{DOC_GEN_LANG}编写注释"
@@ -269,10 +313,18 @@ stage:
       - name: coverage_group_creation
         desc: "功能覆盖组创建"
         task:
+          - "FlowCanvas：读取面板和 ID 映射；已有卡片先 begin_update 登记修改，成功后才检查、修改实现和绑定，完成后 finish_update；创建中沿用原创建操作。为本阶段每张相应层级的卡片实现并绑定独立可定位的验证节点。将覆盖模型发布到 {PROJECT_ROOT}/verification/coverage/{DUT}/{DUT}_function_coverage_def.py，与 {OUT}/tests/{DUT}_function_coverage_def.py 保持一致（绑定标识注释除外）。功能组绑定 CovGroup 创建语句，功能点绑定独立赋值或函数，测试点优先使用独立命名检查函数；不要只绑定整个文件、通用入口或 RTL。inspect 项目内发布文件，再 bind 原卡片 ID，role 使用 coverage/check/definition。修改完成后 read 核对；changed 须阅读源码核对后 accept，不能盲目确认。最终验收要求所有卡片 ready 且绑定状态 bound，planned/missing/changed/conflict/unverified 均不能通过。尚不集成到测试用例或运行功能回归，绑定成功不代表验证通过。"
           - "为每个功能分组<FG-*>创建对应的CovGroup对象"
           - "实现get_coverage_groups(dut)基础框架"
           - "确保覆盖组可以正常创建和访问"
         checker:
+          - name: flowcanvas_panel_acceptance
+            clss: flowcanvas.planning_targets.PlanningTargetsChecker
+            args:
+              doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+              leaf: "FG"
+              bindings: true
+              cov_file: "{OUT}/tests/{DUT}_function_coverage_def.py"
           - name: coverage_group_check
             clss: "UnityChipCheckerCoverageGroup"
             args:
@@ -286,12 +338,20 @@ stage:
       - name: coverage_point_implementation
         desc: "覆盖率检查点实现"
         task:
+          - "FlowCanvas：读取面板和 ID 映射；已有卡片先 begin_update 登记修改，成功后才检查、修改实现和绑定，完成后 finish_update；创建中沿用原创建操作。为本阶段每张相应层级的卡片实现并绑定独立可定位的验证节点。将覆盖模型发布到 {PROJECT_ROOT}/verification/coverage/{DUT}/{DUT}_function_coverage_def.py，与 {OUT}/tests/{DUT}_function_coverage_def.py 保持一致（绑定标识注释除外）。功能组绑定 CovGroup 创建语句，功能点绑定独立赋值或函数，测试点优先使用独立命名检查函数；不要只绑定整个文件、通用入口或 RTL。inspect 项目内发布文件，再 bind 原卡片 ID，role 使用 coverage/check/definition。修改完成后 read 核对；changed 须阅读源码核对后 accept，不能盲目确认。最终验收要求所有卡片 ready 且绑定状态 bound，planned/missing/changed/conflict/unverified 均不能通过。尚不集成到测试用例或运行功能回归，绑定成功不代表验证通过。"
           - "为每个功能点添加watch_point和检查函数"
-          - "用lambda函数实现检查逻辑，传递引用参数(dut对象)"
-          - "如果检查函数过于复杂，lambda函数可以用普通函数替代"
+          - "用独立命名函数实现检查逻辑，传递引用参数(dut对象)"
+          - "每个测试点保留独立检查入口，函数实现应易于阅读与源码绑定"
           - "如果多个检查函数有公共检查部分，也可以把公共部分实现为普通函数"
           - "完成完整的覆盖率定义，代码需要有注释，可读性强"
         checker:
+          - name: flowcanvas_panel_acceptance
+            clss: flowcanvas.planning_targets.PlanningTargetsChecker
+            args:
+              doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+              leaf: "CK"
+              bindings: true
+              cov_file: "{OUT}/tests/{DUT}_function_coverage_def.py"
           - name: coverage_implementation_check
             clss: "UnityChipCheckerCoverageGroup"
             args:
@@ -303,12 +363,13 @@ stage:
           - name: implemente_function_checks_in_batch
             desc: "分批功能点检查函数实现[{COMPLETED_POINTS}/{TOTAL_POINTS}]"
             task:
+              - "FlowCanvas：读取面板和 ID 映射；已有卡片先 begin_update 登记修改，成功后才检查、修改实现和绑定，完成后 finish_update；创建中沿用原创建操作。为本阶段每张相应层级的卡片实现并绑定独立可定位的验证节点。将覆盖模型发布到 {PROJECT_ROOT}/verification/coverage/{DUT}/{DUT}_function_coverage_def.py，与 {OUT}/tests/{DUT}_function_coverage_def.py 保持一致（绑定标识注释除外）。功能组绑定 CovGroup 创建语句，功能点绑定独立赋值或函数，测试点优先使用独立命名检查函数；不要只绑定整个文件、通用入口或 RTL。inspect 项目内发布文件，再 bind 原卡片 ID，role 使用 coverage/check/definition。修改完成后 read 核对；changed 须阅读源码核对后 accept，不能盲目确认。最终验收要求所有卡片 ready 且绑定状态 bound，planned/missing/changed/conflict/unverified 均不能通过。尚不集成到测试用例或运行功能回归，绑定成功不代表验证通过。"
               - "第1步：理解功能点<FC-*>和检测点<CK-*>的预期行为"
               - "第2步：需要为以下检查点实现检查函数": "{LIST_CURRENT_POINTS}"
-              - "第3步：使用lambda函数实现检查逻辑，传递引用参数(dut对象)"
-              - "第4步：如果检查函数过于复杂，lambda函数可以用普通函数替代"
+              - "第3步：使用独立命名函数实现检查逻辑，传递引用参数(dut对象)"
+              - "第4步：每个测试点保留独立检查入口，函数实现应易于阅读与源码绑定"
               - "第5步：如果多个检查函数有公共检查部分，也可以把公共部分实现为普通函数"
-              - "第7步：如果实现过程中发现需要增加或者删除检查点，可以更新文档{OUT}/{DUT}_functions_and_checks.md"
+              - "第7步：如果实现过程中发现需要增加或者删除检查点，可以通过 verification_targets 更新面板目标及 ID 映射；Check 自动刷新兼容索引"
               - "第8步：完成上述目标检查函数后，使用Check工具进行阶段检查"
               - "完成进度：{COMPLETED_POINTS}/{TOTAL_POINTS}个检查点已完成"
               - "注意："
@@ -317,14 +378,22 @@ stage:
               - " - 如果没有明确要求，请基于DUT的引脚进行检查，一定不要尝试获取DUT的内部信号状态（内部状态或者功能不属于DUT需要验证的功能点）"
               - "当前批次测点与对应说明节选如下": "{LIST_CK_FILE_BLOCKS}"
             checker:
-            - name: batch_coverage_points_implementation_check
-              clss: "UnityChipCheckerCoverageGroupBatchImplementation"
-              args:
-                test_dir: "{OUT}/tests"
-                cov_file: "{OUT}/tests/{DUT}_function_coverage_def.py"
-                doc_file: "{OUT}/{DUT}_functions_and_checks.md"
-                batch_size: 20
-                data_key: "COVER_GROUP_DOC_CK_LIST"
+              - name: flowcanvas_panel_acceptance
+                clss: flowcanvas.planning_targets.PlanningTargetsChecker
+                args:
+                  doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+                  leaf: "CK"
+                  bindings: true
+                  complete_only: true
+                  cov_file: "{OUT}/tests/{DUT}_function_coverage_def.py"
+              - name: batch_coverage_points_implementation_check
+                clss: "UnityChipCheckerCoverageGroupBatchImplementation"
+                args:
+                  test_dir: "{OUT}/tests"
+                  cov_file: "{OUT}/tests/{DUT}_function_coverage_def.py"
+                  doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+                  batch_size: 20
+                  data_key: "COVER_GROUP_DOC_CK_LIST"
             reference_files:
               - "Guide_Doc/dut_function_coverage_def.md"
     output_files:

@@ -1582,7 +1582,7 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 }
 .run-timeline li[data-depth="1"]::before,.run-timeline li[data-depth="2"]::before{
   content:"";position:absolute;left:calc(5.5px - var(--stage-depth,0)*12px);
-  top:0;bottom:0;width:calc(var(--stage-depth,0)*12px);
+  top:0;bottom:0;width:calc((var(--continuing-depth,var(--stage-depth,1)) - 1)*12px + 1px);
   background:repeating-linear-gradient(to right,
     color-mix(in srgb,var(--text-dim) 18%,transparent) 0 1px,transparent 1px 12px);
   mask-image:repeating-linear-gradient(to bottom,#000 0 3px,transparent 3px 7px);
@@ -1613,3 +1613,10 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .run-timeline li[data-depth="2"]:not(:last-child)::after{top:14px}
 .run-timeline li[data-depth="1"] .run-stage-branch{height:12.5px}
 .run-timeline li[data-depth="2"] .run-stage-branch{height:12px}
+
+
+/* A separate terminus closes the root lane without counting as a workflow stage. */
+.run-timeline li.run-terminal{margin-left:0;min-height:14px;align-items:center;gap:10px;color:color-mix(in srgb,var(--text-dim) 45%,var(--surface))}
+.run-timeline .run-terminal .run-stage-dot{position:relative;width:10px;height:10px;margin:0 1px;color:inherit;border-color:currentColor;background:var(--surface);box-shadow:none}
+.run-timeline .run-terminal .run-stage-dot::before{content:"";width:4px;height:4px;border-radius:50%;background:currentColor}
+.run-timeline .run-terminal.done{color:#43a17a}

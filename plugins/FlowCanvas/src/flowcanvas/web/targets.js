@@ -348,7 +348,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         }
         head.append(badge);
       }
-      if(!bugMode&&node.lifecycle&&node.lifecycle!=='ready'&&!inheritedDeletion){const label=(node.lifecycle==='creating'?'创建':'删除')+(node.operation_status==='running'?'中':'已暂停');head.append(el('span','case-operation-label',label));}
+      if(!bugMode&&node.lifecycle&&node.lifecycle!=='ready'&&!inheritedDeletion){const label=(node.lifecycle==='creating'?'创建':node.lifecycle==='updating'?'修改':'删除')+(node.operation_status==='running'?'中':'已暂停');head.append(el('span','case-operation-label',label));}
       if(bugMode){}else if(report.status==='planned'&&(!node.lifecycle||node.lifecycle==='ready'))head.append(el('span','target-state state-planned','待实现'));
       else if(report.status!=='bound'&&!operationLocked){
         const warning=el('span','target-warning state-'+report.status);

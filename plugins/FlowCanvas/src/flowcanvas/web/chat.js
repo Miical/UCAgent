@@ -151,7 +151,7 @@ function paintWorkflowDetail(){
     if(!run.tui){runtime.append(make('p','此历史任务未采集 TUI 详情；新启动或恢复的任务会提供。'));}
     else{
       const stageInfo=section('阶段详情');
-      for(const stage of run.stages||[]){const item=document.createElement('details');item.className='workflow-stage-info';item.dataset.section='stage:'+stage.name;item.style.setProperty('--stage-depth',Math.min(8,Math.max(0,Number(stage.depth)||0)));item.dataset.depth=String(Math.min(2,Math.max(0,Number(stage.depth)||0)));item.open=expanded.get(item.dataset.section)??(!stage.completed&&(stage.in_progress||stage.name===run.current_stage));item.append(make('summary',stage.name));if(stage.description)item.append(make('p',stage.description));pairs(item,[['检查失败次数',stage.fail_count],['检查状态',stage.check_pass===true?'通过':stage.check_pass===false?'未通过':'尚未检查'],['人工检查',stage.human_check?'需要':'无需'],['跳过',stage.skipped?'是':'否'],['耗时',formatStageDuration(stage.time_cost)],['Skill',(stage.skills||[]).join('、')]]);stageInfo.append(item);}
+      for(const stage of workflowDisplayStages(run)){const item=document.createElement('details');item.className='workflow-stage-info';item.dataset.section='stage:'+stage.name;item.style.setProperty('--stage-depth',Math.min(8,Math.max(0,Number(stage.depth)||0)));item.dataset.depth=String(Math.min(2,Math.max(0,Number(stage.depth)||0)));item.open=expanded.get(item.dataset.section)??(!stage.completed&&(stage.in_progress||stage.name===run.current_stage));item.append(make('summary',stage.name));if(stage.description)item.append(make('p',stage.description));pairs(item,[['检查失败次数',stage.fail_count],['检查状态',stage.check_pass===true?'通过':stage.check_pass===false?'未通过':'尚未检查'],['人工检查',stage.human_check?'需要':'无需'],['跳过',stage.skipped?'是':'否'],['耗时',formatStageDuration(stage.time_cost)],['Skill',(stage.skills||[]).join('、')]]);stageInfo.append(item);}
       const files=section('最近变更文件 · '+(run.tui.changed_files?.length||0));
       if(!run.tui.changed_files?.length)files.append(make('p','暂无文件变更'));
       for(const file of run.tui.changed_files||[]){const row=document.createElement('div');row.className='workflow-file-row';const link=make('button',file.file);link.type='button';link.className='workflow-file-link';const path=file.path||(run.workspace+'/summary/'+file.file);link.title='查看文件：'+path;link.onclick=()=>openLocalSource({path});row.append(link,make('small',new Date(file.mtime*1000).toLocaleString()));files.append(row);}
@@ -246,6 +246,15 @@ function paintCapsuleVisibility(){
   if(!visible)for(const popover of host.querySelectorAll(':popover-open'))popover.hidePopover();
 }
 $('workflow-capsules-toggle').onclick=()=>{capsulesVisible=!capsulesVisible;paintCapsuleVisibility();};
+/** Show containing stages before their children without changing execution order. */
+function workflowDisplayStages(run){
+  const stages=run.stages||[],byName=new Map(stages.map(stage=>[stage.name,stage])),children=new Map(),result=[],seen=new Set();
+  for(const stage of stages){const parent=byName.has(stage.parent)?stage.parent:null;if(!children.has(parent))children.set(parent,[]);children.get(parent).push(stage);}
+  const visit=stage=>{if(seen.has(stage.name))return;seen.add(stage.name);result.push(stage);for(const child of children.get(stage.name)||[])visit(child);};
+  for(const stage of children.get(null)||[])visit(stage);
+  for(const stage of stages)visit(stage);
+  return result;
+}
 function paintWorkflowRun(){
   const runs=groupedWorkflowRuns(),host=$('workflow-run');
   const signature=JSON.stringify(runs);if(signature===workflowCardSignature)return;
@@ -272,7 +281,7 @@ function paintWorkflowRun(){
   if(!oldTrack)host.append(track,left,right);
   let previousGroup=null;
   for(const [runIndex,run] of runs.entries()){
-    const stages=run.stages||[],done=stages.filter(s=>s.completed).length;
+    const stages=workflowDisplayStages(run),done=stages.filter(s=>s.completed).length;
     const percent=run.status==='completed'?100:stages.length?Math.round(done/stages.length*100):0;
     const status={starting:'启动中',running:'运行中',completed:'已完成',paused:'已暂停'}[run.status]||run.status;
     const card=element('article','run-capsule');card.hidden=Boolean(run.dismissed);card.dataset.id=run.id;card.dataset.status=run.status;card.tabIndex=0;card.setAttribute('aria-label',run.name+'，'+status+'，'+percent+'%');
@@ -292,8 +301,15 @@ function paintWorkflowRun(){
     const center=found>=0?found:Math.max(0,stages.findLastIndex(stage=>stage.completed));
     const first=Math.max(0,Math.min(center-1,stages.length-4)),last=Math.min(stages.length,first+4);
     timeline.classList.toggle('fade-top',first>0);timeline.classList.toggle('fade-bottom',last<stages.length);
-    for(const [stageIndex,stage] of stages.entries()){const current=!stage.completed&&(stage.in_progress||stage.name===run.current_stage);const row=element('li',stage.completed?'done':current?'current':'pending');const depth=Math.min(8,Math.max(0,Number(stage.depth)||0));row.style.setProperty('--stage-depth',depth);const previousDepth=Math.min(8,Math.max(0,Number(stages[stageIndex-1]?.depth)||0)),nextDepth=Math.min(8,Math.max(0,Number(stages[stageIndex+1]?.depth)||0));row.dataset.parentLink=String(nextDepth>depth||stages.some(child=>child.parent===stage.name));row.dataset.subtreeEnd=String(depth>0&&(!stages[stageIndex+1]||nextDepth<depth));if(depth>previousDepth){const branch=element('span','run-stage-branch');branch.setAttribute('aria-hidden','true');branch.style.setProperty('--branch-width',(depth-previousDepth)*12+'px');row.append(branch);}row.dataset.depth=String(Math.min(2,Math.max(0,Number(stage.depth)||0)));row.classList.toggle('near-current',stageIndex>=first&&stageIndex<last);row.append(element('span','run-stage-dot',stage.completed?'✓':''));const text=element('div','');text.append(element('strong','',stage.name));if(stage.completed||current){const duration=element('small','run-stage-duration',formatStageDuration(stage.time_cost)||(stage.kind==='startup'&&run.startup?.started_at&&run.status==='starting'?Math.max(0,Math.floor(Date.now()/1000-run.startup.started_at))+'s':run.historical?'未记录':'0s'));duration.title='阶段耗时';text.append(duration);}if(current)text.append(element('small','run-stage-state',run.status==='paused'?'暂停':'执行中'));row.append(text);timeline.append(row);}
-    if(!stages.length)timeline.append(element('li','run-empty',run.historical?'旧版记录未保存阶段详情':'正在读取工作流阶段…'));expanded.append(timeline);
+    for(const [stageIndex,stage] of stages.entries()){const current=!stage.completed&&(stage.in_progress||stage.name===run.current_stage);const row=element('li',stage.completed?'done':current?'current':'pending');const depth=Math.min(8,Math.max(0,Number(stage.depth)||0));row.style.setProperty('--stage-depth',depth);const previousDepth=Math.min(8,Math.max(0,Number(stages[stageIndex-1]?.depth)||0)),nextDepth=Math.min(8,Math.max(0,Number(stages[stageIndex+1]?.depth)||0));row.style.setProperty('--continuing-depth',Math.min(depth,nextDepth+1));row.dataset.parentLink=String(nextDepth>depth||stages.some(child=>child.parent===stage.name));row.dataset.subtreeEnd=String(depth>0&&(!stages[stageIndex+1]||nextDepth<depth));if(depth>previousDepth){const branch=element('span','run-stage-branch');branch.setAttribute('aria-hidden','true');branch.style.setProperty('--branch-width',(depth-previousDepth)*12+'px');row.append(branch);}row.dataset.depth=String(Math.min(2,Math.max(0,Number(stage.depth)||0)));row.classList.toggle('near-current',stageIndex>=first&&stageIndex<last);row.append(element('span','run-stage-dot',stage.completed?'✓':''));const text=element('div','');text.append(element('strong','',stage.name));if(stage.completed||current){const duration=element('small','run-stage-duration',formatStageDuration(stage.time_cost)||(stage.kind==='startup'&&run.startup?.started_at&&run.status==='starting'?Math.max(0,Math.floor(Date.now()/1000-run.startup.started_at))+'s':run.historical?'未记录':'0s'));duration.title='阶段耗时';text.append(duration);}if(current)text.append(element('small','run-stage-state',run.status==='paused'?'暂停':stage.name===run.current_stage?'执行中':'子阶段执行中'));row.append(text);timeline.append(row);}
+    if(stages.length){
+      const end=element('li','run-terminal '+(run.status==='completed'?'done':'pending'));
+      end.classList.toggle('near-current',last===stages.length);
+      end.setAttribute('aria-label',run.status==='completed'?'工作流终点，已完成':'工作流终点，尚未到达');
+      const dot=element('span','run-stage-dot');dot.setAttribute('aria-hidden','true');
+      end.append(dot);timeline.append(end);
+    }else timeline.append(element('li','run-empty',run.historical?'旧版记录未保存阶段详情':'正在读取工作流阶段…'));
+    expanded.append(timeline);
     const metadata=element('dl','run-metadata');
     for(const [key,value]of [['任务',run.tui?.mission||run.name],['开始时间',run.started_at?new Date(run.started_at*1000).toLocaleString():null],['运行时间',workflowRunningTime(run)],['MCP 服务',workflowMcpStatus(run)],['工作目录',run.workspace]]){if(value){const cell=element('dd','',value);if(key==='MCP 服务'){cell.className='workflow-mcp-status';cell.dataset.state={'在线':'online','离线':'offline','启动中':'starting'}[value]||'unknown';}metadata.append(element('dt','',key),cell);}}
     expanded.append(metadata);

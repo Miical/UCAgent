@@ -23,7 +23,7 @@ class TestCase(BaseModel):
     name: str = Field(min_length=1, max_length=200, description='代码中的测试类名或函数名，不作为可读标题')
     title: str = Field(default='', max_length=200, description='用例的可读标题；新建和导入必须填写，概括测试场景')
     description: str = ''
-    lifecycle: Literal['ready', 'creating', 'deleting'] = 'ready'
+    lifecycle: Literal['ready', 'creating', 'updating', 'deleting'] = 'ready'
     operation_status: Literal['running', 'paused'] = 'paused'
     operation_session: str = ''
     origin: Literal['manual', 'ai', 'scan'] = 'manual'
@@ -260,10 +260,23 @@ class Cases(Targets):
 
 
 def execute(root, request, owner=""):
+    """Require an owned operation before AI mutations, atomically with the write."""
+    with LOCK:
+        r = request if isinstance(request, Request) else Request.model_validate(request)
+        store = Cases(root)
+        if r.operation in {"begin_update", "finish_update"}:
+            return store.edit_operation(r.target_id, r.operation, r.expected_revision, owner)
+        if r.operation in {"update", "bind", "accept"}:
+            store.require_edit(r.target_id, owner)
+        return _execute(root, r, owner)
+
+
+def _execute(root, request, owner=""):
+    """Dispatch a request after the public transaction boundary validates ownership."""
     r = Request.model_validate(request) if isinstance(request, dict) else request
     store = Cases(root)
     if r.operation == 'guide':
-        return {'instructions': '新建必须先 create 注册占位用例，再编写代码，用同一 target_id update/bind，最后 finish_create 转为正式用例；不可用 import 重复登记新建用例。删除任务首先 read 获取 revision 并定位指定 ID，立即 begin_delete 登记卡片，成功后才检查源码、共享引用和删除范围，再修改专属源码，最后 delete。不要检查完才登记。中断后用 resume_operation 恢复原条目，禁止重新 create。以上操作均传最新 expected_revision。先 read 获取 revision；导入前必须 configure，通过 values={command,description} 配置项目统一运行模板。command 为 bash 命令，使用 {case} 表示用例入口、{project} 表示项目根目录，入口会自动 shell 转义，不要再给占位符加引号；description 说明运行位置、依赖和源码同步边界，不写入凭据。依据项目已有脚本配置，禁止虚构运行环境。覆盖率另用 configure_coverage，values={coverage:配置对象或null}；先核对真实产物、工具和构建标识，按 schema 填写，无法验证时留 null，不编造命令。运行结束会按配置自动提取、校验和合并，必须用实际短用例验证接通后再声称成功。配置中 run_dir 是单次运行目录，merge_dir 是批次合并输出目录，inputs_manifest 是本批次输入数据库清单；构建版本不兼容时拒绝合并并提示开始新批次。configure 后重新 read 获取 revision；discover 只返回候选，继承 uvm_test 不代表应该导入。阅读候选源码及启动配置，检查具体激励、sequence 和运行入口，只导入可独立运行且承担具体测试行为的用例。排除 base_test、抽象类和只搭建环境的基类，不要仅按名称判断。import 必须通过 values.selected 显式选择，每项包含 discover 返回的 file、start、fingerprint，以及 reason（具体激励和运行入口的依据）、title（简洁中文标题，概括测试场景，不能只复述函数名或类名）、description（必须根据源码生成的中文用例说明，概述验证目的、主要激励及实际检查行为，不能只复述类名或声称已经通过）；files 包含解析继承所需的基类文件，但不选中基类。无法确认时先报告，不导入。Python 按默认 pytest 文件/函数约定，一个函数一条记录，参数化不展开。import 插入稳定 ID 注释，重复导入幂等。create 创建待实现记录，name 填代码类名/函数名，values.title 必须填写可读标题；title 用于界面展示，name 和源码绑定保留运行标识，不可用标题替换入口。inspect 查看语法节点，再 bind 用 start/fingerprint 绑定。update 通过 values.title 修改标题，可另行填写已确认的 name 和 description。用例说明只保留 description 一个文本字段。accept 必须核对源码。不要修改 JSON 或从扫描推断执行通过。delete 需要 target_id 与最新 expected_revision，只移除该用例登记，不删除源码或历史日志；先确认运行已停止，并检查共享驱动与引用，专属源码按用户授权单独修改。运行、监控和停止使用 test_case_runs 工具：start 传 case_id，之后 read 传返回的 run_id 和 offset，直到运行结束并读完日志，不能重复 start 或把进程成功退出等同于功能验证通过。项目内写操作支持工作区访问和完全访问。', 'schema': CasesDefinition.model_json_schema()}
+        return {'instructions': '修改已有用例或绑定前，必须先 read，再 begin_update(target_id,expected_revision) 登记修改；登记成功后才检查和修改源码或内容，并通过 update/bind/accept 同步原 ID，最后 read 核对并 finish_update。已有绑定须有效才能结束，暂停用 resume_operation。创建期间沿用 create/finish_create。新建必须先 create 注册占位用例，再编写代码，用同一 target_id update/bind，最后 finish_create 转为正式用例；不可用 import 重复登记新建用例。删除任务首先 read 获取 revision 并定位指定 ID，立即 begin_delete 登记卡片，成功后才检查源码、共享引用和删除范围，再修改专属源码，最后 delete。不要检查完才登记。中断后用 resume_operation 恢复原条目，禁止重新 create。以上操作均传最新 expected_revision。先 read 获取 revision；导入前必须 configure，通过 values={command,description} 配置项目统一运行模板。command 为 bash 命令，使用 {case} 表示用例入口、{project} 表示项目根目录，入口会自动 shell 转义，不要再给占位符加引号；description 说明运行位置、依赖和源码同步边界，不写入凭据。依据项目已有脚本配置，禁止虚构运行环境。覆盖率另用 configure_coverage，values={coverage:配置对象或null}；先核对真实产物、工具和构建标识，按 schema 填写，无法验证时留 null，不编造命令。运行结束会按配置自动提取、校验和合并，必须用实际短用例验证接通后再声称成功。配置中 run_dir 是单次运行目录，merge_dir 是批次合并输出目录，inputs_manifest 是本批次输入数据库清单；构建版本不兼容时拒绝合并并提示开始新批次。configure 后重新 read 获取 revision；discover 只返回候选，继承 uvm_test 不代表应该导入。阅读候选源码及启动配置，检查具体激励、sequence 和运行入口，只导入可独立运行且承担具体测试行为的用例。排除 base_test、抽象类和只搭建环境的基类，不要仅按名称判断。import 必须通过 values.selected 显式选择，每项包含 discover 返回的 file、start、fingerprint，以及 reason（具体激励和运行入口的依据）、title（简洁中文标题，概括测试场景，不能只复述函数名或类名）、description（必须根据源码生成的中文用例说明，概述验证目的、主要激励及实际检查行为，不能只复述类名或声称已经通过）；files 包含解析继承所需的基类文件，但不选中基类。无法确认时先报告，不导入。Python 按默认 pytest 文件/函数约定，一个函数一条记录，参数化不展开。import 插入稳定 ID 注释，重复导入幂等。create 创建待实现记录，name 填代码类名/函数名，values.title 必须填写可读标题；title 用于界面展示，name 和源码绑定保留运行标识，不可用标题替换入口。inspect 查看语法节点，再 bind 用 start/fingerprint 绑定。update 通过 values.title 修改标题，可另行填写已确认的 name 和 description。用例说明只保留 description 一个文本字段。accept 必须核对源码。不要修改 JSON 或从扫描推断执行通过。delete 需要 target_id 与最新 expected_revision，只移除该用例登记，不删除源码或历史日志；先确认运行已停止，并检查共享驱动与引用，专属源码按用户授权单独修改。运行、监控和停止使用 test_case_runs 工具：start 传 case_id，之后 read 传返回的 run_id 和 offset，直到运行结束并读完日志，不能重复 start 或把进程成功退出等同于功能验证通过。项目内写操作支持工作区访问和完全访问。', 'schema': CasesDefinition.model_json_schema()}
     if r.operation == 'configure':
         with LOCK:
             data=store.read(); data.runner=RunTemplate.model_validate(r.values)

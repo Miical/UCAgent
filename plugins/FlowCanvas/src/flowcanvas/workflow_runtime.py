@@ -301,9 +301,11 @@ class WorkflowRuntime:
                     await self.inspect()
                     if tool_name:
                         return {'card': card, 'result': result}
+                    card['auto_continue'] = True
+                    self.publish()
                     return {'card': card, 'instruction': json.loads((root / 'ready.json').read_text())['instruction'],
                             'tools': [t.model_dump(mode='json') for t in catalog.tools], 'result': result,
-                            'next': 'Execute these instructions yourself. Use call_workflow_tool(card_id, tool_name, arguments) with this card ID and the returned tool schemas. Do not call stage tools directly or reconnect to load them. run_workflow is only for lifecycle operations. Completion requires host acceptance.'}
+                            'next': 'Execute these instructions yourself. Use call_workflow_tool(card_id, tool_name, arguments) with this card ID and the returned tool schemas. Do not call stage tools directly or reconnect to load them. run_workflow is only for lifecycle operations. Continue through all stages in the same turn; a successful stage Complete is not workflow completion. Use progress messages for partial updates. End only after final acceptance and Exit, a user stop/change, or a concrete blocker requiring user input or external action. Completion requires host acceptance.'}
 
     async def close(self):
         """Stop all owned process groups and retirement tasks without deleting records."""

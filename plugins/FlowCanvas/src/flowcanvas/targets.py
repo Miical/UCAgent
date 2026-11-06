@@ -31,7 +31,7 @@ class Target(BaseModel):
     parent: str | None = None
     name: str = Field(min_length=1, max_length=200)
     description: str = ''
-    lifecycle: Literal['ready', 'creating', 'deleting'] = 'ready'
+    lifecycle: Literal['ready', 'creating', 'updating', 'deleting'] = 'ready'
     operation_status: Literal['running', 'paused'] = 'paused'
     operation_session: str = ''
     origin: Literal['manual', 'ai', 'scan'] = 'manual'
@@ -336,6 +336,44 @@ class Targets:
             saved = self.save(data, expected_revision)
             return {'deleted': sorted(ids), 'revision': saved.revision}
 
+    def require_edit(self, target_id, owner):
+        """Require AI writes to own a running creation or modification operation."""
+        row = next((item for item in self.read().targets if item.id == target_id), None)
+        if row is None:
+            raise ValueError("Target does not exist")
+        if owner:
+            if (row.lifecycle not in {"creating", "updating"} or
+                    row.operation_status != "running" or row.operation_session != owner):
+                raise ValueError("Call begin_update with the latest revision before update/bind/accept; "
+                                 "resume your paused operation with resume_operation.")
+        elif row.operation_session or row.lifecycle == "deleting":
+            raise ValueError("Card is owned by an AI operation; finish or resume it before manual editing")
+
+    def edit_operation(self, target_id, operation, revision, owner):
+        """Persist modification state before edits and clear it only after validation."""
+        with LOCK:
+            data = self.read()
+            row = next((item for item in data.targets if item.id == target_id), None)
+            if row is None:
+                raise ValueError("Target does not exist")
+            if operation == "begin_update":
+                if row.lifecycle != "ready":
+                    raise ValueError("Card already has an operation; resume_operation instead")
+                row.lifecycle = "updating"
+                row.operation_status = "running"
+                row.operation_session = owner
+            else:
+                if (row.lifecycle != "updating" or row.operation_session != owner or
+                        row.operation_status != "running"):
+                    raise ValueError("finish_update requires your running modification operation")
+                if row.bindings and self.status()["reports"][target_id]["status"] != "bound":
+                    raise ValueError("Resolve source bindings before finish_update; read and verify changed source")
+                row.lifecycle = "ready"
+                row.operation_status = "paused"
+                row.operation_session = ""
+            saved = self.save(data, revision)
+            return {**row.model_dump(), "revision": saved.revision}
+
     def update(self, target_id, values, expected_revision):
         with LOCK:
             data = self.read()
@@ -433,6 +471,19 @@ class Request(BaseModel):
 
 
 def execute(root, request, owner=""):
+    """Require an owned operation before AI mutations, atomically with the write."""
+    with LOCK:
+        r = request if isinstance(request, Request) else Request.model_validate(request)
+        store = Targets(root)
+        if r.operation in {"begin_update", "finish_update"}:
+            return store.edit_operation(r.target_id, r.operation, r.expected_revision, owner)
+        if r.operation in {"update", "bind", "accept"}:
+            store.require_edit(r.target_id, owner)
+        return _execute(root, r, owner)
+
+
+def _execute(root, request, owner=""):
+    """Dispatch a request after the public transaction boundary validates ownership."""
     store = Targets(root)
     r = request if isinstance(request, Request) else Request.model_validate(request)
     if r.operation == 'read': return store.status()

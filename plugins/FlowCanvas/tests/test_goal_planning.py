@@ -7,25 +7,43 @@ from ucagent.util.config import UCAgentConfigLoader, replace_bash_var
 import os
 
 class GoalPlanningTests(unittest.TestCase):
-    def test_original_stages(self):
-        """Preserve original tasks, sub-stages, references and checkers verbatim."""
+    def test_panel_gates_preserve_native_validation(self):
+        """Every definition and implementation gate includes panel acceptance."""
+        from importlib import import_module
         root=Path(__file__).resolve().parents[3]
-        source=(root/"ucagent/lang/zh/config/default.yaml").read_text()
         workflow=(root/"plugins/FlowCanvas/src/flowcanvas/workflows/plan-goals.yaml").read_text()
-        names=["requirement_analysis_and_planning","dut_function_understanding",
+        selected=yaml.load(replace_bash_var(workflow,os.environ),Loader=UCAgentConfigLoader)
+        names=["compile_rtl","requirement_analysis_and_planning","dut_function_understanding",
                "functional_specification_analysis","functional_specification_refine",
                "coverage_model_implementation"]
-        matches=list(re.finditer(r"^  - name: (\S+)",source,re.M))
-        blocks=[source[m.start():matches[i+1].start() if i+1<len(matches) else len(source)]
-                for i,m in enumerate(matches) if m[1] in names]
-        self.assertEqual(workflow[workflow.index("  - name: requirement_analysis_and_planning"):].replace("flowcanvas.planning_compile.DeferredDutFilesChecker","OrginFileMustExistChecker").rstrip(),"".join(blocks).rstrip())
-        selected=yaml.load(replace_bash_var(workflow,os.environ),Loader=UCAgentConfigLoader)
-        original=yaml.load(replace_bash_var(source,os.environ),Loader=UCAgentConfigLoader)
-        self.assertEqual(selected["stage"][0]["name"],"compile_rtl")
-        expected=[s for s in original["stage"] if s["name"] in names]
-        expected[0]["checker"][1]["clss"]="flowcanvas.planning_compile.DeferredDutFilesChecker"
-        self.assertEqual(selected["stage"][1:],expected)
-        self.assertEqual([s["name"] for s in selected["stage"][1:]],names)
+        self.assertEqual([s["name"] for s in selected["stage"]],names)
+        gates=[]
+        def visit(stages):
+            """Walk nested stages and instantiate each newly configured checker."""
+            for stage in stages:
+                for checker in stage.get("checker",[]):
+                    if checker["clss"]=="flowcanvas.planning_targets.PlanningTargetsChecker":
+                        gates.append(stage["name"])
+                        module,_,name=checker["clss"].rpartition(".")
+                        instance=getattr(import_module(module),name)(**checker["args"])
+                        self.assertTrue(instance.doc_file)
+                self.assertNotIn("unitytest/functions-and-checks",stage.get("skill_list",[]))
+                visit(stage.get("stage",[]))
+        visit(selected["stage"])
+        for enabled in ("true","false"):
+            resolved=yaml.load(replace_bash_var(workflow,{**os.environ,"HUMAN_CHECK_CK":enabled}),
+                               Loader=UCAgentConfigLoader)
+            check_stage=resolved["stage"][3]["stage"][2]
+            self.assertEqual(check_stage["need_human_check"],enabled=="true")
+        self.assertIn("不因 README 缺失停止",workflow)
+        self.assertEqual(len(gates),10)
+        for name in ("dut_function_grouping","function_point_definition","check_point_design",
+                     "coverage_model_implementation","implemente_function_checks_in_batch"):
+            self.assertIn(name,gates)
+        self.assertIn("唯一目标定义来源",workflow)
+        self.assertIn("UnityChipCheckerCoverageGroupBatchImplementation",workflow)
+        self.assertIn("UnityChipCheckerLabelStructureRefine",workflow)
+        self.assertNotIn("创建文档框架",workflow)
 
 class NativePlanningHostTests(unittest.IsolatedAsyncioTestCase):
     async def test_native_host_requires_dut_package(self):

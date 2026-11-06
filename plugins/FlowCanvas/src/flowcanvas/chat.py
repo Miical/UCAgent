@@ -102,6 +102,8 @@ class ChatService:
             for card in session.get('workflow_runs', []):
                 if card['status'] != 'completed':
                     card.update(status='paused', alive=False, pause_reason='工作台已重启，请恢复工作流')
+            for card in session.get('workflow_runs', []):
+                card['auto_continue'] = False
             session.update(children_running=0, children_pending=False, delegation_stopped=True)
             session['queue_paused'] = True  # Restart never silently executes persisted requests.
             self.sessions[session['id']] = session
@@ -200,6 +202,45 @@ class ChatService:
                         and session['id'] not in self.steering):
                     queued = session['queue'].pop(0)
                     self.launch(session, Message(**queued['message']), queued['tier'])
+                else:
+                    self.continue_workflows(session)
+
+    def continue_workflows(self, session):
+        """Resume an accepted unfinished task after normal model completion, never after a stop."""
+        identity = session['id']
+        if (self.closing or self.sessions.get(identity) is not session
+                or session.get('status') != 'completed'
+                or session.get('delegation_stopped') or session.get('queue_paused')
+                or session.get('children_running') or session.get('children_pending')
+                or session.get('queue') or identity in self.launching or identity in self.steering
+                or not session.get('model') or not session.get('effort')
+                or time.time() - (session.get('ended_at') or time.time()) < 2):
+            return False
+        cards = [card for card in session.get('workflow_runs', [])
+                 if card.get('auto_continue') and not card.get('dismissed')
+                 and card.get('status') in {'starting', 'running', 'paused'}]
+        if not cards:
+            return False
+        previous_turn = session.get('turn')
+        if not previous_turn or session.get('workflow_continued_turn') == previous_turn:
+            return False
+        # The workflow host's receipt wins even before its next status projection.
+        pending = [card for card in cards
+                   if not (Path(card['root']) / 'complete.json').is_file()]
+        if not pending:
+            return False
+        card_ids = [card['id'] for card in pending]
+        message = Message(
+            text=('自动继续尚未完成的工作流。原卡片 ID：' + json.dumps(card_ids) +
+                  '。先调用 list_workflow_runs 核对状态，使用 run_workflow(card_id=原ID) 恢复原卡片，'
+                  '从当前阶段继续，保留已有产物，不新建重复工作流。持续调用工作流工具推进到全部验收完成并退出；'
+                  '不要仅汇报部分进度后结束。'),
+            model=session['model'], effort=session['effort'],
+            speed=session.get('speed', 'standard'), workflow_label='自动继续工作流',
+            workflow_context={})
+        session['workflow_continued_turn'] = previous_turn
+        self.launch(session, message, session.get('service_tier'))
+        return True
 
     def changed(self, session):
         """Advance the public revision and schedule a durable checkpoint."""
@@ -315,6 +356,9 @@ class ChatService:
                 session['error'] = event['error']
             if session['status'] == 'error':
                 session['queue_paused'] = True
+            if session['status'] in {'error', 'interrupted'}:
+                for card in session.get('workflow_runs', []):
+                    card['auto_continue'] = False
             if session['status'] == 'completed' and not session.get('delegation_stopped'):
                 session['children_pending'] = True
             if session['status'] not in ACTIVE:
@@ -422,6 +466,14 @@ class ChatService:
                 'No separate authorization is required. Obtain necessary inputs from the project first, '
                 'and ask the user only for what is missing. Follow workflow instructions and tool permissions; '
                 'do not restart tasks in response to progress or result questions.\n\n'
+                'Once a workflow is started or resumed, keep executing it in the same turn until all stages pass acceptance. '
+                'Completing one stage or batch, making partial progress, or spending a long time is not a reason to end the turn. '
+                'After each successful Complete, read CurrentTips and continue with the next stage. '
+                'Use interim progress messages for updates; do not send a final response merely to summarize unfinished work. '
+                'After final acceptance, follow the workflow exit instructions and confirm completion with list_workflow_runs.\n\n'
+                'End early only when the user explicitly stops or changes the task, or a concrete blocker requires user input or external action. '
+                'First try permitted recovery and documented alternatives; do not ask for information already available in the project. '
+                'If blocked, report the card ID, current stage, exact failed condition, recovery attempted, and the specific input or action needed.\n\n'
                 'Before managing verification targets, test cases, or bugs, call the corresponding tool with operation=guide. '
                 'Use tools to save records and source bindings rather than editing management files directly.\n\n'
                 'Report completion and unresolved issues based on actual checks. '
@@ -772,6 +824,8 @@ def routes(service):
         session = service.get(identity)
         session['queue_paused'] = True
         session['delegation_stopped'] = True
+        for card in session.get('workflow_runs', []):
+            card['auto_continue'] = False
         session['child_activity_epoch'] = session.get('child_activity_epoch', 0) + 1
         session.update(children_running=0, children_pending=False)
         if session['status'] in ACTIVE:
