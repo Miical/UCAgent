@@ -3,6 +3,7 @@ function formatStageDuration(value){return value==null?value:String(value).repla
 /** Conversation controller: sessions, drafts, model capabilities and turn lifecycle. */
 import {request, subscribe} from './chat-api.js';
 import {ConversationView} from './chat-view.js';
+import {openLocalSource} from './markdown-renderer.js';
 const $=id=>document.getElementById(id);
 const view=new ConversationView($('conversation'));
 const active=new Set(['starting','running','stopping']);
@@ -150,10 +151,10 @@ function paintWorkflowDetail(){
     if(!run.tui){runtime.append(make('p','此历史任务未采集 TUI 详情；新启动或恢复的任务会提供。'));}
     else{
       const stageInfo=section('阶段详情');
-      for(const stage of run.stages||[]){const item=document.createElement('details');item.className='workflow-stage-info';item.dataset.section='stage:'+stage.name;item.open=expanded.get(item.dataset.section)??(stage.name===run.current_stage&&!stage.completed);item.append(make('summary',stage.name));if(stage.description)item.append(make('p',stage.description));pairs(item,[['检查失败次数',stage.fail_count],['检查状态',stage.check_pass===true?'通过':stage.check_pass===false?'未通过':'尚未检查'],['人工检查',stage.human_check?'需要':'无需'],['跳过',stage.skipped?'是':'否'],['耗时',formatStageDuration(stage.time_cost)],['Skill',(stage.skills||[]).join('、')]]);stageInfo.append(item);}
+      for(const stage of run.stages||[]){const item=document.createElement('details');item.className='workflow-stage-info';item.dataset.section='stage:'+stage.name;item.style.setProperty('--stage-depth',Math.min(8,Math.max(0,Number(stage.depth)||0)));item.dataset.depth=String(Math.min(2,Math.max(0,Number(stage.depth)||0)));item.open=expanded.get(item.dataset.section)??(!stage.completed&&(stage.in_progress||stage.name===run.current_stage));item.append(make('summary',stage.name));if(stage.description)item.append(make('p',stage.description));pairs(item,[['检查失败次数',stage.fail_count],['检查状态',stage.check_pass===true?'通过':stage.check_pass===false?'未通过':'尚未检查'],['人工检查',stage.human_check?'需要':'无需'],['跳过',stage.skipped?'是':'否'],['耗时',formatStageDuration(stage.time_cost)],['Skill',(stage.skills||[]).join('、')]]);stageInfo.append(item);}
       const files=section('最近变更文件 · '+(run.tui.changed_files?.length||0));
       if(!run.tui.changed_files?.length)files.append(make('p','暂无文件变更'));
-      for(const file of run.tui.changed_files||[]){const row=document.createElement('div');row.className='workflow-file-row';row.append(make('span',file.file),make('small',new Date(file.mtime*1000).toLocaleString()));files.append(row);}
+      for(const file of run.tui.changed_files||[]){const row=document.createElement('div');row.className='workflow-file-row';const link=make('button',file.file);link.type='button';link.className='workflow-file-link';const path=file.path||(run.workspace+'/summary/'+file.file);link.title='查看文件：'+path;link.onclick=()=>openLocalSource({path});row.append(link,make('small',new Date(file.mtime*1000).toLocaleString()));files.append(row);}
       const tools=section('工具调用',true);tools.classList.add('workflow-tool-chips');
       if(!run.tui.tools?.length)tools.append(make('p','暂无工具调用'));
       for(const tool of run.tui.tools||[]){const busy=run.status==='running'&&Boolean(tool.busy);const row=document.createElement('div');row.className='workflow-tool-row';row.classList.toggle('busy',busy);row.append(make('span',tool.name),make('span',(busy?'执行中 · ':'')+tool.count+' 次'));tools.append(row);}
@@ -192,6 +193,7 @@ $('workflow-search').oninput=paintWorkflowChoices;
 function patchWorkflowNode(target,source){
   if(target.nodeType!==source.nodeType||target.nodeName!==source.nodeName){target.replaceWith(source);return;}
   if(target.nodeType===Node.TEXT_NODE){if(target.data!==source.data)target.data=source.data;return;}
+  target.onclick=source.onclick;
   const positioned=target.classList.contains('run-expanded');
   for(const attr of [...target.attributes])if(!source.hasAttribute(attr.name)&&!(positioned&&attr.name==='style'))target.removeAttribute(attr.name);
   for(const attr of source.attributes)if(!(positioned&&attr.name==='style')&&target.getAttribute(attr.name)!==attr.value)target.setAttribute(attr.name,attr.value);
@@ -290,7 +292,7 @@ function paintWorkflowRun(){
     const center=found>=0?found:Math.max(0,stages.findLastIndex(stage=>stage.completed));
     const first=Math.max(0,Math.min(center-1,stages.length-4)),last=Math.min(stages.length,first+4);
     timeline.classList.toggle('fade-top',first>0);timeline.classList.toggle('fade-bottom',last<stages.length);
-    for(const [stageIndex,stage] of stages.entries()){const current=stage.name===run.current_stage&&!stage.completed;const row=element('li',stage.completed?'done':current?'current':'pending');row.classList.toggle('near-current',stageIndex>=first&&stageIndex<last);row.append(element('span','run-stage-dot',stage.completed?'✓':''));const text=element('div','');text.append(element('strong','',stage.name));if(stage.completed||current){const duration=element('small','run-stage-duration',formatStageDuration(stage.time_cost)||(stage.kind==='startup'&&run.startup?.started_at&&run.status==='starting'?Math.max(0,Math.floor(Date.now()/1000-run.startup.started_at))+'s':run.historical?'未记录':'0s'));duration.title='阶段耗时';text.append(duration);}if(current)text.append(element('small','run-stage-state',run.status==='paused'?'暂停':'执行中'));row.append(text);timeline.append(row);}
+    for(const [stageIndex,stage] of stages.entries()){const current=!stage.completed&&(stage.in_progress||stage.name===run.current_stage);const row=element('li',stage.completed?'done':current?'current':'pending');const depth=Math.min(8,Math.max(0,Number(stage.depth)||0));row.style.setProperty('--stage-depth',depth);const previousDepth=Math.min(8,Math.max(0,Number(stages[stageIndex-1]?.depth)||0)),nextDepth=Math.min(8,Math.max(0,Number(stages[stageIndex+1]?.depth)||0));row.dataset.parentLink=String(nextDepth>depth||stages.some(child=>child.parent===stage.name));row.dataset.subtreeEnd=String(depth>0&&(!stages[stageIndex+1]||nextDepth<depth));if(depth>previousDepth){const branch=element('span','run-stage-branch');branch.setAttribute('aria-hidden','true');branch.style.setProperty('--branch-width',(depth-previousDepth)*12+'px');row.append(branch);}row.dataset.depth=String(Math.min(2,Math.max(0,Number(stage.depth)||0)));row.classList.toggle('near-current',stageIndex>=first&&stageIndex<last);row.append(element('span','run-stage-dot',stage.completed?'✓':''));const text=element('div','');text.append(element('strong','',stage.name));if(stage.completed||current){const duration=element('small','run-stage-duration',formatStageDuration(stage.time_cost)||(stage.kind==='startup'&&run.startup?.started_at&&run.status==='starting'?Math.max(0,Math.floor(Date.now()/1000-run.startup.started_at))+'s':run.historical?'未记录':'0s'));duration.title='阶段耗时';text.append(duration);}if(current)text.append(element('small','run-stage-state',run.status==='paused'?'暂停':'执行中'));row.append(text);timeline.append(row);}
     if(!stages.length)timeline.append(element('li','run-empty',run.historical?'旧版记录未保存阶段详情':'正在读取工作流阶段…'));expanded.append(timeline);
     const metadata=element('dl','run-metadata');
     for(const [key,value]of [['任务',run.tui?.mission||run.name],['开始时间',run.started_at?new Date(run.started_at*1000).toLocaleString():null],['运行时间',workflowRunningTime(run)],['MCP 服务',workflowMcpStatus(run)],['工作目录',run.workspace]]){if(value){const cell=element('dd','',value);if(key==='MCP 服务'){cell.className='workflow-mcp-status';cell.dataset.state={'在线':'online','离线':'offline','启动中':'starting'}[value]||'unknown';}metadata.append(element('dt','',key),cell);}}
@@ -357,7 +359,7 @@ function controls(){
   $('permission-toggle').disabled=running||busy||!session;
   paintPermissions();
   updateSpeed();
-  if(running)closePicker();
+  if(running)closePicker(false,'model',['model','backend','permission']);
   const backend=backendCatalogs.find(row=>row.id===backendChoice);
   $('connection').textContent=running?(backend?.name||backendChoice)+' 正在处理':(backend?.name||backendChoice)+' · '+(models.length?'已连接':backend?.error?'不可用':'连接中');
   $('connection').classList.toggle('working',running);
@@ -457,7 +459,7 @@ function paintQueue(){
   }
 }
 /** Close the anchored picker without changing the current model selection. */
-function closePicker(focus=false,kind='model'){for(const name of ['model','session','backend','permission','attach','workflow']){const popup=$(name+'-popover');if(popup.matches(':popover-open'))popup.hidePopover();popup.hidden=true;$(name+'-toggle').setAttribute('aria-expanded','false');}if(focus)$(kind+'-toggle').focus();}
+function closePicker(focus=false,kind='model',names=['model','session','backend','permission','attach','workflow']){for(const name of names){const popup=$(name+'-popover');if(popup.matches(':popover-open'))popup.hidePopover();popup.hidden=true;$(name+'-toggle').setAttribute('aria-expanded','false');}if(focus)$(kind+'-toggle').focus();}
 /** Render catalog choices and reasoning controls with a persistent selected marker. */
 function paintPicker(){
   const chosen=models.find(m=>m.id===$('model').value);
@@ -655,7 +657,7 @@ async function loadWorkflowMenu(){
       const row=document.createElement('div');row.className='workflow-menu-item workflow-choice';
       const info=document.createElement('div');info.className='workflow-choice-info';
       const name=document.createElement('div');name.className='workflow-menu-name';name.textContent=item.name;
-      const description=document.createElement('p');description.textContent=item.description;info.append(name,description);
+      const description=document.createElement('p');description.textContent=item.description;
       const footer=document.createElement('div');footer.className='workflow-choice-footer';
       const canAttach=item.can_start&&Boolean(session)&&['workspace','full'].includes(session?.permission_mode);
       const attach=document.createElement('span');attach.className='workflow-attach-action';attach.classList.toggle('is-disabled',!canAttach);
@@ -665,6 +667,7 @@ async function loadWorkflowMenu(){
       row.tabIndex=canAttach?0:-1;row.setAttribute('aria-label','附加 '+item.name+' 到当前对话');
       row.onclick=()=>{if(canAttach)configureWorkflow(item,false);};
       row.onkeydown=event=>{if(event.target===row&&(event.key==='Enter'||event.key===' ')){event.preventDefault();if(canAttach)configureWorkflow(item,false);}};
+      info.append(name,description);
       row.classList.toggle('can-attach',canAttach);row.append(info,direct,footer);host.append(row);
     }
     if(!workflows.length){const empty=document.createElement('p');empty.className='session-empty';empty.textContent='暂无可用工作流';host.append(empty);}

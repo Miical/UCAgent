@@ -8,7 +8,8 @@ export function localReference(href) {
   }
   try{path=decodeURIComponent(path);}catch{return null;}
   const suffix=path.match(/(?:#L(\d+)(?:C\d+)?(?:-L?(\d+)(?:C\d+)?)?|:(\d+)(?::\d+)?(?:-(\d+))?)$/);
-  const line=Number(suffix?.[1]||suffix?.[3]||1);
+  if(!suffix)return {path};
+  const line=Number(suffix[1]||suffix[3]);
   const end=Math.max(line,Number(suffix?.[2]||suffix?.[4]||line));
   if(suffix)path=path.slice(0,suffix.index);
   return {path,line:Math.max(1,line),end};
@@ -28,10 +29,12 @@ export async function openLocalSource(reference) {
     if(!dialog.open)return;
     title.textContent=result.file;
     const pre=document.createElement('pre');pre.className='targets-source';pre.tabIndex=0;
+    const start=Number.isInteger(reference.line)&&reference.line>0?reference.line:null;
+    const end=start!==null&&Number.isInteger(reference.end)&&reference.end>=start?reference.end:start;
     result.content.split('\n').forEach((text,index)=>{
       const row=document.createElement('div'),number=document.createElement('span'),code=document.createElement('code');
       number.className='targets-line';number.textContent=String(index+1);code.textContent=text||' ';
-      if(index+1>=reference.line&&index+1<=reference.end)row.className='target-code-selected';
+      if(start!==null&&index+1>=start&&index+1<=end)row.className='target-code-selected';
       row.append(number,code);pre.append(row);
     });body.replaceChildren(pre);
     requestAnimationFrame(()=>{const row=pre.querySelector('.target-code-selected');if(row)pre.scrollTop=Math.max(0,row.offsetTop-pre.offsetTop-pre.clientHeight*.2);});

@@ -64,7 +64,7 @@ def create_app(state_dir=None) -> FastAPI:
             raise HTTPException(503, 'Workflow catalog could not be loaded') from None
 
     from .projects import routes as project_routes
-    app.include_router(project_routes(service.projects))
+    app.include_router(project_routes(service.projects, service.sessions, service.root / "workflow_runs"))
     from .rtl_viewer import routes as viewer_routes
     app.include_router(viewer_routes(service))
     from .targets import routes as target_routes

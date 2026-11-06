@@ -70,7 +70,7 @@ def parse_rtl(root, top='', top_file=''):
     return result
 
 
-def routes(projects):
+def routes(projects, sessions=None, workflow_root=None):
     router = APIRouter(prefix='/api/chat/projects')
 
     @router.get('')
@@ -81,6 +81,14 @@ def routes(projects):
     def source(path: str):
         """Read a text file within an opened project, resolving symlinks before access."""
         roots = [Path(p['path']).resolve() for p in projects.state.get('recent', [])]
+        if sessions is not None and workflow_root is not None:
+            managed = Path(workflow_root).resolve()
+            for session in sessions.values():
+                for card in session.get('workflow_runs', []):
+                    task = Path(card.get('root', '')).resolve()
+                    workspace = Path(card.get('workspace', '')).resolve()
+                    if task.parent == managed and workspace.is_relative_to(task) and workspace != task:
+                        roots.append(workspace)
         candidate = Path(path).expanduser()
         if not candidate.is_absolute():
             if not projects.current:

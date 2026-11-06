@@ -19,11 +19,6 @@ def main():
         overrides.update({'template_overwrite.PROJECT_ROOT': spec['project_root'],
                           'template_overwrite.SOURCE_RTL': spec['source_file'],
                           'template_overwrite.DUT_OUTPUT': spec['dut_output']})
-    if spec.get('goal_output'):
-        overrides.update({'template_overwrite.PROJECT_ROOT': spec['project_root'],
-                          'template_overwrite.SOURCE_RTL': spec['source_file'],
-                          'template_overwrite.GOAL_OUTPUT': spec['goal_output'],
-                          'template_overwrite.GOAL_RELATIVE': str(Path(spec['goal_output']).relative_to(spec['project_root']))})
     agent = VerifyAgent(str(root / 'workspace'), spec['dut'], 'summary',
                         config_file=spec['config'], cfg_override=overrides,
                         no_history=False, no_embed_tools=True, exit_on_completion=False)
@@ -37,15 +32,20 @@ def main():
         rows = task_data.get('task_list', {}).get('stage_list', [])
         stages = []
         for index, stage in enumerate(agent.stage_manager.stages):
+            ancestors=[]
+            parent=stage.parent
+            while parent is not None:
+                ancestors.append(parent.name);parent=parent.parent
             row = rows[index] if index < len(rows) else {}
             stages.append({'name': stage.name, 'completed': stage.is_completed(),
                            'description': stage.description(), 'index': index,
+                           'depth': len(ancestors), 'parent': ancestors[0] if ancestors else None,
                            'fail_count': stage.fail_count, 'check_pass': stage.check_pass,
                            'skipped': stage.is_skipped(), 'human_check': stage.is_hmcheck_needed(),
                            'time_cost': row.get('time_cost'), 'skills': row.get('skill_list', [])})
         stats = agent.status_info()
         tui = {'mission': task_data.get('mission_name'),
-               'changed_files': [{'mtime': mtime, 'file': filename} for _, mtime, filename in agent.pdb.api_changed_files()[:5]],
+               'changed_files': [{'mtime': mtime, 'file': filename, 'path': str((Path(agent.output_dir)/filename).resolve())} for _, mtime, filename in agent.pdb.api_changed_files()[:5]],
                # TUI is_hot includes recently finished calls; only is_busy means executing.
                'tools': [{'name': tool.name, 'count': tool.call_count,
                           'busy': tool.is_busy() and not all(stage['completed'] for stage in stages)}

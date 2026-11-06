@@ -2,7 +2,7 @@
 workflows:
   - id: plan-goals
     name: 规划并实现验证目标
-    description: 梳理完整验证目标，维护功能覆盖率列表并实现独立覆盖模型，暂不接入测试用例。
+    description: 先完成 Picker 编译与加载验收，再执行 UCAgent 的需求规划、设计理解、测试点定义、边界细化和覆盖模型实现。
     workflow: flowcanvas:plan-goals
     enabled: true
   - id: picker-compile

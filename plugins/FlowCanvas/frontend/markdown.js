@@ -44,7 +44,7 @@ export function markdown(target,text) {
   target.innerHTML=renderMarkup(text);
   for(const link of target.querySelectorAll('a')){
     const reference=localReference(link.getAttribute('href'));
-    if(reference){link.title=reference.path+':'+reference.line;link.onclick=event=>{event.preventDefault();openLocalSource(reference);};}
+    if(reference){link.title=reference.path+(reference.line==null?'':':'+reference.line);link.onclick=event=>{event.preventDefault();openLocalSource(reference);};}
     else {link.target='_blank';link.rel='noopener noreferrer';}
   }
   for(const image of target.querySelectorAll('img')){image.loading='lazy';image.referrerPolicy='no-referrer';}

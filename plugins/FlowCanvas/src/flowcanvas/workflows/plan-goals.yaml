@@ -1,75 +1,331 @@
-template: null
-template_overwrite:
-  PROJECT_ROOT: "{WORKSPACE}"
-  SOURCE_RTL: "{DUT}/{DUT}.v"
-  GOAL_OUTPUT: "{WORKSPACE}/verification/coverage/{DUT}"
-  GOAL_RELATIVE: "verification/coverage/{DUT}"
-guide_doc:
-  enable: true
-  core_copy_policy:
-    default_action: ignore
-    retain: [dut_functions_and_checks.md, dut_function_coverage_def.md]
-skill:
-  use_skill: false
-  general_skill_list: []
-mission:
-  name: 规划并实现验证目标
-  prompt:
-    system: |
-      为当前 FlowCanvas 项目完整规划验证目标并实现独立的 Toffee 功能覆盖模型，暂不接入测试用例。
-      项目：{PROJECT_ROOT}；RTL：{SOURCE_RTL}；模块：{DUT}；所有文档、覆盖代码和独立自检保存到 {GOAL_OUTPUT}。
-      先调用 verification_targets(operation=guide/read)，读取规格、真实 RTL、层级和已有 DUT 接口。规格与实现分开记录；缺失规格标出假设，不能把 RTL 行为自动当作正确行为。
-      复用 Guide_Doc/dut_functions_and_checks.md 和 Guide_Doc/dut_function_coverage_def.md 的定义与代码规范。本流程仅执行覆盖模型定义和独立自检，不执行指南里的测试集成、DUT 采样或覆盖率发布。
-      FG/FC/CK 对应界面 group/point/testpoint。先 begin_create 占位，按父子顺序更新名称、说明；实现后 inspect/bind，finish_create。同一目标始终更新原 ID，不重复导入，不直接修改 .flowcanvas 管理文件。
-      用 target-map.json 保存“完整标签路径:目标ID”的映射，包含 FG、FG/FC、FG/FC/CK 全部层级；已有目标应先核对并复用。
-      每个目标提供可定位的独立源码节点，例如组工厂函数、功能点注册函数、检查点谓词函数，按 coverage 或 definition 角色绑定，禁止把所有目标都绑定到同一个总入口。
-      coverage.py 沿用 get_coverage_groups(dut) -> list[CovGroup] 接口，按指南使用 DUT 引用。说明采样条件、时机、信号和后续调用方式；涉及历史状态时提供明确的状态维护接口。
-      不修改 RTL、测试用例、fixture 或运行入口，不运行 DUT 仿真。selftest.py 只用人工构造的信号对象验证命中与不命中、边界和状态逻辑，不向项目提交覆盖率命中。
-      使用 CurrentTips 查看阶段要求，SetCurrentStageJournal 记录进展，Complete 验收推进。最后核对列表、文档、源码一致，说明尚未接入测试，Exit 退出。
-    tips:
-      always: []
-      random: []
 tools:
-  selected_tools: [ReadTextFile, EditTextFile, CurrentTips, Status, SetCurrentStageJournal, Check, Complete, Exit]
-write_dirs: ["{OUT}"]
+  ignore_tools: []
+call_time_out: 1900
+template_overwrite:
+  PROJECT_ROOT: '{WORKSPACE}'
+  SOURCE_RTL: '{DUT}/{DUT}.v'
+  DUT_OUTPUT: '{WORKSPACE}/{DUT}'
 stage:
-  - name: understand_requirements_and_design
-    desc: 需求分析与设计理解
+  - name: compile_rtl
+    desc: 编译 RTL
     task:
-      - "阅读规格、RTL、现有目标及接口，将验证范围、风险、假设写入 {GOAL_OUTPUT}/requirements.md，将端口与行为整理为 {GOAL_OUTPUT}/design.md。"
+    - '使用已安装的 Picker，将用户指定的 RTL 编译为 Python DUT 包，供后续 UCAgent 验证使用。
+
+      输入：{SOURCE_RTL}；顶层模块：{DUT}；输出固定为：{DUT_OUTPUT}。
+
+      默认命令：
+
+      picker export "{SOURCE_RTL}" --sname "{DUT}" --sim verilator --rw 1 --lang python
+      --tdir "{PROJECT_ROOT}/verification/" -c -w "{DUT}.fst" -j 4
+
+      一般情况使用默认命令；用户有补充需求或遇到参数问题时，查询 picker export --help 后调整。
+
+      每次运行本工作流默认重新编译；仅当用户明确要求复用已有产物时跳过编译，调用 Complete 时传入 stage_args.reuse_existing=true，仍需通过加载验收并说明本次未编译。
+
+      不修改原始 RTL。重新编译前保留已有 DUT 包及 README.md，不影响其他测试和报告。
+
+      通过工作流的 RunBashCommand 执行并检查日志，timeout 设置为 1800，以便停止工作流时一并终止编译进程。
+
+      成功后用 SetCurrentStageJournal 记录命令和输出，调用 Complete 验收并继续后续阶段。
+
+      验收会实际加载并实例化 DUT。编译成功不代表功能验证通过，后续按当前工作流继续执行。
+
+      '
+    reference_files: []
+    output_files:
+    - '{OUT}/picker-result.json'
+    need_human_check: false
+    need_fail_llm_suggestion: false
+    need_pass_llm_suggestion: false
     checker:
-      - name: requirements
-        clss: flowcanvas.goal_planning.GoalPlanningChecker
-        args: {project_root: "{PROJECT_ROOT}", output_dir: "{GOAL_RELATIVE}", phase: understand}
-  - name: define_functional_targets
-    desc: 定义功能组、功能点和测试点
+    - name: compiled_dut
+      clss: flowcanvas.planning_compile.PlanningPickerChecker
+  - name: requirement_analysis_and_planning
+    desc: "需求分析与验证规划"
     task:
-      - "按 UCAgent 标签规范编写 {GOAL_OUTPUT}/functions_and_checks.md，覆盖完整设计范围。同步通过 verification_targets 登记界面占位，维护 target-map.json。"
+      - "第1步：读取{DUT}/README.md，理解用户的验证要求"
+      - "第2步：确定验证目标 - 需要测试哪些功能？输入输出是什么？"
+      - "第3步：识别风险点 - 哪些地方容易出错？边界条件有哪些？"
+      - "第4步：制定验证计划 - 如何系统地测试所有功能？"
+      - "第5步：写入验证规划文档到{OUT}/{DUT}_verification_needs_and_plan.md，请使用{DOC_GEN_LANG}编写"
+      - "注意：{DUT}中可能有隐藏bug，测试用例失败时不要尝试修复{DUT}的实现，而是分析是否为设计缺陷并进行记录"
+    reference_files:
+      - "{DUT}/README.md"
     checker:
-      - name: structure
-        clss: flowcanvas.goal_planning.GoalPlanningChecker
-        args: {project_root: "{PROJECT_ROOT}", output_dir: "{GOAL_RELATIVE}", phase: define}
-  - name: refine_boundaries_and_mapping
-    desc: 细化边界条件并核对列表
+          - name: markdown_file_check
+            clss: "UnityChipCheckerMarkdownFileFormat"
+            args:
+              markdown_file_list: "{OUT}/{DUT}_verification_needs_and_plan.md"
+              no_line_break: true
+          - name: dut_must_exist_check
+            clss: "flowcanvas.planning_compile.DeferredDutFilesChecker"
+            args:
+              files:
+                - "{DUT}/__init__.py"
+    output_files:
+      - "{OUT}/{DUT}_verification_needs_and_plan.md"
+
+  - name: dut_function_understanding
+    desc: "{DUT}功能理解"
     task:
-      - "逐项补充边界、异常、组合和可观察条件，消除重复，明确需要后续测试断言验证的正确性。核对文档与页面 ID 映射及父子关系。"
+      - "第1步：读取{DUT}/README.md，了解芯片基本信息"
+      - "第2步：读取{DUT}/__init__.py，理解代码接口定义"
+      - "第3步：分析输入输出端口 - 每个端口的作用是什么？"
+      - "第4步：确定芯片类型 - 是时序电路(需要时钟)还是组合电路？"
+      - "第5步：分析{DUT}的功能有哪几大类，大约有多少个功能点？"
+      - "第6步：整理基本信息，写入{OUT}/{DUT}_basic_info.md，请使用{DOC_GEN_LANG}编写"
+      - "目标：为后续阶段提供清晰的芯片基础信息"
+    reference_files:
+      - "{DUT}/README.md"
+      - "{DUT}/__init__.py"
     checker:
-      - name: mapping
-        clss: flowcanvas.goal_planning.GoalPlanningChecker
-        args: {project_root: "{PROJECT_ROOT}", output_dir: "{GOAL_RELATIVE}", phase: refine}
-  - name: implement_coverage_model
-    desc: 实现独立功能覆盖模型
+          - name: markdown_file_check
+            clss: "UnityChipCheckerMarkdownFileFormat"
+            args:
+              markdown_file_list: "{OUT}/{DUT}_basic_info.md"
+              no_line_break: true
+    output_files:
+      - "{OUT}/{DUT}_basic_info.md"
+
+  - name: functional_specification_analysis
+    desc: "功能规格分析与测试点定义"
     task:
-      - "按覆盖率指南实现 {GOAL_OUTPUT}/coverage.py，覆盖所有 FG/FC/CK。为全部目标绑定独立源码节点，完成占位卡片。"
-    checker:
-      - name: implementation
-        clss: flowcanvas.goal_planning.GoalPlanningChecker
-        args: {project_root: "{PROJECT_ROOT}", output_dir: "{GOAL_RELATIVE}", phase: implement}
-  - name: verify_model_and_handoff
-    desc: 独立自检与交付核对
+      - "目标：将芯片功能拆解成可测试的小块，为后续测试做准备"
+      - "第1步：阅读{DUT}/下的所有相关文档，理解芯片完整待验证功能"
+      - "第2步：对待验证功能点按功能模块分组，每组用<FG-名称>标记"
+      - "第3步：每组内定义具体功能点，用<FC-名称>标记"
+      - "第4步：每个功能点设计检测点，用<CK-名称>标记"
+      - "把结果及时写入{OUT}/{DUT}_functions_and_checks.md，请使用{DOC_GEN_LANG}编写"
+      - "写入不依赖Skill脚本：可直接使用文本编辑工具按Guide_Doc/dut_functions_and_checks.md维护FG/FC/CK层级；若可用批量脚本，也只能作为等价的可选写入方式"
+      - "重要："
+      - "   标签格式必须正确，这是后续自动化测试的基础"
+      - "   必须覆盖所有功能点和边界条件"
+      - "   功能点尽可能细化，检测点要具体"
+      - "   检查点需要具有可测性，确保能通过测试用例验证"
+      - "参考Guide_Doc/dut_functions_and_checks.md了解标准格式"
+    skill_list:
+      - "unitytest/functions-and-checks"
+    # skill_list is required by default when Skill support is enabled.
+    # Set `force_use_skill: false` only when this stage's Skills should be optional.
+    reference_files:
+      - "Guide_Doc/dut_functions_and_checks.md"
+      - "{DUT}/*.md"
+      - "{DOC_PATH}/*.md"
+      - "{DUT}/__init__.py"
+      - "{OUT}/{DUT}_basic_info.md"
+      - "{OUT}/{DUT}_verification_needs_and_plan.md"
+    output_files:
+      - "{OUT}/{DUT}_functions_and_checks.md"
+    stage:
+      - name: dut_function_grouping
+        desc: "DUT功能分组与层次划分[{COUNT_FG}]"
+        task:
+          - "基于{DUT}功能，将相关功能归类成组"
+          - "为每组定义<FG-组名>标签，组名要有意义"
+          - "创建文档框架，先完成分组部分"
+          - "例如：加法器可分为<FG-BASIC>基础运算，<FG-OVERFLOW>溢出处理等，栈结构可以有<FG-PUSH>、<FG-POP>、<FG-POP-PUSH>等"
+          - "注意：必须有<FG-API>分组"
+        skill_list:
+          - "unitytest/functions-and-checks"
+        checker:
+          - name: group_structure_check
+            clss: "UnityChipCheckerLabelStructure"
+            args:
+              doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+              leaf_node: "FG"
+      - name: function_point_definition
+        desc: "具体功能点识别与定义[{COUNT_FC}]"
+        task:
+          - "在每个功能分组内，定义具体的功能点"
+          - "用<FC-功能名>标签标记每个功能"
+          - "确保覆盖该组的所有功能"
+          - "例如：基础运算组可包含<FC-ADD>加法，<FC-ZERO>零值处理等"
+          - "重要："
+          - " - 功能点要具体，不能过于笼统"
+          - " - 功能点要可测试，确保能通过测试用例验证"
+          - " - 如果功能点复杂，需要在该分组标记结束后，再次针对每个复杂功能点利用<FG-*>, <FC-*>, <CK-*>进行单独细化"
+        skill_list:
+          - "unitytest/functions-and-checks"
+        checker:
+          - name: function_point_check
+            clss: "UnityChipCheckerLabelStructure"
+            args:
+              doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+              leaf_node: "FC"
+      - name: check_point_design
+        desc: "检测点设计与定义[{COUNT_CK}]"
+        task:
+          - "为每个功能点设计具体的检测点"
+          - "用<CK-检测名>标签标记，如<CK-BASIC>基本功能，<CK-BOUNDARY>边界条件"
+          - "检测点要包含：正常情况、边界条件、异常情况"
+          - "标签独立成行，与标题用空行分隔"
+          - "完成完整的功能分析文档"
+          - "列出的检查点必须具有可测试性，即能通过端口的输入输出进行验证"
+          - "重要："
+          - " - 检查点要具体，不能过于笼统"
+          - " - 检查点要可测试，确保能通过测试用例验证"
+        skill_list:
+          - "unitytest/functions-and-checks"
+        checker:
+          - name: check_point_check
+            clss: "UnityChipCheckerLabelStructure"
+            args:
+              doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+              leaf_node: "CK"
+              data_key: "COVER_GROUP_DOC_CK_LIST"
+        need_human_check: $(HUMAN_CHECK_CK: false) # 验证复杂DUT时建议开启该人工检查
+      - name: functional_line_mapping_gap_analysis
+        desc: "功能规格逐行查漏补缺[{LINE_MAP_PROGRESS}|{COUNT_CK}]"
+        task:
+          - "目标：逐行审查当前批次的目标文档，把每条有功能意义的非空白内容映射到 {OUT}/{DUT}_functions_and_checks.md 中准确的 FG/FC/CK；只有确实不描述 DUT 功能、接口、约束、状态、时序、异常或边界行为的非空白内容才能使用带具体理由的 IGNORE。当前进度：{COMPLETED_LINE_BLOCKS}/{TOTAL_LINE_BLOCKS}；当前行块：{CURRENT_LINE_BLOCKS}"
+          - "输入边界：当前规范目标文件为 {CURRENT_LINE_MAP_TARGETS}。物理行范围和原文以当前行块为准；Check/Complete 返回的 current_line_block_contents 或 next_line_block_contents 可提供同一批次的结构化内容。这些 content 只是当前行块，不是全文。Guide_Doc 只提供格式，不是覆盖目标；不得猜测未返回的文件，也不得修改、重排或插空行到目标文档来适配映射"
+          - "执行循环：读取当前行块；仅在标题层级、表头、术语或前置条件不足以判断语义时，用 ReadTextFile 读取 file 指向的上下文；逐条分类并写入 map_file；随后调用 Check。每批通过后只处理返回的下一批，全部通过后再调用 Complete"
+          - "语义责任：Checker 只能确认映射语法、物理行范围、CK 标签存在、IGNORE 有理由以及非空白行已覆盖，不能确认所选 CK 或 IGNORE 理由在语义上正确。必须依据 Spec 和权威接口文档判断；不能把功能行挂到语义相近但错误的 CK，也不能用 IGNORE 掩盖规格缺口"
+          - "CK 修正条件：只有当前行及其必要上下文证明 CK 缺失、含糊、重复、粒度错误或与 Spec 不符时，才修改 {OUT}/{DUT}_functions_and_checks.md；按可独立激励、观测和判定的行为拆分，并明确触发条件、输入/边界、接口或信号、状态/时序及预期结果。单纯的映射语法、路径或理由错误只修复诊断指定的映射项，不要无关地重写 CK"
+          - "引用迁移：新增、重命名、拆分或删除 CK 后，必须同步更新 {OUT}/line_map/ 中已有映射；若工作区已有覆盖率、测试用例或 Bug 证据引用该 CK，也要同步迁移。不能留下旧 CK、不存在的标签或用删除标签掩盖仍需验证的行为"
+          - "映射格式：严格遵循 Guide_Doc/dut_line_func_map.md，只累计更新当前行块返回的唯一 map_file；每个区间使用包含端点的 start-end，源位置显示为 path:10-10 时，映射项区间写作 10-10，不能只写 10；区间不得跨越返回的行块边界。空白行无需映射；同一行确有多个独立行为时可映射到多个准确 CK；不得使用 MISSMT，也不得创建带行号后缀的映射文件"
+          - "失败处理：先读取顶部 failure_summary 的 error_code、artifact/location、observed、expected 和 next_action，按 next_action 修复该确定问题后再调用 Check，不得在文件未变化时反复 Check/Complete。LINE_MAP_UNCOVERED_LINES 时使用 uncovered_blocks 和 uncovered_content 补齐全部未覆盖原文；若需要跨行块语义再读取源文件"
+          - "进度失效：若诊断说明目标内容变化或已完成行块过期，重新读取受影响的当前源文档并按新行块审查；不得平移旧行号、修改目标文档或伪造进度。"
+        skill_list:
+          - "unitytest/functions-and-checks"
+        reference_files:
+          - "Guide_Doc/dut_functions_and_checks.md"
+          - "Guide_Doc/dut_line_func_map.md"
+          - "{OUT}/{DUT}_functions_and_checks.md"
+        output_files:
+          - "{OUT}/{DUT}_functions_and_checks.md"
+          - "{OUT}/line_map/*_line_func_map.txt"
+        checker:
+          - name: functional_line_mapping_batch_check
+            clss: "UnityChipBatchCheckerFileLineMap"
+            args:
+              name: "functional_line_mapping"
+              file_list:
+                - "{DUT}/*.md"
+                - "{DOC_PATH}/*.md"
+                - "{OUT}/{DUT}_basic_info.md"
+                - "{OUT}/{DUT}_verification_needs_and_plan.md"
+              func_check_file: "{OUT}/{DUT}_functions_and_checks.md"
+              map_location: "{OUT}/line_map"
+              map_suffix: "_line_func_map.txt"
+              batch_size: $(FUNCTION_LINE_MAP_BATCH_SIZE: 1)
+              max_block_lines: 100
+              max_example_lines: 20
+              ignore_blank_lines: true
+              must_has_no_miss_match: true
+              data_key: "COVER_GROUP_DOC_CK_LIST"
+
+  - name: functional_specification_refine
+    desc: "功能规格/测试点细化与边界条件补充[{COMPLETED_POINTS}/{TOTAL_POINTS}|{COUNT_CK}]"
     task:
-      - "编写 {GOAL_OUTPUT}/selftest.py，使用人工构造输入检查覆盖条件和状态逻辑；在 README.md 记录后续测试接入的 API、采样时机和注意事项。再次 read 核对列表和绑定，不产生真实覆盖命中。"
+      - "目标：对功能规格进行细化，补充边界条件和异常情况"
+      - "第1步：阅读{OUT}/{DUT}_functions_and_checks.md，理解已有功能点和检测点"
+      - "第2步：分批次针对每个功能点，分析粒度是否太粗，是否覆盖了所有边界条件和异常情况"
+      - "第3步：细化太粗的功能点/检查点，补充遗漏的边界条件和异常情况，更新文档{OUT}/{DUT}_functions_and_checks.md"
+      - "第4步：确保每个功能点都有对应的检测点，并且检测点具有可测试性"
+      - "第5步：每完成当前批次中的一部分或全部原始CK细化后，调用Check(stage_args={\"refined\":{...}})记录这些原始CK已完成复核与细化"
+      - "第6步：所有批次都通过Check后，调用Complete完成阶段；如果最后一批尚未Check，也可以直接调用Complete(stage_args={\"refined\":{...}})"
+      - "注意："
+      - "  - 细化过程中，不仅仅需要增加文字描述，还需要增加新的功能点（FC）或者检测点（CK）来覆盖新增的边界条件和异常等情况"
+      - "  - 所有功能点、检查点等不要笼统，不要过于粗略，需要尽量细化"
+      - "  - 在完善过程中，不要丢失已有的功能点、检测点、状态、边界条件等"
+      - "  - Check/Complete只有一个阶段自定义参数stage_args；优先传入真实JSON对象，不要传递顶层refined/generated/bug_list。当前阶段约定stage_args中的refined为CK映射：stage_args={\"refined\":{CK_KEY_1:Value1, CK_KEY_2:Value2, ...}}；如果调用端无法正确传递嵌套对象，stage_args可以改为内容为完整JSON对象的字符串"
+      - "  - stage_args.refined中的CK_KEY必须来自当前批次待分析功能点（见下方{LIST_CURRENT_POINTS}），不能传入其他批次的CK，也不能传入细化后新增/拆分出的新CK"
+      - "  - stage_args.refined的Value为该原始CK的细化说明；只要某个原始CK出现在stage_args.refined中，就表示该原始CK已经完成复核与细化"
+      - "  - 如果某个原始CK被拆分为多个更细的新CK，请在文档中新增这些新CK，并在stage_args.refined中使用原始CK作为key说明拆分情况"
+      - "  - 示例工具参数：Check(stage_args={\"refined\":{\"FG-A/FC-A-1/CK-A-1\":\"已补充边界条件，并拆分为CK-A-1-BOUND和CK-A-1-ERR\", \"FG-B/FC-B-2/CK-B-2\":\"粒度已足够，无需拆分，但补充了异常输入说明\"}})"
+      - "  - 字符串fallback示例：Check(stage_args=\"{\\\"refined\\\":{\\\"FG-A/FC-A-1/CK-A-1\\\":\\\"已补充边界条件\\\"}}\")；字符串内容必须是完整合法JSON对象"
+      - "  - 最后一批示例工具参数：Complete(stage_args={\"refined\":{\"FG-C/FC-C-3/CK-C-3\":\"已补充组合场景和预期结果\"}})；如果Check已经提示全部CK完成，则直接调用Complete()即可"
+      - "  - 对于需要进行组合测试的功能点，确保在文档中明确标注组合条件和预期结果，每种组合情况都要有对应的检测点"
+      - "  - 你需要按Spec文档中定义的功能点和检测点进行细化，确保覆盖所有边界条件和异常情况"
+      - "当前批次待分析功能点（stage_args.refined的key只能从这里选择）": "{LIST_CURRENT_POINTS}"
+      - "当前分析进度": "{COMPLETED_POINTS}/{TOTAL_POINTS}"
+    output_files:
+      - "{OUT}/{DUT}_functions_and_checks.md"
+    reference_files:
+      - "{OUT}/{DUT}_functions_and_checks.md"
+      - "{OUT}/{DUT}_basic_info.md"
     checker:
-      - name: handoff
-        clss: flowcanvas.goal_planning.GoalPlanningChecker
-        args: {project_root: "{PROJECT_ROOT}", output_dir: "{GOAL_RELATIVE}", phase: verify}
+      - name: functions_and_checks_refine_check
+        clss: "UnityChipCheckerLabelStructureRefine"
+        args:
+          doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+          leaf_node: "CK"
+          data_key: "COVER_GROUP_DOC_CK_LIST"
+
+  - name: coverage_model_implementation
+    desc: "功能覆盖率模型实现"
+    task:
+      - "目标：创建覆盖率统计系统，跟踪哪些功能已测试"
+      - "第1步：读取功能分析文档{OUT}/{DUT}_functions_and_checks.md"
+      - "第2步：为每个功能分组<FG-*>创建CovGroup覆盖组"
+      - "第3步：为每个功能点<FC-*>添加watch_point监测点"
+      - "第4步：为每个检测点<CK-*>实现检查函数(尽可能的用lambda函数)"
+      - "第5步：实现get_coverage_groups(dut)主函数"
+      - "参考Guide_Doc/dut_function_coverage_def.md了解实现方法"
+      - "需要将结果及时写入{OUT}/tests/{DUT}_function_coverage_def.py，请使用{DOC_GEN_LANG}编写注释"
+      - "关键：检查函数要使用dut对象引用，不要用值(如dut而不是dut.a.value)"
+    stage:
+      - name: coverage_group_creation
+        desc: "功能覆盖组创建"
+        task:
+          - "为每个功能分组<FG-*>创建对应的CovGroup对象"
+          - "实现get_coverage_groups(dut)基础框架"
+          - "确保覆盖组可以正常创建和访问"
+        checker:
+          - name: coverage_group_check
+            clss: "UnityChipCheckerCoverageGroup"
+            args:
+              test_dir: "{OUT}/tests"
+              cov_file: "{OUT}/tests/{DUT}_function_coverage_def.py"
+              doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+              check_types: "FG"
+        reference_files:
+          - "Guide_Doc/dut_function_coverage_def.md"
+
+      - name: coverage_point_implementation
+        desc: "覆盖率检查点实现"
+        task:
+          - "为每个功能点添加watch_point和检查函数"
+          - "用lambda函数实现检查逻辑，传递引用参数(dut对象)"
+          - "如果检查函数过于复杂，lambda函数可以用普通函数替代"
+          - "如果多个检查函数有公共检查部分，也可以把公共部分实现为普通函数"
+          - "完成完整的覆盖率定义，代码需要有注释，可读性强"
+        checker:
+          - name: coverage_implementation_check
+            clss: "UnityChipCheckerCoverageGroup"
+            args:
+              test_dir: "{OUT}/tests"
+              cov_file: "{OUT}/tests/{DUT}_function_coverage_def.py"
+              doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+              check_types: ["FC","CK"]
+        stage:
+          - name: implemente_function_checks_in_batch
+            desc: "分批功能点检查函数实现[{COMPLETED_POINTS}/{TOTAL_POINTS}]"
+            task:
+              - "第1步：理解功能点<FC-*>和检测点<CK-*>的预期行为"
+              - "第2步：需要为以下检查点实现检查函数": "{LIST_CURRENT_POINTS}"
+              - "第3步：使用lambda函数实现检查逻辑，传递引用参数(dut对象)"
+              - "第4步：如果检查函数过于复杂，lambda函数可以用普通函数替代"
+              - "第5步：如果多个检查函数有公共检查部分，也可以把公共部分实现为普通函数"
+              - "第7步：如果实现过程中发现需要增加或者删除检查点，可以更新文档{OUT}/{DUT}_functions_and_checks.md"
+              - "第8步：完成上述目标检查函数后，使用Check工具进行阶段检查"
+              - "完成进度：{COMPLETED_POINTS}/{TOTAL_POINTS}个检查点已完成"
+              - "注意："
+              - " - 确保代码有注释，便于理解和维护"
+              - " - 检查函数要使用dut对象引用，不要用值(如dut而不是dut.a.value)"
+              - " - 如果没有明确要求，请基于DUT的引脚进行检查，一定不要尝试获取DUT的内部信号状态（内部状态或者功能不属于DUT需要验证的功能点）"
+              - "当前批次测点与对应说明节选如下": "{LIST_CK_FILE_BLOCKS}"
+            checker:
+            - name: batch_coverage_points_implementation_check
+              clss: "UnityChipCheckerCoverageGroupBatchImplementation"
+              args:
+                test_dir: "{OUT}/tests"
+                cov_file: "{OUT}/tests/{DUT}_function_coverage_def.py"
+                doc_file: "{OUT}/{DUT}_functions_and_checks.md"
+                batch_size: 20
+                data_key: "COVER_GROUP_DOC_CK_LIST"
+            reference_files:
+              - "Guide_Doc/dut_function_coverage_def.md"
+    output_files:
+      - "{OUT}/tests/{DUT}_function_coverage_def.py"

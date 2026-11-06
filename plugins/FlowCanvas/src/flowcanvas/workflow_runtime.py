@@ -51,10 +51,16 @@ class WorkflowRuntime:
         now = time.monotonic()
         for card in self.session.get('workflow_runs', []):
             stages = card.setdefault('stage_running_seconds', {})
-            previous_stage = self.stage_clocks.pop(card['id'], None)
-            if previous_stage:
-                name, timestamp = previous_stage
+            previous_stages = self.stage_clocks.pop(card['id'], {})
+            for name, timestamp in previous_stages.items():
                 stages[name] = stages.get(name, 0) + max(0, now - timestamp)
+            by_name = {stage['name']: stage for stage in card.get('stages', [])}
+            active_names = set()
+            current = by_name.get(card.get('current_stage'))
+            while current and current['name'] not in active_names:
+                active_names.add(current['name'])
+                current = by_name.get(current.get('parent'))
+            clocks = {}
             for stage in card.get('stages', []):
                 if stage.get('kind') == 'startup':
                     continue
@@ -63,8 +69,11 @@ class WorkflowRuntime:
                     parts = re.findall(r'(\d+(?:\.\d+)?)\s*(h|m|s|秒)', str(stage.get('time_cost') or ''))
                     stages[name] = sum(float(value) * {'h': 3600, 'm': 60, 's': 1, '秒': 1}[unit] for value, unit in parts)
                 stage['time_cost'] = f"{int(stages[name])}s"
-                if name == card.get('current_stage') and not stage.get('completed') and card.get('status') == 'running':
-                    self.stage_clocks[card['id']] = (name, now)
+                stage['in_progress'] = name in active_names and not stage.get('completed') and not stage.get('skipped')
+                if stage['in_progress'] and card.get('status') == 'running':
+                    clocks[name] = now
+            if clocks:
+                self.stage_clocks[card['id']] = clocks
             previous = self.running_clocks.pop(card['id'], None)
             if previous is not None:
                 card['running_seconds'] = card.get('running_seconds', 0) + max(0, now - previous)
@@ -211,21 +220,13 @@ class WorkflowRuntime:
                 shutil.copyfile(spec['rtl_file'], root / 'workspace' / relative)
                 config = next(w.config_file for w in get_plugin().workflows if w.name == identity)
                 request = {'dut': dut, 'rtl': str(relative), 'config': str(config)}
-                if identity == 'picker-compile':
+                if identity in {'picker-compile', 'plan-goals'}:
                     output = project_root / 'verification' / dut
                     if not output.resolve().is_relative_to(project_root):
                         raise ValueError('DUT output must remain inside the bound project')
                     request.update(project_root=str(project_root), source_file=spec['rtl_file'], dut_output=str(output),
                                    source_hash=hashlib.sha256(Path(spec['rtl_file']).read_bytes()).hexdigest(),
                                    build_started_at=time.time())
-                if identity == 'plan-goals':
-                    goal_output = project_root / 'verification' / 'coverage' / dut
-                    if not goal_output.resolve().is_relative_to(project_root):
-                        raise ValueError('Coverage output must remain inside the project')
-                    from .goal_planning import integration_snapshot
-                    request.update(project_root=str(project_root), source_file=spec['rtl_file'],
-                                   goal_output=str(goal_output),
-                                   goal_baseline=integration_snapshot(project_root, goal_output, spec['rtl_file']))
                 if report:
                     request.update(project_root=str(project_root), report_file=str(report))
                 (root / 'request.json').write_text(json.dumps(request))

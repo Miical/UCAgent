@@ -34,6 +34,35 @@ class WorkflowClockTests(unittest.TestCase):
         self.assertEqual(card['stages'][1]['time_cost'], '2s')
 
 
+    def test_nested_parent_clocks_and_pause(self):
+        """Ancestors run with their active descendant and stop accumulating while paused."""
+        rows=[{'name':'leaf','parent':'middle','time_cost':'0s'},
+              {'name':'sibling','parent':'middle','time_cost':'0s'},
+              {'name':'middle','parent':'parent','time_cost':'0s'},
+              {'name':'parent','parent':None,'time_cost':'0s'}]
+        card={'id':'run','status':'running','current_stage':'leaf','stages':rows}
+        runtime=WorkflowRuntime(SimpleNamespace(),{'workflow_runs':[card]})
+        def tick(now):
+            with patch('flowcanvas.workflow_runtime.time.monotonic',return_value=now):
+                runtime.update_running_time()
+        tick(10);tick(15)
+        self.assertEqual([r['time_cost'] for r in rows],['5s','0s','5s','5s'])
+        self.assertEqual([r['in_progress'] for r in rows],[True,False,True,True])
+        self.assertFalse(any(r.get('completed') for r in rows))
+        card['status']='paused';tick(16);tick(100)
+        self.assertEqual(rows[-1]['time_cost'],'6s')
+        card['status']='running';rows[0]['completed']=True
+        card['current_stage']='sibling';tick(101);tick(104)
+        self.assertEqual([r['time_cost'] for r in rows],['6s','3s','9s','9s'])
+        rows[1]['completed']=True;card['current_stage']='middle';tick(105);tick(107)
+        self.assertEqual(rows[2]['time_cost'],'12s')
+        self.assertEqual(rows[-1]['time_cost'],'12s')
+        rows[2]['completed']=True;card['current_stage']='parent';tick(108);tick(110)
+        self.assertFalse(rows[2]['in_progress'])
+        self.assertTrue(rows[-1]['in_progress'])
+        self.assertEqual(rows[-1]['time_cost'],'15s')
+
+
 class WorkflowProcessTests(unittest.IsolatedAsyncioTestCase):
     async def test_pause_kills_child_process_group(self):
         """A compiler ignoring TERM must not survive pausing its MCP host."""

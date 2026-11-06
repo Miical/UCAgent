@@ -346,7 +346,7 @@ body.resizing .workspace{transition:none;}
 body.resizing .workspace{transition:none;}
 @media(prefers-reduced-motion:reduce){.workspace.project-motion,.project-motion .project-pane,.project-motion .splitter[data-split="0"]{transition:none;}}
 
-.workflow-menu-item{padding:10px;border-radius:9px;}.workflow-menu-name{font-size:12px;font-weight:550;}.workflow-menu-item p{font-size:11px;line-height:1.5;color:var(--text-dim);margin:5px 0;}.workflow-menu-item small{font-size:10px;color:var(--text-dim);opacity:.8;}
+.workflow-menu-item{padding:10px;border-radius:9px;}.workflow-menu-name{font-size:12px;font-weight:550;white-space:normal;overflow-wrap:anywhere;}.workflow-menu-item p{font-size:11px;line-height:1.5;color:var(--text-dim);margin:5px 0;}.workflow-menu-item small{font-size:10px;color:var(--text-dim);opacity:.8;}
 
 /* Workflow chips intentionally carry no execution behavior until workflow handoff is connected. */
 .composer-left{flex-wrap:wrap;flex-shrink:1;}
@@ -448,9 +448,9 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 #workflow-popover[popover]:popover-open{display:block;}
 
 /* Attach is an explicit hover action; the descriptive row itself is inert. */
-.workflow-choice{position:relative;align-items:flex-start;overflow:hidden;cursor:default;}
+.workflow-choice{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;flex-shrink:0;height:auto;overflow:hidden;cursor:default;}
 .workflow-choice-info{flex:1;min-width:0;}
-.workflow-choice-info p{max-height:44px;overflow:hidden;line-height:1.6;}
+.workflow-choice-info p{max-height:none;overflow:visible;white-space:normal;overflow-wrap:anywhere;line-height:1.6;}
 .workflow-choice-footer{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:flex-start;padding:16px 12px 7px;background:linear-gradient(to bottom,transparent,var(--surface2) 58%);opacity:0;transform:translateY(5px);pointer-events:none;transition:opacity .18s ease,transform .2s ease;}
 .workflow-choice:hover .workflow-choice-footer,.workflow-choice:focus-within .workflow-choice-footer{opacity:1;transform:translateY(0);pointer-events:auto;}
 .workflow-attach-action{display:flex;align-items:center;gap:5px;border:0;border-radius:5px;padding:2px 0;background:transparent;color:var(--muted);font:inherit;font-size:10px;cursor:pointer;}
@@ -1526,7 +1526,7 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .composer .speed-note{margin:5px 8px 3px;font-size:9px;line-height:1.5;}
 .composer .workflow-menu-item{padding:7px 8px;border-radius:6px;}
 .composer .workflow-menu-name{font-size:11px;}
-.composer .workflow-menu-item p{margin:3px 0;font-size:10px;line-height:1.45;}
+.composer .workflow-menu-item p{margin:3px 0 0;font-size:10px;line-height:1.45;}
 .composer .workflow-menu-item small,.composer .workflow-attach-action{font-size:9px;}
 .composer .workflow-direct{width:26px;height:26px;}
 .composer .workflow-direct svg{width:21px;height:21px;}
@@ -1548,3 +1548,68 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 @media(prefers-reduced-motion:reduce){
   .run-capsule[data-status="running"]>.run-compact .run-ring{animation:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 9%,transparent)}
 }
+
+/* Stage hierarchy is independent of completion and execution state. */
+.run-timeline li{margin-left:calc(var(--stage-depth,0)*12px)}
+.workflow-stage-info{margin-left:calc(var(--stage-depth,0)*12px)}
+.run-timeline li[data-depth="1"]{--stage-level-color:#8c73c9}
+.run-timeline li[data-depth="2"]{--stage-level-color:#459b9a}
+.run-timeline li[data-depth="1"] .run-stage-dot,.run-timeline li[data-depth="2"] .run-stage-dot{border-color:var(--stage-level-color)}
+.run-timeline li.done[data-depth="1"] .run-stage-dot,.run-timeline li.done[data-depth="2"] .run-stage-dot{background:var(--stage-level-color)}
+.run-timeline li.pending[data-depth="1"] .run-stage-dot,.run-timeline li.pending[data-depth="2"] .run-stage-dot{background:color-mix(in srgb,var(--stage-level-color) 12%,var(--surface))}
+.workflow-stage-info[data-depth="1"]>summary::before,.workflow-stage-info[data-depth="2"]>summary::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;background:#8c73c9}
+.workflow-stage-info[data-depth="2"]>summary::before{background:#459b9a}
+.run-timeline li[data-depth="1"] strong{font-size:10px}
+.run-timeline li[data-depth="2"] strong{font-size:9px}
+.run-timeline li[data-depth="1"] .run-stage-duration,.run-timeline li[data-depth="2"] .run-stage-duration{font-size:9px}
+.workflow-stage-info[data-depth="1"]>summary{font-size:10px}
+.workflow-stage-info[data-depth="2"]>summary{font-size:9px}
+.run-stage-dot{position:relative;z-index:1}
+
+
+
+
+/* One rounded child branch; dashed parent guides continue behind the subtree. */
+.run-timeline li:not(:last-child)::after{
+  content:"";position:absolute;left:5.5px;top:16px;bottom:0;
+  width:1px;height:auto;border:0;border-radius:0;
+  background:color-mix(in srgb,var(--stage-level-color,var(--text-dim)) 26%,transparent);
+}
+.run-timeline li:last-child::after{content:none}
+.run-timeline li[data-parent-link="true"]:not(:last-child)::after{
+  background:repeating-linear-gradient(to bottom,
+    color-mix(in srgb,var(--text-dim) 18%,transparent) 0 3px,transparent 3px 7px);
+}
+.run-timeline li[data-depth="1"]::before,.run-timeline li[data-depth="2"]::before{
+  content:"";position:absolute;left:calc(5.5px - var(--stage-depth,0)*12px);
+  top:0;bottom:0;width:calc(var(--stage-depth,0)*12px);
+  background:repeating-linear-gradient(to right,
+    color-mix(in srgb,var(--text-dim) 18%,transparent) 0 1px,transparent 1px 12px);
+  mask-image:repeating-linear-gradient(to bottom,#000 0 3px,transparent 3px 7px);
+}
+.run-stage-branch{
+  position:absolute;pointer-events:none;z-index:0;
+  left:calc(5.5px - var(--branch-width));top:-5px;
+  width:var(--branch-width);height:13px;box-sizing:border-box;
+  border-left:1px solid color-mix(in srgb,var(--stage-level-color,var(--text-dim)) 32%,transparent);
+  border-bottom:1px solid color-mix(in srgb,var(--stage-level-color,var(--text-dim)) 32%,transparent);
+  border-bottom-left-radius:8px;
+}
+
+.run-timeline li[data-subtree-end="true"]::after{content:none}
+
+.workflow-file-link{border:0;background:none;padding:0;color:var(--text-dim);font:inherit;text-align:left;overflow-wrap:anywhere;cursor:pointer}
+.workflow-file-link:hover{color:var(--accent);text-decoration:underline}
+.workflow-file-link:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:3px}
+
+/* Nested dots scale with their labels while keeping the guide's center aligned. */
+.run-timeline li[data-depth="1"] .run-stage-dot{
+  width:11px;height:11px;margin-left:.5px;margin-right:.5px;margin-top:2px;font-size:7.5px;
+}
+.run-timeline li[data-depth="2"] .run-stage-dot{
+  width:10px;height:10px;margin-left:1px;margin-right:1px;margin-top:2px;font-size:7px;
+}
+.run-timeline li[data-depth="1"]:not(:last-child)::after{top:15px}
+.run-timeline li[data-depth="2"]:not(:last-child)::after{top:14px}
+.run-timeline li[data-depth="1"] .run-stage-branch{height:12.5px}
+.run-timeline li[data-depth="2"] .run-stage-branch{height:12px}

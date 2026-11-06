@@ -283,14 +283,10 @@ Picker 工作流每次默认重新编译。只有用户明确要求复用时，A
 
 ### 规划并实现验证目标
 
-plan-goals 工作流由功能覆盖率空列表的“规划验证目标”AI 卡片或工作流菜单启动。
-五个阶段为需求/设计理解、FG/FC/CK 定义、边界细化与列表核对、覆盖模型实现、独立自检。
-复用 UCAgent 的 dut_functions_and_checks.md、dut_function_coverage_def.md，
-以及 Markdown、标签结构和 Toffee 覆盖组检查器，不运行默认工作流的 fixture/DUT 回归验收。
+plan-goals 首先执行一级“编译 RTL”阶段，与后面的原始规划阶段并列，
+复用编译工作流的命令和验收器，将通过验收的 DUT 包安装到本次工作目录的模块目录。
+随后执行默认流程第 1、2、3、4、7 阶段，保留原始任务、参考文件、子阶段和覆盖检查器。
+原始 DUT 文件存在检查在进入需求规划时执行，使前置编译能先创建该文件。
 
-项目 verification/coverage/<模块名>/ 保存 requirements.md、design.md、
-functions_and_checks.md、coverage.py、target-map.json、selftest.py 和接入说明 README.md。
-target-map.json 将完整 FG、FG/FC、FG/FC/CK 路径映射到 FlowCanvas 的稳定目标 ID。
-创建先登记占位，再通过目标工具更新、绑定独立源码节点并 finish_create；已有目标复用原 ID。
-验收核对整个项目列表、文档、代码和有效绑定，实际执行人工数据自检，不提交覆盖率命中。
-RTL、测试入口及测试用例运行配置保持不变；后续编写测试时再调用 get_coverage_groups(dut)。
+工作流详情与胶囊按真实阶段父子关系缩进，并用不同颜色圆点区分子阶段层级。
+原始需求阶段仍要求模块 README.md；缺少需求资料时需要补充，不伪造规格。
