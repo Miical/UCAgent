@@ -1620,3 +1620,48 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .run-timeline .run-terminal .run-stage-dot{position:relative;width:10px;height:10px;margin:0 1px;color:inherit;border-color:currentColor;background:var(--surface);box-shadow:none}
 .run-timeline .run-terminal .run-stage-dot::before{content:"";width:4px;height:4px;border-radius:50%;background:currentColor}
 .run-timeline .run-terminal.done{color:#43a17a}
+
+
+/* Keep independent coverage metrics compact. */
+.target-coverage-overview{grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:8px 10px}
+.coverage-overview-item{align-items:center;gap:8px;padding:6px 4px}
+.coverage-overview-ring{width:46px;height:46px}
+.coverage-overview-text{gap:3px;padding-top:0}
+.coverage-overview-label{font-size:11px}
+.coverage-overview-extra{font-size:9px}
+[data-metric="toggle"] .coverage-ring-fill{stroke:#8b70c9}
+.coverage-type-file{display:flex;justify-content:space-between;gap:16px;padding:6px 0;font-size:11px;border-top:1px solid var(--border)}
+.coverage-type-file>span:first-child{overflow-wrap:anywhere;min-width:0}
+.coverage-type-file>span:last-child{white-space:nowrap;color:var(--text-dim);font-variant-numeric:tabular-nums}
+@container(max-width:340px){.coverage-overview-item{flex-direction:row;text-align:left;justify-content:flex-start}.coverage-overview-ring{width:42px;height:42px}}
+
+/* Coverage reads as a single compact list, with aligned values and quiet bars. */
+.target-coverage-overview{display:flex;flex-direction:column;gap:0;padding:6px 0 10px}
+.coverage-overview-actions{min-height:24px;margin-bottom:3px}
+.coverage-overview-item{display:grid;grid-template-columns:88px minmax(32px,1fr) 52px 94px;align-items:center;gap:12px;min-height:30px;padding:4px 8px;border-radius:5px;text-align:left}
+.coverage-overview-item+.coverage-overview-item{border-top:1px solid color-mix(in srgb,var(--border) 45%,transparent)}
+.coverage-overview-item:hover{background:color-mix(in srgb,var(--accent) 4%,var(--surface))}
+.coverage-metric-label{font-size:11px;font-weight:500;white-space:nowrap}
+.coverage-metric-track{height:3px;border-radius:3px;overflow:hidden;background:color-mix(in srgb,var(--text) 7%,var(--surface))}
+.coverage-metric-fill{display:block;height:100%;width:0;border-radius:inherit;background:color-mix(in srgb,var(--accent) 65%,var(--text-dim));transition:width .3s ease}
+.coverage-metric-percent{font-size:11px;font-weight:550;text-align:right;font-variant-numeric:tabular-nums}
+.coverage-metric-count{font-size:10px;text-align:right;white-space:nowrap;color:var(--text-dim);font-variant-numeric:tabular-nums}
+.coverage-overview-item[data-available="false"] .coverage-metric-percent{color:var(--text-dim);font-weight:400}
+@container(max-width:340px){.coverage-overview-item{grid-template-columns:78px minmax(16px,1fr) 46px 76px;gap:7px;padding:4px 2px}}
+@media(prefers-reduced-motion:reduce){.coverage-metric-fill{transition:none}}
+
+/* Small rings form an overview strip; all details share the tabbed panel below. */
+.target-coverage-overview{display:grid;grid-template-columns:repeat(auto-fit,minmax(74px,1fr));gap:4px 2px;padding:3px 0 7px}
+.coverage-overview-actions{grid-column:1/-1;margin:0;min-height:20px}
+.coverage-overview-item{display:flex;flex-direction:column;justify-content:flex-start;align-items:center;gap:3px;min-height:0;padding:3px 2px;text-align:center;border:0!important}
+.coverage-overview-ring{width:36px;height:36px}
+.coverage-metric-percent{font-size:9px;text-align:center}
+.coverage-metric-label{font-size:9.5px;font-weight:500;line-height:1.3}
+.coverage-metric-count{font-size:8.5px;line-height:1.3;text-align:center}
+.target-coverage-tabs{gap:11px;overflow-x:auto;scrollbar-width:thin}
+.target-coverage-tabs button{flex-shrink:0;font-size:9.5px;padding:6px 0 5px;white-space:nowrap}
+@container(max-width:340px){.coverage-overview-item{flex-direction:column;text-align:center;align-items:center;gap:3px}.coverage-overview-ring{width:34px;height:34px}}
+
+.coverage-overview-item[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 5%,var(--surface))}
+
+.markdown-image-link{display:block;max-width:100%}.markdown-image-link img{display:block;max-width:100%;max-height:480px;object-fit:contain;margin:8px 0;border-radius:6px}.local-image-preview{display:block;max-width:100%;max-height:75vh;object-fit:contain;margin:auto}

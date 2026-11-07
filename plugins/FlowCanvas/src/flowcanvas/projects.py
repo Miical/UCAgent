@@ -5,7 +5,7 @@ import time
 import uuid
 import subprocess
 import sys
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 
 
@@ -78,7 +78,7 @@ def routes(projects, sessions=None, workflow_root=None):
         return projects.state
 
     @router.get('/source')
-    def source(path: str):
+    def source(path: str, media: bool = False):
         """Read a text file within an opened project, resolving symlinks before access."""
         roots = [Path(p['path']).resolve() for p in projects.state.get('recent', [])]
         if sessions is not None and workflow_root is not None:
@@ -104,6 +104,27 @@ def routes(projects, sessions=None, workflow_root=None):
                 raw = stream.read(2 * 1024 * 1024 + 1)
             if len(raw) > 2 * 1024 * 1024:
                 raise HTTPException(413, '文件超过 2 MB，暂不支持预览')
+            if media:
+                suffix=candidate.suffix.lower()
+                types={'.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg',
+                       '.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp'}
+                if suffix not in types:
+                    raise HTTPException(415,'不支持的图片格式')
+                if suffix=='.svg':
+                    import xml.etree.ElementTree as ET
+                    try:
+                        if b'<!DOCTYPE' in raw.upper() or ET.fromstring(raw).tag!='{http://www.w3.org/2000/svg}svg':
+                            raise ValueError()
+                    except (ET.ParseError,ValueError):
+                        raise HTTPException(415,'无效的 SVG 图片') from None
+                elif not (raw.startswith(b'\x89PNG\r\n\x1a\n') if suffix=='.png' else
+                          raw.startswith(b'\xff\xd8\xff') if suffix in {'.jpg','.jpeg'} else
+                          raw.startswith((b'GIF87a',b'GIF89a')) if suffix=='.gif' else
+                          raw.startswith(b'RIFF') and raw[8:12]==b'WEBP'):
+                    raise HTTPException(415,'图片内容与格式不符')
+                return Response(raw,media_type=types[suffix],headers={
+                    'X-Content-Type-Options':'nosniff',
+                    'Content-Security-Policy':"sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:"})
             if b'\x00' in raw:
                 raise HTTPException(415, '此文件不是可预览的文本文件')
             return {'file': str(candidate), 'content': raw.decode('utf-8')}

@@ -29,8 +29,10 @@ class RunLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 root = Path(directory); project = root / 'project'; project.mkdir()
                 source = project / 'test_probe.py'
                 source.write_text('"""Deterministic local test fixture, not hardware coverage."""\n'
+                    'import os\n'
                     'def test_probe():\n'
                     '    """Execute an ordinary assertion and emit the test completion marker."""\n'
+                    '    assert os.path.isdir(os.environ["FLOWCANVAS_RUN_DIR"])\n'
                     '    assert 1 + 1 == 2\n'
                     '    print("FC_TEST_EXITED", flush=True)\n'
                     'if __name__ == "__main__":\n'

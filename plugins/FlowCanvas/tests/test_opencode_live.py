@@ -2099,12 +2099,15 @@ else:
                         'attached generate-testcase workflow and complete its actual stages, journals, Complete and Exit. '
                         'Read test_cases(guide/read) and existing tests. Reuse driver.MaskedWord without modifying driver.py '
                         'or test_existing.py. Probe.v is only the workflow input fixture: do not modify it or claim a hardware simulation. '
-                        'In new file test_zero_mask.py implement test_zero_mask_preserves_word: '
+                        'In new file test_Probe_zero_mask.py implement test_zero_mask_preserves_word(env): '
                         'initialize a nonzero word, write a different value with mask=0, and assert the original word remains. '
                         'Register test_cases(create) BEFORE writing code, retain that same ID for update/bind and finish_create. '
                         'Use a concise Chinese title describing the scenario and a concrete description. Do not use import '
                         'to create a duplicate. Preserve the existing runner and case. Do not run tests or simulations, '
-                        'do not delegate, and do not edit other project files. Report the actual new case and unverified items.',
+                        'do not delegate. Follow the native UCAgent import/API/fixture/mark_function conventions. '
+                        'You may add the minimum Probe_api.py, env fixture and actual bound coverage definitions needed '
+                        'for this scene, preserving the existing driver, seed test and RTL. Record target_ids and all new '
+                        'files in summary/testcase_plan.json. Report the actual new case and unverified items.',
                     'task_card': {'title': 'Create test case', 'workflow': 'generate-testcase',
                                   'project': 'Authoring fixture', 'requirements': 'Zero mask must preserve the original word.'}})
                 self.assertEqual(response.status_code, 202, response.text)
@@ -2139,14 +2142,16 @@ else:
                 self.assertNotEqual(created['title'], created['name'])
                 self.assertTrue(created['description'].strip())
                 self.assertEqual(result['reports'][created['id']]['status'], 'bound')
-                self.assertEqual([b['file'] for b in created['bindings']], ['test_zero_mask.py'])
-                tree = ast.parse((project / 'test_zero_mask.py').read_text())
+                self.assertEqual([b['file'] for b in created['bindings']], ['test_Probe_zero_mask.py'])
+                tree = ast.parse((project / 'test_Probe_zero_mask.py').read_text())
                 function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == created['name'])
                 self.assertTrue(any(isinstance(node, ast.Assert) for node in ast.walk(function)))
                 for path, content in original.items(): self.assertEqual(path.read_bytes(), content)
                 self.assertEqual(service.test_runs.list(str(project)), [])
                 self.assertTrue((Path(cards[0]['root']) / 'complete.json').is_file())
-                self.assertTrue((Path(cards[0]['workspace']) / 'summary/testcase_result.md').is_file())
+                plan = json.loads((Path(cards[0]['workspace']) / 'summary/testcase_plan.json').read_text())
+                self.assertEqual(plan['case_id'], created['id'])
+                self.assertTrue(plan['target_ids'])
                 task = next(item['task_run'] for item in owner['items'] if item.get('task_card'))
                 self.assertEqual(task['status'], 'completed')
                 self.assertFalse(owner.get('attachment'), 'Task-only attachment must not remain on the composer')

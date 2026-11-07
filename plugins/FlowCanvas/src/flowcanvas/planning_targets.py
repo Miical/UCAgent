@@ -11,7 +11,7 @@ from .targets import LOCK, Targets
 class PlanningTargetsChecker(Checker):
     """Validate panel identity and hierarchy before native stage acceptance."""
 
-    def __init__(self, doc_file, leaf="CK", bindings=False, cov_file=None, complete_only=False, **kwargs):
+    def __init__(self, doc_file, leaf="CK", bindings=False, cov_file=None, complete_only=False, published_cov_file=None, **kwargs):
         """Select the required panel depth and optional implementation acceptance."""
         super().__init__()
         self.doc_file = doc_file
@@ -19,6 +19,7 @@ class PlanningTargetsChecker(Checker):
         self.bindings = bindings
         self.cov_file = cov_file
         self.complete_only = complete_only
+        self.published_cov_file = published_cov_file
 
     def do_check(self, **kwargs):
         """Reject absent cards or stale bindings; derive the native index from panel data."""
@@ -87,7 +88,7 @@ class PlanningTargetsChecker(Checker):
                         }
                     if self.cov_file:
                         source = Path(self.get_path(self.cov_file))
-                        published = store.file(f"verification/coverage/{request['dut']}/{source.name}")
+                        published = store.file(self.published_cov_file or f"verification/coverage/{request['dut']}/{source.name}")
                         if ast.dump(ast.parse(source.read_text())) != ast.dump(ast.parse(published.read_text())):
                             raise ValueError("Published coverage implementation differs from the native checked source")
                         # An unrelated bound helper cannot stand in for the accepted coverage model.

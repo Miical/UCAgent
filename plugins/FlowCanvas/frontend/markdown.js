@@ -1,6 +1,6 @@
 /** Local Markdown pipeline: CommonMark/GFM-style blocks with escaped, highlighted code. */
 import MarkdownIt from 'markdown-it';
-import {localReference,openLocalSource} from './local-source.js';
+import {localReference,openLocalSource,localImageUrl} from './local-source.js';
 import taskLists from 'markdown-it-task-lists';
 import hljs from 'highlight.js/lib/core';
 import verilog from 'highlight.js/lib/languages/verilog';
@@ -44,10 +44,20 @@ export function markdown(target,text) {
   target.innerHTML=renderMarkup(text);
   for(const link of target.querySelectorAll('a')){
     const reference=localReference(link.getAttribute('href'));
+    if(reference&&localImageUrl(reference)&&!link.querySelector('img')){
+      const image=document.createElement('img');image.src=localImageUrl(reference);image.alt=link.textContent;
+      image.dataset.localSource='true';link.prepend(image);link.classList.add('markdown-image-link');
+    }
     if(reference){link.title=reference.path+(reference.line==null?'':':'+reference.line);link.onclick=event=>{event.preventDefault();openLocalSource(reference);};}
     else {link.target='_blank';link.rel='noopener noreferrer';}
   }
-  for(const image of target.querySelectorAll('img')){image.loading='lazy';image.referrerPolicy='no-referrer';}
+  for(const image of target.querySelectorAll('img')){
+    image.loading='lazy';image.referrerPolicy='no-referrer';
+    if(!image.dataset.localSource){
+      const reference=localReference(image.getAttribute('src')),url=localImageUrl(reference);
+      if(url){image.src=url;image.dataset.localSource='true';image.onclick=()=>openLocalSource(reference);}
+    }
+  }
   for(const table of target.querySelectorAll('table')){
     const wrapper=document.createElement('div');wrapper.className='markdown-table';
     table.before(wrapper);wrapper.append(table);

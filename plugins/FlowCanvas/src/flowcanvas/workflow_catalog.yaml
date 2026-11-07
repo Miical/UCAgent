@@ -12,7 +12,7 @@ workflows:
     enabled: true
   - id: generate-testcase
     name: 新增测试用例
-    description: 分析现有验证环境、编写用例并登记源码绑定
+    description: 复用现有接口，边写用例边补齐所需验证环境，核对覆盖关联并登记源码绑定
     workflow: flowcanvas:generate-testcase
     enabled: true
   - id: rtl-summary
@@ -22,6 +22,6 @@ workflows:
     enabled: true
   - id: default
     name: UCAgent 默认验证流程
-    description: 完整的分阶段芯片验证流程，包含验证规划、环境搭建、测试与覆盖率分析
+    description: 遵循 UCAgent 原始完整验证流程，在面板维护验证目标与测试用例，并验收与最终源码的绑定一致性。需先编译 DUT。
     workflow: flowcanvas:default
     enabled: true

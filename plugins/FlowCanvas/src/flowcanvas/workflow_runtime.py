@@ -187,7 +187,7 @@ class WorkflowRuntime:
                 return {'card': card, 'accepted': True}
             if card is None:
                 project_root = None
-                if identity in {'rtl-summary', 'picker-compile', 'plan-goals'}:
+                if identity in {'rtl-summary', 'picker-compile', 'plan-goals', 'generate-testcase', 'default'}:
                     if not self.session.get('project_root'):
                         raise ValueError('Open a FlowCanvas project before running this RTL workflow')
                     project_root = Path(self.session['project_root']).resolve()
@@ -219,7 +219,7 @@ class WorkflowRuntime:
                 (root / 'workspace' / relative.parent).mkdir(parents=True)
                 shutil.copyfile(spec['rtl_file'], root / 'workspace' / relative)
                 config = next(w.config_file for w in get_plugin().workflows if w.name == identity)
-                request = {'dut': dut, 'rtl': str(relative), 'config': str(config)}
+                request = {'dut': dut, 'rtl': str(relative), 'config': str(config), 'workflow_id': identity}
                 if identity in {'picker-compile', 'plan-goals'}:
                     output = project_root / 'verification' / dut
                     if not output.resolve().is_relative_to(project_root):
@@ -227,6 +227,21 @@ class WorkflowRuntime:
                     request.update(project_root=str(project_root), source_file=spec['rtl_file'], dut_output=str(output),
                                    source_hash=hashlib.sha256(Path(spec['rtl_file']).read_bytes()).hexdigest(),
                                    build_started_at=time.time())
+                if identity == 'default':
+                    package = project_root / 'verification' / dut
+                    if not (package / '__init__.py').is_file():
+                        raise ValueError('Native workflow requires a compiled DUT package at verification/' + dut +
+                                         '; run the Picker compile workflow first')
+                    shutil.copytree(package, root / 'workspace' / dut, dirs_exist_ok=True,
+                                    ignore=shutil.ignore_patterns('__pycache__'))
+                    readme = Path(spec['rtl_file']).parent / 'README.md'
+                    if readme.is_file():
+                        shutil.copy2(readme, root / 'workspace' / dut / 'README.md')
+                    request.update(project_root=str(project_root), conversation_id=self.session['id'])
+                if identity == 'generate-testcase':
+                    from .testcases import Cases
+                    request.update(project_root=str(project_root), conversation_id=self.session['id'],
+                                   testcase_baseline=[row.id for row in Cases(project_root).read().targets])
                 if report:
                     request.update(project_root=str(project_root), report_file=str(report))
                 (root / 'request.json').write_text(json.dumps(request))

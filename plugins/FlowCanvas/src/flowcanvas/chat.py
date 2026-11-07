@@ -3,6 +3,7 @@ import asyncio
 from contextlib import asynccontextmanager
 import copy
 import json
+import re
 from pathlib import Path
 import time
 import uuid
@@ -16,6 +17,7 @@ from .workflow_tasks import WorkflowInput, attachment
 
 
 BackendName = Literal['codex', 'opencode']
+RETRY_NOTICE = re.compile(r'Reconnecting(?:\.\.\.|…)?\s*\d+/\d+')
 
 
 class NewSession(BaseModel):
@@ -97,6 +99,9 @@ class ChatService:
         self.flusher = None
         for path in self.root.glob('*.json'):
             session = json.loads(path.read_text())
+            if session['status'] == 'completed' and RETRY_NOTICE.fullmatch(session.get('error') or ''):
+                # Old snapshots predate explicit transient-error tagging.
+                session['error'] = ''
             if session['status'] in ACTIVE:
                 session.update(status='interrupted', error='Server restarted during the previous turn.')
             for card in session.get('workflow_runs', []):
@@ -344,7 +349,14 @@ class ChatService:
         if session is None:
             return
         kind = event['kind']
+        if (kind in {'item', 'delta'} and (session.get('retry_error') or
+                session['status'] in ACTIVE and RETRY_NOTICE.fullmatch(session.get('error') or ''))
+                and event.get('turn') == session.get('turn')):
+            # New output from the same turn proves recovery; unrelated/fatal errors persist.
+            session['error'] = ''
+            session.pop('retry_error', None)
         if kind == 'turn':
+            session.pop('retry_error', None)
             session['turn'] = event['turn']
             if session.get('stop_error') and session.get('delegation_stopped'):
                 # Native completion can arrive after a failed cancellation request;
@@ -393,6 +405,7 @@ class ChatService:
         elif kind == 'usage':
             session['usage'] = event['usage']
         elif kind == 'error':
+            session['retry_error'] = bool(event['retrying'] and not session.get('stop_error'))
             session['error'] = session.get('stop_error') or event['error']
             if session.get('stop_error') or not event['retrying']:
                 session['status'] = 'error'
@@ -405,6 +418,7 @@ class ChatService:
         self.save(session)
         session['delegation_stopped'] = False
         session.pop('stop_error', None)
+        session.pop('retry_error', None)
         session.update(status='starting', error='', turn=None, model=message.model, effort=message.effort,
                        started_at=time.time(), ended_at=None, speed=message.speed, service_tier=tier)
         if not session['title']:

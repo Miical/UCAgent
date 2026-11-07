@@ -44,15 +44,8 @@ async def collect(runner,row,log):
         row['coverage_status']='merging'
         await runner.coverage_command(render(config['merge_command'],context),row,log)
         report=json.loads(Path(config['report_path'].format(**context)).read_text())
-        if report.get('schema_version')!=1 or report.get('build_id')!=row['build_id'] or not report.get('instances'):
-            raise ValueError('Invalid or incompatible coverage report')
-        for n in report['instances']:
-            if not isinstance(n.get('covered'),int) or not isinstance(n.get('total'),int) or not 0<=n['covered']<=n['total']:
-                raise ValueError('Invalid coverage counts')
-        from collections import Counter
-        groups=report.get('functional',{}).get('groups',[])
-        duplicates=[key for key,count in Counter((g['file'],g['type']) for g in groups).items() if count>1]
-        if duplicates:raise ValueError('覆盖定义存在多实例复用，请按导入规范复制独立定义：'+str(duplicates))
+        from .coverage_schema import validate_report
+        report=validate_report(report,row['build_id'])
         current.update(build_id=row['build_id'],runs=inputs,report=report,updated=time.time())
         atomic(Path(row['cwd'])/'.flowcanvas/coverage/state.json',current)
         row['coverage_status']='merged'

@@ -82,7 +82,7 @@ class TestRuns:
             node=matches[0]
             entry=node['name']
             if binding.file.endswith('.py'):
-                entry=binding.file+'::'+('::'.join(node['scope'].split('.'))+'::' if node['scope'] else '')+entry
+                entry=str(store.file(binding.file))+'::'+('::'.join(node['scope'].split('.'))+'::' if node['scope'] else '')+entry
             # Values are shell-quoted once by this entry point, never interpolated by the model.
             run_id=uuid.uuid4().hex; folder=self.folder(root)
             run_dir=folder/run_id;run_dir.mkdir()
@@ -109,7 +109,7 @@ class TestRuns:
                     row['build_id']=(await self.coverage_command(render(row['coverage_config']['build_id_command'],dict(project=row['cwd'],run_dir=row['run_dir'],case=row['entry'])),row,log)).strip()
                     if not row['build_id']:raise ValueError('构建标识为空')
                 process=await asyncio.create_subprocess_exec('/bin/bash','-lc',row['command'],cwd=row['cwd'],
-                    env=dict(os.environ,PYTHONUNBUFFERED='1',TERM='dumb'),stdout=log,stderr=asyncio.subprocess.STDOUT,start_new_session=True)
+                    env=dict(os.environ,PYTHONUNBUFFERED='1',TERM='dumb',FLOWCANVAS_RUN_DIR=row['run_dir']),stdout=log,stderr=asyncio.subprocess.STDOUT,start_new_session=True)
                 self.processes[row['id']]=process
                 row['status']='running';atomic(path,row)
                 row['exit_code']=await process.wait()
@@ -164,30 +164,39 @@ def routes(projects,runner):
         from .coverage_runtime import public
         return public(root(identity))
     @router.get('/{identity}/coverage/source')
-    async def coverage_source(identity:str,instance:str):
+    async def coverage_source(identity:str,instance:str,metric:str="line",file:str|None=None):
         from .coverage_runtime import state
         import hashlib
         data=state(root(identity));report=data.get('report') or {}
-        row=next((n for n in report.get('instances',[]) if n['path']==instance),None)
-        if not row:raise HTTPException(404,'实例没有覆盖率源码')
-        run_id=data['runs'][0]['id']
-        if not re.fullmatch('[0-9a-f]{32}',run_id):raise HTTPException(422,'无效运行标识')
-        expected=report.get('rtl_sha256','')
+        if metric == "line":
+            row=next((n for n in report.get('instances',[]) if n['path']==instance),None)
+            if not row:raise HTTPException(404,'实例没有覆盖率源码')
+            files=row.get('files',[])
+            source=next((entry for entry in files if not file or entry["path"]==file),None)
+        else:
+            if metric not in {"toggle","branch","expr","cond","fsm"}:
+                raise HTTPException(422,"Unknown coverage metric")
+            items=report.get("code_metrics",{}).get(metric,{}).get("dut",{}).get("items",[])
+            entry=next((item for item in items if not file or item["file"]==file),None)
+            source={"path":entry["file"],"sha256":entry["sha256"]} if entry else None
+            row={"module":(entry or {}).get("module") or instance.split(".")[-1]}
+        if not source:raise HTTPException(404,'覆盖率报告没有此源码映射')
+        expected=source.get('sha256') or report.get('rtl_sha256','')
         if not re.fullmatch('[0-9a-f]{64}',expected):raise HTTPException(422,'源码指纹缺失')
-        cache=Path(root(identity))/'.flowcanvas/coverage/sources'/(expected+'.v')
-        if not cache.exists():
-            process=await asyncio.create_subprocess_exec('ssh','-T','-o','BatchMode=yes','-o','ConnectTimeout=10','redmi',
-                'cat /home/miical/eda/projects/uvm-cache/.flowcanvas/runs/'+run_id+'/Cache.v',stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
-            try:content,error=await asyncio.wait_for(process.communicate(),20)
-            except asyncio.TimeoutError:
-                process.kill();await process.wait();raise HTTPException(504,'读取构建源码超时')
-            if process.returncode or hashlib.sha256(content).hexdigest()!=expected:raise HTTPException(422,'构建源码不可用或指纹不符')
-            cache.parent.mkdir(parents=True,exist_ok=True);cache.write_bytes(content)
-        raw=cache.read_bytes()
-        if hashlib.sha256(raw).hexdigest()!=expected:raise HTTPException(422,'源码缓存指纹不符')
-        text=raw.decode();match=re.search(r'\bmodule\s+'+re.escape(row['module'])+r'\b[\s\S]*?\bendmodule\b',text)
-        if not match:raise HTTPException(422,'构建源码中找不到模块')
-        return dict(file='Cache.v',module=row['module'],content=text,line=text.count('\n',0,match.start())+1,end_line=text.count('\n',0,match.end())+1)
+        project=Path(root(identity)).resolve()
+        file=source['path']
+        candidate=(project/file).resolve()
+        if not candidate.is_relative_to(project):raise HTTPException(422,'源码路径不属于项目')
+        cache=project/'.flowcanvas/coverage/sources'/(expected+Path(file).suffix)
+        path=cache if cache.is_file() else candidate
+        if not path.is_file():raise HTTPException(404,'构建源码快照不可用，请配置覆盖率适配器保存源码')
+        raw=path.read_bytes()
+        if hashlib.sha256(raw).hexdigest()!=expected:raise HTTPException(422,'源码已变化，与构建指纹不符')
+        text=raw.decode()
+        match=re.search(r'\bmodule\s+'+re.escape(row['module'])+r'\b[\s\S]*?\bendmodule\b',text)
+        return dict(file=file,module=row['module'],content=text,
+                    line=text.count('\n',0,match.start())+1 if match else 1,
+                    end_line=text.count('\n',0,match.end())+1 if match else len(text.splitlines()))
     @router.post('/{identity}/coverage/reset')
     async def clear_coverage(identity:str):
         from .coverage_runtime import reset

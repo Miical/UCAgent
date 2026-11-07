@@ -27,3 +27,13 @@ test('preview highlights only explicitly requested lines',async()=>{
   assert.deepEqual(pre.children.flatMap((row,index)=>row.className==='target-code-selected'?[index+1]:[]),expected);
  }
 });
+
+test('loopback project image links resolve locally without accepting remote file hosts',()=>{
+ const {c}=fixture();
+ const ref=c.localReference('http://127.0.0.1:8811/home/user/project/timing.svg');
+ assert.equal(ref.path,'/home/user/project/timing.svg');
+ assert.match(c.localImageUrl(ref),/^\/api\/chat\/projects\/source\?media=true&path=/);
+ assert.equal(c.localReference('https://example.com/home/user/timing.svg'),null);
+ assert.equal(c.localReference('http://127.0.0.1:8811/api/chat/sessions'),null);
+ assert.equal(c.localImageUrl({path:'notes.md'}),null);
+});

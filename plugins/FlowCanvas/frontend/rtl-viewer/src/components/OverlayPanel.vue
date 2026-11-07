@@ -15,7 +15,7 @@
             <span class="tree-inst" :title="row.path">{{ row.path.split('.').at(-1) }}</span>
             <button type="button" class="coverage-source-link" :title="'查看 ' + row.module + ' 源码'" :aria-label="'查看 ' + row.module + ' 源码'" @click.stop="openSource(row)" @dblclick.stop @keydown.enter.stop @keydown.space.stop>{{ sourceLocations[row.path] || row.files?.[0]?.path?.split('/').at(-1) || row.module }}</button>
           </span>
-          <button class="tree-ai-explain" type="button" :aria-label="'AI 分析行覆盖率 '+row.module" title="AI 分析行覆盖率" @mouseenter="analyzeCoverage(row,$event,'preview')" @mouseleave="analyzeCoverage(row,$event,'leave')" @click.stop="analyzeCoverage(row,$event,'pin')" @dblclick.stop @keydown.stop><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6M7 9h4M7 13h8M7 17h5"/><path class="design-ai-spark" d="m18 1 1.4 4.6L24 7l-4.6 1.4L18 13l-1.4-4.6L12 7l4.6-1.4Z"/></svg></button>
+          <button class="tree-ai-explain" type="button" :aria-label="'AI 分析'+metricLabel+' '+row.module" :title="'AI 分析'+metricLabel" @mouseenter="analyzeCoverage(row,$event,'preview')" @mouseleave="analyzeCoverage(row,$event,'leave')" @click.stop="analyzeCoverage(row,$event,'pin')" @dblclick.stop @keydown.stop><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6M7 9h4M7 13h8M7 17h5"/><path class="design-ai-spark" d="m18 1 1.4 4.6L24 7l-4.6 1.4L18 13l-1.4-4.6L12 7l4.6-1.4Z"/></svg></button>
           <span class="coverage-tree-values">
             <span v-for="(metric,index) in [row.subtree,row]" :key="index" class="line-coverage-score" :title="(index ? '自身' : '含子模块') + '：' + metric.covered + '/' + metric.total + ' 覆盖点'">
               <span class="line-coverage-percent">{{ percentage(metric) }}</span><small>{{ metric.covered }}/{{ metric.total }}</small>
@@ -29,6 +29,7 @@
     </div>
     <dialog ref="sourceDialog" class="coverage-source-dialog" @click="closeOnBackdrop">
       <header><strong>{{ sourceTitle }}</strong><button type="button" @click="sourceDialog.close()" aria-label="关闭源码">×</button></header>
+      <select v-if="sourceFiles.length>1" v-model="sourceFile" class="coverage-source-selector" aria-label="源码文件" @change="openSource(sourceRow,sourceFile)"><option v-for="file in sourceFiles" :key="file.path" :value="file.path">{{ file.path }}</option></select>
       <p v-if="sourceError">{{ sourceError }}</p>
       <pre ref="sourcePre" v-else><div v-for="(line,index) in sourceLines" :key="index" :class="{ selected: index+1 >= sourceStart && index+1 <= sourceEnd, covered: sourceHits.has(index+1), missed: sourceMisses.has(index+1), partial: sourcePartial.has(index+1) }" :title="sourceMisses.has(index+1) ? '未覆盖' : sourcePartial.has(index+1) ? '部分覆盖' : sourceHits.has(index+1) ? '已覆盖' : ''"><span>{{ index+1 }}</span><code>{{ line || ' ' }}</code></div></pre>
     </dialog>
@@ -37,13 +38,16 @@
 <script setup>
 import { computed, ref, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useViewerStore } from '../store.js'
+import { coverageMetricRows } from '../coverageMetricRows.js'
 const store = useViewerStore()
+const metric = new URLSearchParams(location.search).get('metric') || 'line'
+const metricLabel = ({line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率'})[metric] || '覆盖率'
 /** Send cloneable coverage context to the shared host task card. */
 function analyzeCoverage(row,event,action){
   const rect=event.currentTarget.getBoundingClientRect()
   const node=store.nodesById.get(row.path)
   const context={type:'flowcanvas-explain-design',kind:'line-coverage',action,instance:row.path,module:row.module,
-    source:node?.source||null,coverage:{self:{covered:row.covered,total:row.total},subtree:row.subtree,
+    metric,source:node?.source||null,coverage:{self:{covered:row.covered,total:row.total},subtree:row.subtree,
       instances:coverageRows.value.filter(item=>item.path===row.path||item.path.startsWith(row.path+'.')),
       report:'.flowcanvas/coverage'},rect:{left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}}
   window.parent.postMessage(JSON.parse(JSON.stringify(context)),location.origin)
@@ -62,7 +66,7 @@ const coverageRows = computed(() => {
   const root = store.graph?.top
   if (!root) return []
   // Sum each instance's own counters exactly once, never sum child subtotals.
-  const instances = [...new Map((projectCoverage.value?.report?.instances || []).map(row => [row.path, row])).values()]
+  const instances = [...new Map(coverageMetricRows(projectCoverage.value?.report,metric,root).map(row => [row.path,row])).values()]
   return instances.filter(row => row.path === root || row.path.startsWith(root + '.'))
     .sort((a, b) => a.path.localeCompare(b.path))
     .map(row => ({ ...row, hasChildren: instances.some(child => child.path.startsWith(row.path + '.')), depth: row.path.split('.').length - root.split('.').length,
@@ -101,27 +105,29 @@ function toggleCoverageRow(row) {
 const sourceDialog=ref(null), sourcePre=ref(null), sourceLines=ref([]), sourceStart=ref(0),sourceEnd=ref(0),sourceError=ref(''),sourceTitle=ref('')
 const sourceMisses=ref(new Set()), sourcePartial=ref(new Set()), sourceHits=ref(new Set())
 const sourceLocations=ref({}), sourceCache=new Map()
-watch(()=>projectCoverage.value?.build_id,()=>{sourceCache.clear();sourceLocations.value={}})
+const sourceFiles=ref([]),sourceFile=ref(''),sourceRow=ref(null)
+watch(()=>[projectCoverage.value?.build_id,projectCoverage.value?.updated],()=>{sourceCache.clear();sourceLocations.value={}})
 // Share the exact build-source lookup between hover labels and the source viewer.
-async function loadSource(row){
-  const key=(projectCoverage.value?.build_id||'')+':'+row.path
+async function loadSource(row,file=row.files?.[0]?.path){
+  const key=(projectCoverage.value?.build_id||'')+':'+row.path+':'+metric+':'+file
   if(!sourceCache.has(key))sourceCache.set(key,(async()=>{
-    const response=await fetch(coverageUrl+'/source?instance='+encodeURIComponent(row.path)),data=await response.json()
+    const response=await fetch(coverageUrl+'/source?instance='+encodeURIComponent(row.path)+'&metric='+encodeURIComponent(metric)+'&file='+encodeURIComponent(file||'')),data=await response.json()
     if(!response.ok)throw Error(data.detail||'读取失败')
     return data
   })())
-  try{const data=await sourceCache.get(key);if(key===(projectCoverage.value?.build_id||'')+':'+row.path)sourceLocations.value[row.path]=data.file.split('/').at(-1)+':'+data.line;return data}
+  try{const data=await sourceCache.get(key);if(key===(projectCoverage.value?.build_id||'')+':'+row.path+':'+metric+':'+file)sourceLocations.value[row.path]=data.file.split('/').at(-1)+':'+data.line;return data}
   catch(error){sourceCache.delete(key);throw error}
 }
 let toggleTimer=null,sourceRequest=0
 function scheduleToggle(row){clearTimeout(toggleTimer);toggleTimer=setTimeout(()=>toggleCoverageRow(row),220)}
 function closeOnBackdrop(event){if(event.target===sourceDialog.value)sourceDialog.value.close()}
-async function openSource(row){
+async function openSource(row,file=row.files?.[0]?.path){
+  sourceRow.value=row;sourceFiles.value=row.files||[];sourceFile.value=file
   clearTimeout(toggleTimer);const request=++sourceRequest
   sourceTitle.value=row.module+' · 构建源码';sourceError.value='正在读取…';sourceLines.value=[]
   if(!sourceDialog.value.open)sourceDialog.value.showModal()
   try{
-    const data=await loadSource(row)
+    const data=await loadSource(row,file)
     if(request!==sourceRequest)return
     const coverageFile=(row.files || []).find(file=>file.path===data.file)
     sourceHits.value=new Set(coverageFile?.covered_lines || []);sourceMisses.value=new Set(coverageFile?.uncovered_lines || []);sourcePartial.value=new Set(coverageFile?.partial_lines || [])
@@ -144,6 +150,7 @@ onBeforeUnmount(() => { clearTimeout(toggleTimer); sourceRequest++ })
 .coverage-source-dialog::backdrop { background: #0005; }
 .coverage-source-dialog header { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; font-size:12px; }
 .coverage-source-dialog header button { border:0; background:none; color:inherit; cursor:pointer; font-size:20px; }
+.coverage-source-selector{margin:0 14px 8px;max-width:calc(100% - 28px);font:11px system-ui;color:var(--fg);background:var(--panel);border:1px solid var(--line);padding:4px}
 .coverage-source-dialog pre { margin:0; max-height:70vh; overflow:auto; padding:8px 0; font:11px/1.7 var(--font-mono); }
 .coverage-source-dialog pre>div { display:flex; min-width:max-content; }
 .coverage-source-dialog pre span { width:48px; flex-shrink:0; text-align:right; padding-right:12px; color:var(--fg-muted); user-select:none; }

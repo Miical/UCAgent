@@ -313,3 +313,32 @@ RTL 绑定、仅有计划、过期或缺失绑定均不能代替实现。
 重新运行或恢复工作流后可再次启用。每轮仅调度一次，完成回执优先于滞后的页面状态。
 
 AI 修改现有验证目标和测试用例时，须先 begin_update 登记修改，再 update/bind/accept，最后 finish_update；创建中沿用原操作。修改状态持续显示流光并锁住卡片交互，停止后保留暂停状态，可用 resume_operation 恢复。工具校验操作所属对话，拒绝未登记、暂停或其他对话的修改；手动编辑空闲卡片仍可直接保存。已有源码绑定全部校验有效后才能结束修改。
+
+### 增量新增测试用例
+
+generate-testcase 按“选择场景并登记 → 用例与依赖增量实现 → 接口/断言/覆盖关联审查 → 完成绑定登记”执行。遵循原生 dut_test_case、dut_fixture、dut_api_instruction 和覆盖模型指南，复用已有测试目录、API、fixture、驱动和覆盖采样，只补当前场景缺少的部分。未配置参考模型时不强制建立；已有配置时遵守参数顺序。不要求先实现完整验证环境或全量验证目标。
+
+summary/testcase_plan.json 保存同一新建 case_id、关联 target_ids 与项目相对 files；源码写入绑定项目。验收核对运行前捕获的原有用例 ID、占位所属会话、项目路径、真实 Python 语法、pytest 命名及 fixture 参数、API 导入/调用、行为断言、覆盖标记和有效绑定。最终须 finish_create 为 ready，不能用旧用例或结果文档冒充创建。该验收只做静态分析，不导入项目模块、不自动运行仿真，不证明依赖链运行可用或断言语义正确；场景与依赖仍需 AI 阅读核对，动态结果由后续运行按钮获得。
+
+统一覆盖率报告同时承载行覆盖率和功能覆盖率，支持 Toffee JSON/LCOV 适配、稳定目标 ID 投影及精确累计。新增用例需预先配置每次运行后的提取与合并方案。协议、适配命令及限制见 [覆盖率接口](docs/coverage.md)。
+
+### Native default workflow and panel records
+
+The **UCAgent default verification workflow** retains the installed native stage tree,
+skills, checks, batch processing and actual verification runs. FlowCanvas adds panel
+synchronization and acceptance gates instead of maintaining a fork of those stages.
+Run Picker compilation first; the default workflow consumes the project's
+`verification/<DUT>/` package.
+
+Verification plans and FG/FC/CK definitions live in panel records. Two native
+compatibility documents are generated from those records at Check/Complete.
+Other native analysis/evidence documents retain their original roles. Test plans
+are recorded on testcase cards; native templates and implementation remain Python
+source, with every discovered test registered and bound in the panel.
+
+Publish the native test/support Python tree to
+`verification/default/<DUT>/tests/`, with the DUT package alongside it.
+The final gates compare that source tree to the native checked output, require
+current bindings for targets and testcases, and require runner/coverage configuration.
+These gates supplement the native test/evidence checks; they do not themselves
+claim that a configured coverage extractor has successfully run.
