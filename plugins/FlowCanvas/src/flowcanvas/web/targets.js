@@ -532,6 +532,30 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       }
       list.append(empty);
     }
+    if(!caseMode&&!bugMode){
+      let detail=functionalPane.querySelector('.functional-metric-details');
+      const wasOpen=detail?.open||false;
+      if(detail)detail.remove();
+      const rows=[];
+      for(const node of data.targets.filter(node=>visible.has(node.id)&&node.lifecycle!=='draft')){
+        const record=coverageFor(node);if(record.status!=='available')continue;
+        for(const observation of record.rows){
+          const bins=observation.bins||[];
+          if(bins.length){
+            for(const bin of bins)rows.push([node.name,observation.source_path||node.name,bin.name,String(bin.hits),String(bin.goal),bin.hits>=bin.goal?'已达标':'未达标']);
+          }else rows.push([node.name,observation.source_path||node.name,'仅原生汇总','—','—',observation.covered+' / '+observation.total+'（未提供 bin 明细）']);
+        }
+      }
+      if(rows.length){
+        detail=el('details','functional-metric-details');detail.open=wasOpen;
+        detail.append(el('summary','','覆盖点明细（'+rows.length+'）'));
+        const scroll=el('div','functional-metric-scroll'),table=el('table'),head=el('thead'),titles=el('tr'),body=el('tbody');
+        for(const name of ['验证目标','覆盖点','bin','命中次数','目标次数','状态'])titles.append(el('th','',name));
+        head.append(titles);
+        for(const cells of rows){const row=el('tr');for(const text of cells)row.append(el('td','',text));body.append(row);}
+        table.append(head,body);scroll.append(table);detail.append(scroll);functionalPane.append(detail);
+      }
+    }
     const diagnostics=panel.querySelector('.targets-diagnostics');diagnostics.replaceChildren();for(const [file,error]of Object.entries(data.errors)){const d=el('details');d.append(el('summary','',file+' · 无法校验'),el('pre','',error));diagnostics.append(d);}
   }
   function show(view){active=view===panelView;if(panel){panel.hidden=!active;if(active){refresh();refreshRuns();}}}

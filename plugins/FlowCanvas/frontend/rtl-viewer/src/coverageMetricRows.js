@@ -22,3 +22,21 @@ export function coverageMetricRows(report, metric, root) {
     partial_lines:[...file.lines].filter(([,v])=>v.covered>0&&v.covered<v.total).map(([line])=>line)
   }))}))
 }
+
+/** Expose measured source-line status and native bit/metric atoms without inventing hits. */
+export function coverageMetricDetails(report, metric) {
+  if (metric !== 'line') {
+    const summary=report?.code_metrics?.[metric]?.dut
+    return [...(summary?.items||[]),...(summary?.states||[])].map(item=>({...item,name:item.name||item.signal}))
+  }
+  return (report?.instances||[]).flatMap(row=>(row.files||[]).flatMap(file=>{
+    const covered=new Set(file.covered_lines||[]),missed=new Set(file.uncovered_lines||[]),partial=new Set(file.partial_lines||[])
+    const lines=new Set([...covered,...missed,...partial,...Object.keys(file.line_hits||{}).map(Number)])
+    return [...lines].sort((a,b)=>a-b).map(line=>({
+      id:JSON.stringify([row.path,file.path,line]),hierarchy:row.path,module:row.module,
+      file:file.path,line,name:'行 '+line,
+      status:partial.has(line)?'部分覆盖':missed.has(line)?'未覆盖':covered.has(line)?'已覆盖':
+        file.line_hits[line]>0?'已覆盖':'未覆盖'
+    }))
+  }))
+}

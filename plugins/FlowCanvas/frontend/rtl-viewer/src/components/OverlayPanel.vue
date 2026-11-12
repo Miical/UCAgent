@@ -32,7 +32,7 @@
           <thead><tr><th>实例 / 覆盖点</th><th>源码行</th><template v-if="metric==='assert'"><th>尝试</th><th>真实成功</th><th>失败</th><th>未完成</th></template><th v-else>状态</th></tr></thead>
           <tbody><tr v-for="item in metricItems" :key="item.id" :class="{'metric-failed':item.failures>0}">
             <td :title="item.hierarchy">{{ item.hierarchy }} / {{ item.name }}</td><td>{{ item.file }}{{ item.line ? ':'+item.line : '（行号不可用）' }}</td>
-            <template v-if="metric==='assert'"><td>{{ item.attempts }}</td><td>{{ item.successes }}</td><td>{{ item.failures }}</td><td>{{ item.incomplete }}</td></template><td v-else>{{ item.hits>0 ? '已覆盖' : '未覆盖' }}{{ item.category==='states' ? '（状态，不计入比例）' : '' }}</td>
+            <template v-if="metric==='assert'"><td>{{ item.attempts }}</td><td>{{ item.successes }}</td><td>{{ item.failures }}</td><td>{{ item.incomplete }}</td></template><td v-else>{{ item.status || (item.hits>0 ? '已覆盖' : '未覆盖') }}{{ item.category==='states' ? '（状态，不计入比例）' : '' }}</td>
           </tr></tbody>
         </table></div>
       </details>
@@ -49,7 +49,7 @@
 <script setup>
 import { computed, ref, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useViewerStore } from '../store.js'
-import { coverageMetricRows } from '../coverageMetricRows.js'
+import { coverageMetricRows, coverageMetricDetails } from '../coverageMetricRows.js'
 const store = useViewerStore()
 const metric = new URLSearchParams(location.search).get('metric') || 'line'
 const metricLabel = ({line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率',assert:'断言'})[metric] || '覆盖率'
@@ -86,10 +86,8 @@ const coverageRows = computed(() => {
 })
 const filter = ref('')
 const metricItems = computed(()=>{
-  if (!['branch','cond','fsm','assert'].includes(metric)) return []
-  const summary=projectCoverage.value?.report?.code_metrics?.[metric]?.dut
   const query=filter.value.trim().toLowerCase()
-  return [...(summary?.items||[]),...(summary?.states||[])].filter(item=>!query || (item.hierarchy+' '+item.module+' '+item.name).toLowerCase().includes(query))
+  return coverageMetricDetails(projectCoverage.value?.report,metric).filter(item=>!query || (item.hierarchy+' '+item.module+' '+item.name+' '+item.file+':'+item.line).toLowerCase().includes(query))
 })
 const collapsedCoverage = ref(new Set())
 const allExpanded = computed(()=>coverageRows.value.every(row=>!row.hasChildren || !collapsedCoverage.value.has(row.path)))
