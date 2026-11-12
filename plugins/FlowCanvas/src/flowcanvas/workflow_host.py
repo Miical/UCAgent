@@ -56,14 +56,14 @@ def main():
                'changed_files': [{'mtime': mtime, 'file': filename, 'path': str((Path(agent.output_dir)/filename).resolve())} for _, mtime, filename in agent.pdb.api_changed_files()[:5]],
                # TUI is_hot includes recently finished calls; only is_busy means executing.
                'tools': [{'name': tool.name, 'count': tool.call_count,
-                          'busy': tool.is_busy() and not all(stage['completed'] for stage in stages)}
+                          'busy': tool.is_busy() and not all(stage['completed'] or stage['skipped'] for stage in stages)}
                          for tool in agent.test_tools],
                'runtime': {key: stats[key] for key in ('Run Time', 'Idle', 'Interaction Mode') if key in stats}}
         current = agent.stage_manager.get_current_stage()
         temporary = root / 'progress.tmp'
         temporary.write_text(json.dumps({'stages': stages, 'current_stage': current.name if current else '', 'tui': tui}))
         temporary.replace(root / 'progress.json')
-        if stages and all(stage['completed'] for stage in stages) and not (root / 'complete.json').exists():
+        if stages and all(stage['completed'] or stage['skipped'] for stage in stages) and not (root / 'complete.json').exists():
             # Publish accepted output before the completion receipt, so UI completion
             # always implies that the project artifact is available.
             receipt = {'completed': True}

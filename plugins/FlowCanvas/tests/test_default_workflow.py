@@ -137,7 +137,7 @@ class NativeHostTests(unittest.IsolatedAsyncioTestCase):
                 log = (Path(card["root"]) / "host.log").read_text()
                 self.assertIn("tools", response, log[-5000:])
                 request = json.loads((Path(card["root"]) / "request.json").read_text())
-                self.assertEqual(request["project_root"], str(project))
+                self.assertEqual(request["project_root"], str(project.resolve()))
                 self.assertEqual(request["workflow_id"], "default")
                 self.assertIn("requirement_analysis_and_planning", card["current_stage"])
                 self.assertTrue(any(s["name"] == "record_and_report_bugs" for s in card["stages"]))

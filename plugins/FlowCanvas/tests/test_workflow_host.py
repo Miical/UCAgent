@@ -88,7 +88,21 @@ class WorkflowHostTests(unittest.IsolatedAsyncioTestCase):
             owner.update(status='running', attachment={'workflow_id': 'rtl-summary'})
             runtime = WorkflowRuntime(service, owner)
             try:
-                started = await runtime.run('rtl-summary')
+                # A skipped native stage is terminal and must not block the receipt.
+                from dataclasses import replace
+                from flowcanvas.plugin import get_plugin
+                plugin = get_plugin()
+                original = next(w for w in plugin.workflows if w.name == 'rtl-summary')
+                config = yaml.safe_load(original.config_file.read_text())
+                config['stage'].append({'name': 'disabled_check', 'desc': 'Disabled check',
+                                        'task': ['Not required'], 'skip': True})
+                custom = root / 'summary-with-skip.yaml'
+                custom.write_text(yaml.safe_dump(config, allow_unicode=True))
+                configured = replace(plugin, workflows=tuple(
+                    replace(w, config_file=custom) if w.name == 'rtl-summary' else w
+                    for w in plugin.workflows))
+                with patch('flowcanvas.workflow_runtime.get_plugin', return_value=configured):
+                    started = await runtime.run('rtl-summary')
                 card = started['card']; identity = card['id']
                 report = root / 'output/rtl-summary/Probe' / identity / 'summary.md'
                 self.assertEqual(card['report_file'], str(report))
