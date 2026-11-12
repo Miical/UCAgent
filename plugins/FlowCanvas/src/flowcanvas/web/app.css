@@ -310,7 +310,8 @@ body{overflow-x:auto;}
 .queued-message button:hover{color:var(--text);}.queue-paused{flex:none;font-size:10px;color:var(--text-dim);}
 
 /* Quiet contrast for the project navigation pane in the light theme. */
-html[data-theme="light"] .project-pane{background:#fafafa;}
+.project-pane{--project-background:var(--surface);background:var(--project-background)}
+html[data-theme="light"] .project-pane{--project-background:#fafafa;}
 
 /* Header toggle hides the complete details column while retaining a reopening control. */
 .conversation-tools{display:flex;align-items:center;justify-content:center;gap:2px;flex:none;height:34px;padding:2px;border-radius:9px;}
@@ -915,7 +916,7 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 
 /* Goal hierarchy: aligned coverage column and quiet inline source actions. */
 .target-goal-pane .targets-tree{padding-top:6px;--goal-actions-width:48px;--goal-column-gap:10px}
-.target-goal-pane .target-header{display:grid;grid-template-columns:minmax(0,1fr) 78px var(--goal-actions-width);column-gap:var(--goal-column-gap);min-height:30px;margin:0}
+.target-goal-pane .target-header{display:grid;grid-template-columns:minmax(0,1fr) var(--goal-actions-width) 62px;column-gap:var(--goal-column-gap);min-height:30px;margin:0}
 .target-goal-pane .goal-row-heading{display:flex;align-items:center;min-width:0;overflow:hidden}
 .target-goal-pane .goal-row-heading>.target-card-head{flex:0 1 auto;width:auto;min-width:0;padding:5px 4px 5px 8px;gap:6px}
 .target-goal-pane .target-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;letter-spacing:0;font-size:12px;font-weight:500}
@@ -1665,3 +1666,47 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .coverage-overview-item[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 5%,var(--surface))}
 
 .markdown-image-link{display:block;max-width:100%}.markdown-image-link img{display:block;max-width:100%;max-height:480px;object-fit:contain;margin:8px 0;border-radius:6px}.local-image-preview{display:block;max-width:100%;max-height:75vh;object-fit:contain;margin:auto}
+
+/* Group headers and descriptions share a neutral surface in both disclosure states. */
+.target-goal-pane .targets-tree>.target-group>.target-header,
+.target-goal-pane .targets-tree>.target-group>.target-header:hover,
+.target-goal-pane .targets-tree>.target-group>.target-header.is-selected{
+  background:var(--project-background,var(--surface));
+  box-shadow:none;border:1px solid var(--border);
+  border-radius:8px;
+}
+.target-goal-pane .targets-tree>.target-group:has(>.target-card-body)>.target-header,
+.target-goal-pane .targets-tree>.target-group:has(>.target-card-body)>.target-header:hover,
+.target-goal-pane .targets-tree>.target-group:has(>.target-card-body)>.target-header.is-selected{
+  background:var(--project-background,var(--surface));
+  box-shadow:none;border:1px solid var(--border);
+  border-bottom:0;border-radius:8px 8px 0 0;
+}
+.target-goal-pane .targets-tree>.target-group>.target-card-body{
+  padding:0 0 0 10px;
+}
+.target-goal-pane .targets-tree>.target-group>.target-card-body>.case-editable-description{
+  margin:0 0 6px -10px;padding:4px 12px 10px 22px;
+  background:var(--project-background,var(--surface));
+  border:1px solid var(--border);
+  border-top:0;border-radius:0 0 8px 8px;
+}
+
+/* Case context chips are independent from workflow authorization and quoted text. */
+.testcase-attachments{display:flex;flex-wrap:wrap;gap:5px;margin:-3px 0 6px -3px;padding:0}
+.testcase-attachments[hidden]{display:none}
+.testcase-chip{max-width:280px;height:25px;background:color-mix(in srgb,var(--accent) 5%,var(--surface));border-style:dashed}
+.testcase-panel .target-header>.target-header-actions{flex-shrink:0}
+
+/* Reserve a fourth action slot for attaching verification targets. */
+.target-goal-pane .targets-tree{--goal-actions-width:106px}
+.target-goal-pane .target-header>.target-header-actions{width:106px}
+
+/* Sent references form a compact strip joined to the user's message bubble. */
+.message.user>.message-references{display:flex;flex-wrap:wrap;gap:5px;padding:9px 12px 0;background:var(--surface2);border:1px solid color-mix(in srgb,var(--border) 55%,transparent);border-bottom:0;border-radius:16px 16px 0 0}
+.message.user:has(>.message-references)>.message-content{border-top:0;border-radius:0 0 4px 16px;padding-top:7px}
+.message-reference{min-width:0;max-width:100%;font-size:11px;color:var(--text-dim)}
+.message-reference>.message-reference-label{display:inline-flex;align-items:center;gap:5px;max-width:100%;padding:3px 7px;border:1px solid var(--border);border-radius:6px;background:var(--surface);cursor:default}
+.message-reference>.message-reference-label>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:240px}
+.message-reference>.message-reference-label>svg{width:13px;height:13px;flex:none;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+

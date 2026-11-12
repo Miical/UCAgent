@@ -69,8 +69,20 @@ const quotes=new Map();
 try{for(const [id,items]of Object.entries(JSON.parse(localStorage.getItem('flowcanvas.annotations')||'{}')))if(Array.isArray(items))quotes.set(id,items.filter(item=>typeof item.text==='string'&&typeof item.comment==='string'));}catch{}
 /** Render numbered quote attachments with independent comments and editing controls. */
 function paintQuote(){
-  $('quote-draft').hidden=!quoteDraft.length;$('quote-toggle').textContent=quoteDraft.length+' 条批注';$('quote-panel').replaceChildren();
+  const annotations=quoteDraft.filter(item=>!['testcase','target'].includes(item.type));
+  $('quote-draft').hidden=!annotations.length;$('quote-toggle').textContent=annotations.length+' 条批注';$('quote-panel').replaceChildren();
+  const host=$('testcase-attachments');host.replaceChildren();host.hidden=!quoteDraft.some(item=>['testcase','target'].includes(item.type));
+  for(const item of quoteDraft.filter(item=>['testcase','target'].includes(item.type))){
+    const chip=document.createElement('div');chip.className='workflow-chip testcase-chip';chip.title=item.text;
+    const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.setAttribute('viewBox','0 0 20 20');icon.setAttribute('aria-hidden','true');
+    const path=document.createElementNS(icon.namespaceURI,'path');path.setAttribute('d','M6 3h8v14H4V3h2m1-1h6v3H7ZM7 9l2 2 4-4M7 14h6');icon.append(path);
+    const name=document.createElement('span');name.textContent=(item.type==='target'?'目标 · ':'用例 · ')+item.title;
+    const remove=document.createElement('button');remove.type='button';remove.textContent='×';remove.ariaLabel='移除附加'+(item.type==='target'?'目标 ':'用例 ')+item.title;
+    remove.onclick=()=>{quoteDraft=quoteDraft.filter(entry=>entry!==item);paintQuote();saveQuote();};
+    chip.append(icon,name,remove);host.append(chip);
+  }
   quoteDraft.forEach((item,index)=>{
+    if(['testcase','target'].includes(item.type))return;
     const row=document.createElement('section');row.className='annotation-row';const head=document.createElement('div');head.className='annotation-head';const label=document.createElement('span');label.textContent=(index+1)+'. 所选文本：';head.append(label);
     const text=document.createElement('textarea');text.className='annotation-text';text.value=item.text;text.readOnly=true;text.rows=3;text.ariaLabel='引用文字';text.oninput=()=>{item.text=text.value;saveQuote();};
     for(const [label,path,action]of [['编辑','M12 4l4 4M4 16l4-1L17 6a2.1 2.1 0 0 0-3-3L5 12Z','edit'],['删除','M3 5h14M8 5V3h4v2M5 5l1 12h8l1-12M8 8v6M12 8v6','remove']]){
@@ -84,7 +96,7 @@ function paintQuote(){
 /** Persist structured annotations per conversation without inserting them into the prompt. */
 function saveQuote(){if(!session)return;const key=selected||'__new__';if(quoteDraft.length)quotes.set(key,quoteDraft);else quotes.delete(key);try{localStorage.setItem('flowcanvas.annotations',JSON.stringify(Object.fromEntries(quotes)));}catch{}}
 /** Serialize attachments only at the backend boundary. */
-function quoteText(){return quoteDraft.map((item,index)=>(index+1)+'. 所选文本：\n'+item.text+(item.comment?'\n评论：'+item.comment:'')).join('\n\n');}
+function quoteText(){return quoteDraft.map((item,index)=>(index+1)+(['testcase','target'].includes(item.type)?'. 附加'+(item.type==='target'?'验证目标':'测试用例')+'上下文（仅供参考，不表示授权运行或修改）：\n':'. 所选文本：\n')+item.text+(item.comment?'\n评论：'+item.comment:'')).join('\n\n');}
 /** Reflect server-owned authorization as one removable attachment card. */
 function paintAttachments(){
   const host=$('attached-workflows');host.replaceChildren();const item=session?.attachment;if(!item||item.task_only||session.attachment_sent)return;
@@ -713,7 +725,7 @@ $('export-chat').onclick=()=>{
 };
 $('quote-toggle').onclick=()=>{const open=$('quote-panel').hidden;$('quote-panel').hidden=!open;$('quote-toggle').setAttribute('aria-expanded',String(open));};
 document.addEventListener('click',event=>{if(!event.target.closest('.annotation-tray')&&!event.target.closest('.quote-selection')){$('quote-panel').hidden=true;$('quote-toggle').setAttribute('aria-expanded','false');}});
-$('remove-quote').onclick=()=>{quoteDraft=[];paintQuote();saveQuote();};
+$('remove-quote').onclick=()=>{quoteDraft=quoteDraft.filter(item=>['testcase','target'].includes(item.type));paintQuote();saveQuote();};
 window.addEventListener('pagehide',()=>{saveDraft();saveQuote();});
 document.addEventListener('keydown',event=>{
   if(event.isComposing)return;
@@ -763,3 +775,23 @@ window.FlowCanvasAI={
     return result;
   }
 };
+
+/** Attach source-backed case context to this conversation's next message without sending it. */
+document.addEventListener('flowcanvas-attach-testcase',event=>{
+  const {project,testcase}=event.detail||{};if(!project?.id||!testcase?.id)return;
+  const key=project.id+':'+testcase.id;
+  const item={type:'testcase',key,title:testcase.title||testcase.name,text:JSON.stringify({project,testcase},null,2),comment:''};
+  const index=quoteDraft.findIndex(entry=>entry.type==='testcase'&&entry.key===key);
+  if(index>=0)quoteDraft[index]=item;else quoteDraft.push(item);
+  paintQuote();saveQuote();$('message').focus();
+});
+
+/** Keep target references in the selected conversation draft without starting an action. */
+document.addEventListener('flowcanvas-attach-target',event=>{
+  const {project,target}=event.detail||{};if(!project?.id||!target?.id)return;
+  const key=project.id+':'+target.id;
+  const item={type:'target',key,title:target.name,text:JSON.stringify({project,target},null,2),comment:''};
+  const index=quoteDraft.findIndex(entry=>entry.type==='target'&&entry.key===key);
+  if(index>=0)quoteDraft[index]=item;else quoteDraft.push(item);
+  paintQuote();saveQuote();$('message').focus();
+});

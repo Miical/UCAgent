@@ -61,7 +61,25 @@ export class ConversationView {
     heading.append(icon,title,state,time);
     if(collapsible)heading.append(element('span','disclosure','›'));
     const content=element('div','message-content');root.append(heading);
-    if(item.kind==='user'&&item.quote){const quote=element('details','message-quote');quote.append(element('summary','','引用内容'),element('pre','',item.quote));root.append(quote);}
+    if(item.kind==='user'&&item.quote){
+      const tray=element('div','message-references');tray.setAttribute('aria-label','消息引用');
+      const references=item.quote.split(/(?=^\d+\. (?:附加(?:测试用例|验证目标)上下文|所选文本：))/m).filter(text=>text.trim());
+      for(const text of references){
+        let label='引用 · '+text.replace(/^\d+\. 所选文本：\s*/, '').trim().slice(0,32);
+        if(/^\d+\. 附加/.test(text)){
+          try{
+            const context=JSON.parse(text.slice(text.indexOf('\n')+1));
+            label=context.testcase?'用例 · '+(context.testcase.title||context.testcase.name):context.target?'目标 · '+context.target.name:label;
+          }catch{}
+        }
+        const reference=element('span','message-reference');
+        const summary=element('span','message-reference-label');
+        const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.setAttribute('viewBox','0 0 20 20');icon.setAttribute('aria-hidden','true');
+        const path=document.createElementNS(icon.namespaceURI,'path');path.setAttribute('d','m7 11 5-5a2.1 2.1 0 0 1 3 3l-7 7a3.5 3.5 0 0 1-5-5l7-7');icon.append(path);
+        summary.append(icon,element('span','',label));reference.append(summary);tray.append(reference);
+      }
+      root.append(tray);
+    }
     root.append(content);parent.insertBefore(root,parent===this.root&&this.live?.parentNode===parent?this.live:null);
     const entry={root,heading,icon,title,state,time,content,text:null,item,touched:false};
     if(collapsible){

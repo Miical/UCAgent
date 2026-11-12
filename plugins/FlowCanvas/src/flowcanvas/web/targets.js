@@ -424,6 +424,24 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
           controls.append(action);
         }
       }
+      if(caseMode){
+        const attach=smallAction('附加测试用例到对话','m7 11 5-5a2.1 2.1 0 0 1 3 3l-7 7a3.5 3.5 0 0 1-5-5l7-7',()=>{
+          document.dispatchEvent(new CustomEvent('flowcanvas-attach-testcase',{detail:{
+            project:{id:project.id,path:project.path},testcase:{id:node.id,name:node.name,title:node.title,
+              description:node.description,runner:node.runner,bindings:report.bindings,lifecycle:node.lifecycle}
+          }}));
+        });
+        attach.classList.add('case-attach-action');controls.prepend(attach);
+      }
+      if(!caseMode&&!bugMode){
+        const attach=smallAction('附加验证目标到对话','m7 11 5-5a2.1 2.1 0 0 1 3 3l-7 7a3.5 3.5 0 0 1-5-5l7-7',()=>{
+          document.dispatchEvent(new CustomEvent('flowcanvas-attach-target',{detail:{
+            project:{id:project.id,path:project.path},target:{id:node.id,name:node.name,kind:node.kind,
+              parent:node.parent,description:node.description,bindings:report.bindings,lifecycle:node.lifecycle,coverage:coverageFor(node)}
+          }}));
+        });
+        attach.classList.add('goal-attach-action');controls.prepend(attach);
+      }
       const links=el('div','target-title-sources');
       for(const binding of (caseMode||bugMode?report.bindings:[])){
         const label=binding.file.split('/').at(-1)+(binding.line?':'+binding.line+'–'+binding.end_line:'');
@@ -439,7 +457,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
           link.disabled=operationLocked||!binding.line;link.title=path;link.setAttribute('aria-label','查看 '+path+' 的源码');links.append(link);
         }
         const score=head.querySelector('.target-coverage-score'),heading=el('div','goal-row-heading');
-        heading.append(head,links);header.append(heading,score,controls);
+        heading.append(head,links);header.append(heading,controls,score);
       }else header.append(head,links,controls);
       wrapper.append(header);queueMicrotask(paintRunButtons);
       if(opened.has(node.id)||(query&&searchExpanded)){
