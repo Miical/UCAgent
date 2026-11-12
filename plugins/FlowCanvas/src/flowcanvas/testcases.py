@@ -49,19 +49,41 @@ class TestCase(BaseModel):
 class CoverageConfig(BaseModel):
     """Declarative coverage integration; execution is not enabled by this schema."""
     model_config = ConfigDict(extra='forbid')
+    provider: Literal['commands', 'vcs'] = 'commands'
+    mode: Literal['shared', 'per_run'] = 'shared'
     tool: str = Field(min_length=1, max_length=100, description='覆盖率工具，例如 vcs-urg')
     description: str = Field(min_length=1, max_length=2000, description='采集环境、版本、源码同步边界和必要前置条件')
-    artifact_path: str = Field(min_length=1, max_length=4000, description='本次运行产物路径，必须包含 {run_dir}')
-    extract_command: str = Field(min_length=1, max_length=20000, description='提取或校验本次运行覆盖率的命令')
-    merge_command: str = Field(min_length=1, max_length=20000, description='按 {inputs_manifest} 中的本批次数据库合并，输出到 {merge_dir}')
-    report_path: str = Field(min_length=1, max_length=4000, description='合并后报告路径，必须包含 {merge_dir}')
+    artifact_path: str = Field(default='{run_dir}/coverage.json', min_length=1, max_length=4000, description='本次运行产物路径，必须包含 {run_dir}')
+    extract_command: str = Field(default='', min_length=0, max_length=20000, description='Read the shared database (shared mode) or this run (per_run mode) and write artifact_path')
+    merge_command: str = Field(default='', max_length=20000, description='Only per_run mode: merge {inputs_manifest} into {merge_dir}')
+    report_path: str = Field(default='', max_length=4000, description='Only per_run mode: merged report path containing {merge_dir}')
     parser: Literal['coverage-json-v1', 'line-coverage-json-v1'] = 'coverage-json-v1'
-    build_id_command: str = Field(min_length=1, max_length=20000, description='输出实际构建标识的命令，覆盖 RTL、参数和覆盖率编译配置')
+    build_id_command: str = Field(default='', min_length=0, max_length=20000, description='输出实际构建标识的命令，覆盖 RTL、参数和覆盖率编译配置')
+
+    @model_validator(mode='before')
+    @classmethod
+    def legacy_mode(cls, value):
+        """Preserve explicitly configured independent-run merge integrations."""
+        if isinstance(value, dict) and 'mode' not in value and value.get('merge_command'):
+            value = dict(value, mode='per_run')
+        return value
 
     @model_validator(mode='after')
     def paths_and_merge(self):
+        if self.provider=='vcs':
+            if self.mode!='shared' or any((self.extract_command,self.build_id_command,self.merge_command,self.report_path)):
+                raise ValueError('Native VCS uses fixed metadata and platform extraction, not project commands')
+            return self
+        if not self.extract_command or not self.build_id_command:
+            raise ValueError('Command coverage requires extract_command and build_id_command')
         if '{run_dir}' not in self.artifact_path:
             raise ValueError('artifact_path 必须包含 {run_dir}，确保每次运行独立保存')
+        if self.mode == 'shared':
+            if '{coverage_db}' not in self.extract_command:
+                raise ValueError('Shared extraction must read {coverage_db}')
+            if self.merge_command or self.report_path:
+                raise ValueError('Shared coverage publishes artifact_path directly; do not merge cumulative snapshots')
+            return self
         if '{merge_dir}' not in self.report_path:
             raise ValueError('report_path 必须包含 {merge_dir}，不得覆盖单次运行产物')
         if not all(token in self.merge_command for token in ('{inputs_manifest}', '{merge_dir}')):
@@ -126,10 +148,10 @@ do not fabricate results. Test execution uses test_case_runs start/read/stop/lis
             if run.get('case_id') in ids and run.get('status') in {'starting','running'}:
                 raise ValueError('Stop the running case before editing or deleting it')
 
-    def validate_card(self, card):
-        """Require readable metadata and an explicit executable test entry."""
+    def validate_card(self, card, require_runner=True):
+        """Validate source-backed metadata and, when required, the executable test entry."""
         import re
-        if card.runner is None:
+        if require_runner and card.runner is None:
             raise ValueError('Configure this case runner before finishing')
         if not card.title.strip() or not re.fullmatch(r'[A-Za-z_]\w*(?:(?:::|\.)[A-Za-z_]\w*)*',card.name):
             raise ValueError('Provide a readable title and valid test entry name')

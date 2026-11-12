@@ -34,7 +34,13 @@ def create_app(state_dir=None) -> FastAPI:
     async def lifespan(app):
         """Own background persistence and backend process lifetime."""
         service.flusher = asyncio.create_task(service.flush())
-        yield
+        from .coverage_watch import CoverageWatch
+        watcher=asyncio.create_task(CoverageWatch(service.projects,test_runs).run())
+        try:
+            yield
+        finally:
+            watcher.cancel()
+            await asyncio.gather(watcher,return_exceptions=True)
         await test_runs.close()
         await service.close()
 

@@ -249,7 +249,8 @@ def test_corrected_measurement_cannot_mix_with_legacy_lcov(coverage_project):
 
 
 @pytest.mark.asyncio
-async def test_metric_source_preview_is_limited_to_reported_files(coverage_project):
+@pytest.mark.parametrize("metric", ["toggle", "branch", "cond", "fsm", "assert"])
+async def test_metric_source_preview_is_limited_to_reported_files(coverage_project, metric):
     """Non-line metrics use the same hash-checked source endpoint, not arbitrary paths."""
     from types import SimpleNamespace
     from fastapi import FastAPI
@@ -259,15 +260,17 @@ async def test_metric_source_preview_is_limited_to_reported_files(coverage_proje
     root,store,ids,extract=coverage_project
     sha=hashlib.sha256((root/"Probe.v").read_bytes()).hexdigest()
     atomic(root/".flowcanvas/coverage/state.json",dict(epoch="one",runs=[],
-        report={"code_metrics":{"toggle":{"dut":{"items":[{"file":"Probe.v","sha256":sha}]}}}}))
+        report={"code_metrics":{metric:{"dut":{"items":[{"file":"Probe.v","sha256":sha,"hierarchy":"Probe"}]}}}}))
     app=FastAPI()
     app.include_router(routes(SimpleNamespace(state={"recent":[{"id":"project","path":str(root)}]}),TestRuns()))
     async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app),base_url="http://test") as client:
         url="/api/chat/projects/project/coverage/source"
-        response=await client.get(url,params={"instance":"Probe","metric":"toggle","file":"Probe.v"})
+        response=await client.get(url,params={"instance":"Probe","metric":metric,"file":"Probe.v"})
         assert response.status_code==200,response.text
         assert response.json()["file"]=="Probe.v"
-        response=await client.get(url,params={"instance":"Probe","metric":"toggle","file":"../private"})
+        response=await client.get(url,params={"instance":"Other","metric":metric,"file":"Probe.v"})
+        assert response.status_code==404
+        response=await client.get(url,params={"instance":"Probe","metric":metric,"file":"../private"})
         assert response.status_code==404
         response=await client.get(url,params={"instance":"Probe","metric":"unknown"})
         assert response.status_code==422

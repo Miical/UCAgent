@@ -99,3 +99,30 @@ async def execute_smoke(runner,folder,row):
         row['ended']=time.time()
         atomic(path,row)
         runner.processes.pop(row['id'],None)
+
+
+def coverage_identity(config):
+    """Invalidate coverage smoke receipts whenever collection configuration changes."""
+    return hashlib.sha256(json.dumps(config,sort_keys=True).encode()).hexdigest()
+
+
+def validate_smoke_report(root, report):
+    """Require measured line and source-bound functional data without demanding full coverage."""
+    from .coverage_schema import validate_report
+    from .targets import Targets
+    report=validate_report(report)
+    if report['line_status']!='available' or not any(i['total']>0 for i in report['instances']):
+        raise ValueError('Coverage smoke requires native executable line observations')
+    observations=report['functional']['observations']
+    if report['functional']['status']!='available' or not observations:
+        raise ValueError('Coverage smoke requires functional observations mapped to panel IDs')
+    store=Targets(root);cards={t.id:t for t in store.read().targets};reports=store.status()['reports']
+    for observation in observations:
+        card=cards.get(observation['target_id'])
+        if card is None or reports[card.id]['status']!='bound':
+            raise ValueError('Coverage smoke references an unknown or unbound target')
+        if observation['binding_fingerprints']!={b.id:b.fingerprint for b in card.bindings}:
+            raise ValueError('Coverage smoke source fingerprints do not match panel bindings')
+    if not any(o.get('total',len(o.get('bins',[])))>0 for o in observations):
+        raise ValueError('Coverage smoke has no measurable functional coverage goals')
+    return report

@@ -6,7 +6,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shlex
 import signal
 import time
 import uuid
@@ -65,9 +64,9 @@ class TestRuns:
         return self.output(root, run_id)
 
     async def start(self, root, case_id, mode="test", ready_pattern="", startup_timeout=120):
-        if mode not in {'test','startup_smoke'}:
+        if mode not in {'test','startup_smoke','coverage_smoke'}:
             raise ValueError('Unknown run mode')
-        if mode=='startup_smoke':
+        if mode in {'startup_smoke','coverage_smoke'}:
             if not ready_pattern or len(ready_pattern)>500 or not 1<=startup_timeout<=600:
                 raise ValueError('Startup smoke needs a test-start log pattern and a 1..600 second timeout')
             re.compile(ready_pattern)
@@ -75,6 +74,8 @@ class TestRuns:
             store=Cases(root); data=store.read()
             if any(r['status'] in {'starting','running'} for r in self.list(root)):
                 raise ValueError('本项目已有命令运行中，请等待完成，避免覆盖共享构建和日志')
+            if mode=='coverage_smoke' and (data.coverage is None or data.coverage.mode!='shared'):
+                raise ValueError('Coverage smoke requires configured shared coverage')
             case=next((n for n in data.targets if n.id==case_id),None)
             if not case: raise ValueError('测试用例不存在')
             template=case.runner
@@ -93,18 +94,29 @@ class TestRuns:
             # Values are shell-quoted once by this entry point, never interpolated by the model.
             run_id=uuid.uuid4().hex; folder=self.folder(root)
             run_dir=folder/run_id;run_dir.mkdir()
-            command=template.command.replace('{run_dir}',shlex.quote(str(run_dir))).replace('{case}',shlex.quote(entry)).replace('{project}',shlex.quote(str(store.root)))
+            from .coverage_runtime import render
+            database=(run_dir/'coverage.vdb' if mode in {'startup_smoke','coverage_smoke'} else
+                      store.root/'.flowcanvas/coverage/database/coverage.vdb')
+            if data.coverage and data.coverage.mode=='shared':
+                if not all(token in template.command for token in ('{coverage_db}','{coverage_name}')):
+                    raise ValueError('Shared coverage runner requires {coverage_db} and {coverage_name}')
+            command=render(template.command,dict(project=store.root,run_dir=run_dir,case=entry,
+                                                coverage_db=database,coverage_name=run_id))
             row=dict(id=run_id,case_id=case_id,name=case.title or case.name,entry=entry,command=command,
                      cwd=str(store.root),description=template.description,status='starting',started=time.time(),
                      ended=None,exit_code=None,source_fingerprint=node['fingerprint'])
             row['run_dir']=str(run_dir)
-            if mode=='startup_smoke':
+            row['coverage_db']=str(database)
+            if mode in {'startup_smoke','coverage_smoke'}:
                 from .smoke_runs import case_identity
                 row.update(mode=mode,smoke_status='pending',ready_pattern=ready_pattern,
                            startup_timeout=startup_timeout,case_identity=case_identity(case))
-            if data.coverage and mode=='test':
+            if data.coverage and mode in {'test','coverage_smoke'}:
                 from .coverage_runtime import state
                 row.update(coverage_config=data.coverage.model_dump(),coverage_epoch=state(root)['epoch'],coverage_status='pending')
+                if mode=='coverage_smoke':
+                    from .smoke_runs import coverage_identity
+                    row['coverage_identity']=coverage_identity(row['coverage_config'])
             atomic(folder/(run_id+'.json'),row)
             task=asyncio.create_task(self.execute(folder,row))
             self.tasks[run_id]=task
@@ -119,15 +131,51 @@ class TestRuns:
         try:
             with (folder/(row['id']+'.log')).open('ab',buffering=0) as log:
                 if row.get('coverage_config'):
-                    from .coverage_runtime import render
-                    row['build_id']=(await self.coverage_command(render(row['coverage_config']['build_id_command'],dict(project=row['cwd'],run_dir=row['run_dir'],case=row['entry'])),row,log)).strip()
+                    from .coverage_runtime import render, context, state
+                    if row['coverage_config'].get('provider')=='vcs':
+                        from .native_vcs import build_identity, metadata_identity
+                        row['build_id']=await asyncio.to_thread(build_identity,row['cwd'])
+                        row['native_coverage_identity']=await asyncio.to_thread(metadata_identity,row['cwd'])
+                    else:
+                        row['build_id']=(await self.coverage_command(render(row['coverage_config']['build_id_command'],context(row)),row,log)).strip()
                     if not row['build_id']:raise ValueError('构建标识为空')
+                    if row['coverage_config'].get('mode','per_run')=='shared' and row.get('mode')!='coverage_smoke':
+                        async with self.lock:
+                            current=state(row['cwd'])
+                            if current.get('mode', 'per_run' if current['runs'] else 'shared')!='shared':
+                                raise ValueError('Coverage mode changed; clear accumulated coverage before running')
+                            if current['build_id'] not in (None,row['build_id']):
+                                raise ValueError('Coverage build changed; clear accumulated coverage before running')
+                            current.update(build_id=row['build_id'],mode='shared')
+                            atomic(Path(row['cwd'])/'.flowcanvas/coverage/state.json',current)
+                            Path(row['coverage_db']).parent.mkdir(parents=True,exist_ok=True)
                 process=await asyncio.create_subprocess_exec('/bin/bash','-lc',row['command'],cwd=row['cwd'],
                     env=dict(os.environ,PYTHONUNBUFFERED='1',TERM='dumb',FLOWCANVAS_RUN_DIR=row['run_dir']),stdout=log,stderr=asyncio.subprocess.STDOUT,start_new_session=True)
                 self.processes[row['id']]=process
                 row['status']='running';atomic(path,row)
-                row['exit_code']=await process.wait()
-                row['status']='completed' if row['exit_code']==0 else 'failed'
+                if row.get('mode')=='coverage_smoke':
+                    try:
+                        row['exit_code']=await asyncio.wait_for(process.wait(),row['startup_timeout'])
+                    except asyncio.TimeoutError:
+                        from .smoke_runs import terminate
+                        await terminate(process)
+                        row['exit_code']=process.returncode
+                        raise ValueError('Coverage smoke timed out before natural completion')
+                    from .smoke_runs import startup_error
+                    text=(folder/(row['id']+'.log')).read_text(errors='replace')
+                    if row['exit_code']!=0 or startup_error(text):
+                        raise ValueError(startup_error(text) or 'Coverage smoke exited with code '+str(row['exit_code']))
+                    if not re.search(row['ready_pattern'],text):
+                        raise ValueError('Coverage smoke lacks actual test-execution evidence')
+                    if row['coverage_config'].get('provider')=='vcs':
+                        actual=await asyncio.to_thread(build_identity,row['cwd'])
+                    else:
+                        actual=(await self.coverage_command(render(row['coverage_config']['build_id_command'],context(row)),row,log)).strip()
+                    if actual!=row['build_id']:
+                        raise ValueError('Build changed during coverage smoke; prepare the build before running')
+                    row['stop_reason']='natural_exit'
+                else:
+                    row['exit_code']=await process.wait()
                 if row.get('coverage_config'):
                     from .coverage_runtime import collect
                     try:await collect(self,row,log)
@@ -146,6 +194,14 @@ class TestRuns:
             row['status']='failed';row['error']=str(exc)
             if row.get('coverage_config'):row.update(coverage_status='failed',coverage_error=str(exc))
         finally:
+            if row['status']=='running':
+                row['status']='completed' if row['exit_code']==0 else 'failed'
+            if row.get('mode')=='coverage_smoke':
+                from .smoke_runs import startup_error
+                error=startup_error((folder/(row['id']+'.log')).read_text(errors='replace'))
+                if error:
+                    row.update(status='failed',error=error)
+                row['smoke_status']='passed' if row['status']=='completed' and row.get('coverage_status')=='validated' else 'cancelled' if row['status']=='interrupted' else 'failed'
             row['ended']=time.time();atomic(path,row);self.processes.pop(row['id'],None)
 
     async def coverage_command(self,command,row,log):
@@ -188,10 +244,10 @@ def routes(projects,runner):
             files=row.get('files',[])
             source=next((entry for entry in files if not file or entry["path"]==file),None)
         else:
-            if metric not in {"toggle","branch","expr","cond","fsm"}:
+            if metric not in {"toggle","branch","expr","cond","fsm","assert"}:
                 raise HTTPException(422,"Unknown coverage metric")
             items=report.get("code_metrics",{}).get(metric,{}).get("dut",{}).get("items",[])
-            entry=next((item for item in items if not file or item["file"]==file),None)
+            entry=next((item for item in items if (not item.get("hierarchy") or item["hierarchy"]==instance) and (not file or item["file"]==file)),None)
             source={"path":entry["file"],"sha256":entry["sha256"]} if entry else None
             row={"module":(entry or {}).get("module") or instance.split(".")[-1]}
         if not source:raise HTTPException(404,'覆盖率报告没有此源码映射')
@@ -214,9 +270,13 @@ def routes(projects,runner):
     @router.post('/{identity}/coverage/reset')
     async def clear_coverage(identity:str):
         from .coverage_runtime import reset
-        async with runner.lock:return reset(root(identity))
+        async with runner.lock:
+            project=root(identity)
+            if any(run['id'] in runner.tasks or run['status'] in {'starting','running'} for run in runner.list(project)):
+                raise HTTPException(409,'Cannot clear accumulated coverage while a test is active')
+            return reset(project)
     @router.get('/{identity}/test-runs')
-    def runs(identity:str):return [run for run in runner.list(root(identity)) if run.get('mode')!='startup_smoke']
+    def runs(identity:str):return [run for run in runner.list(root(identity)) if run.get('mode') not in {'startup_smoke','coverage_smoke'}]
     @router.post('/{identity}/test-runs')
     async def start(identity:str,request:RunRequest):
         try:return await runner.start(root(identity),request.case_id)

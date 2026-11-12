@@ -253,6 +253,8 @@ def merge_reports(paths):
                 else:
                     instance["files"][file["path"]] = json.loads(json.dumps(file))
         for source in report["functional"]["observations"]:
+            if not source.get("bins"):
+                raise ValueError("Native aggregate observations require native database accumulation")
             old = targets.setdefault(source["target_id"], dict(target_id=source["target_id"],
                 binding_fingerprints=source["binding_fingerprints"], bins={}))
             if old["binding_fingerprints"] != source["binding_fingerprints"]:

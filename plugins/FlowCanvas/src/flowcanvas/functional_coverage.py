@@ -112,8 +112,9 @@ def project(root, definition, parsed, binding_reports):
         if not fresh:
             targets[identity]=dict(status='stale',observations=[])
             continue
-        bins=observation['bins']
+        bins=observation.get('bins',[])
         targets[identity]=dict(status='available',observations=[dict(
             instance=identity,point=identity,source_path=target.name,
-            covered=sum(b['hits']>=b['goal'] for b in bins),total=len(bins),bins=bins)])
+            covered=observation.get('covered',sum(b['hits']>=b['goal'] for b in bins)),
+            total=observation.get('total',len(bins)),bins=bins)])
     return dict(revision=revision(root),runs=len(state.get('runs',[])),targets=targets)

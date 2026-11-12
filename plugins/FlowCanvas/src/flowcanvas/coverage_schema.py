@@ -60,9 +60,15 @@ def validate_report(value, build_id=None):
         seen.add(identity)
         if not observation.get("binding_fingerprints"):
             raise ValueError("Target observations require source binding fingerprints")
-        bins = observation.get("bins")
-        if not isinstance(bins, list) or not bins:
-            raise ValueError("Target observations require actual bins")
+        bins = observation.get("bins", [])
+        aggregate = "covered" in observation or "total" in observation
+        if aggregate:
+            totals(observation)
+        if not isinstance(bins, list) or not bins and not aggregate:
+            raise ValueError("Target observations require actual bins or native totals")
+        if aggregate and bins and (observation["total"] != len(bins) or
+                observation["covered"] != sum(b["hits"] >= b["goal"] for b in bins)):
+            raise ValueError("Native target totals disagree with detailed bins")
         names = set()
         for bin in bins:
             if bin["name"] in names:
@@ -80,6 +86,11 @@ def validate_report(value, build_id=None):
             ids = set()
             for item in items:
                 count(item["hits"])
+                if kind == "assert":
+                    for key in ("attempts", "successes", "failures", "incomplete"):
+                        count(item[key])
+                    if item["hits"] != int(item["attempts"] > 0):
+                        raise ValueError("Assertion coverage must represent attempted properties")
                 if item["kind"] != kind or item["scope"] != scope or item["id"] in ids:
                     raise ValueError("Invalid native metric identity")
                 ids.add(item["id"])

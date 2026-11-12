@@ -25,6 +25,17 @@
         </div>
       </div>
       <p v-else>当前模块暂无覆盖率数据</p>
+      <p v-if="metric==='assert' && coverageRows.length">上方比例表示已尝试的断言，不能代替断言通过结果。</p>
+      <details v-if="metricItems.length" class="metric-details" :open="metric==='assert'">
+        <summary>{{ metric==='assert' ? '断言结果' : '覆盖点明细' }}（{{ metricItems.length }}）</summary>
+        <div class="metric-details-scroll"><table>
+          <thead><tr><th>实例 / 覆盖点</th><th>源码行</th><template v-if="metric==='assert'"><th>尝试</th><th>真实成功</th><th>失败</th><th>未完成</th></template><th v-else>状态</th></tr></thead>
+          <tbody><tr v-for="item in metricItems" :key="item.id" :class="{'metric-failed':item.failures>0}">
+            <td :title="item.hierarchy">{{ item.hierarchy }} / {{ item.name }}</td><td>{{ item.file }}{{ item.line ? ':'+item.line : '（行号不可用）' }}</td>
+            <template v-if="metric==='assert'"><td>{{ item.attempts }}</td><td>{{ item.successes }}</td><td>{{ item.failures }}</td><td>{{ item.incomplete }}</td></template><td v-else>{{ item.hits>0 ? '已覆盖' : '未覆盖' }}{{ item.category==='states' ? '（状态，不计入比例）' : '' }}</td>
+          </tr></tbody>
+        </table></div>
+      </details>
       <p v-if="coverageError" class="line-coverage-warning">{{ coverageError }}</p>
     </div>
     <dialog ref="sourceDialog" class="coverage-source-dialog" @click="closeOnBackdrop">
@@ -41,7 +52,7 @@ import { useViewerStore } from '../store.js'
 import { coverageMetricRows } from '../coverageMetricRows.js'
 const store = useViewerStore()
 const metric = new URLSearchParams(location.search).get('metric') || 'line'
-const metricLabel = ({line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率'})[metric] || '覆盖率'
+const metricLabel = ({line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率',assert:'断言'})[metric] || '覆盖率'
 /** Send cloneable coverage context to the shared host task card. */
 function analyzeCoverage(row,event,action){
   const rect=event.currentTarget.getBoundingClientRect()
@@ -74,6 +85,12 @@ const coverageRows = computed(() => {
         .reduce((sum, child) => ({ covered: sum.covered + child.covered, total: sum.total + child.total }), { covered: 0, total: 0 }) }))
 })
 const filter = ref('')
+const metricItems = computed(()=>{
+  if (!['branch','cond','fsm','assert'].includes(metric)) return []
+  const summary=projectCoverage.value?.report?.code_metrics?.[metric]?.dut
+  const query=filter.value.trim().toLowerCase()
+  return [...(summary?.items||[]),...(summary?.states||[])].filter(item=>!query || (item.hierarchy+' '+item.module+' '+item.name).toLowerCase().includes(query))
+})
 const collapsedCoverage = ref(new Set())
 const allExpanded = computed(()=>coverageRows.value.every(row=>!row.hasChildren || !collapsedCoverage.value.has(row.path)))
 function toggleAll() {
@@ -220,4 +237,8 @@ onBeforeUnmount(() => { clearTimeout(toggleTimer); sourceRequest++ })
 .tree-ai-explain:hover .design-ai-spark{transform:rotate(10deg) scale(1.1)}
 @media(hover:none){.tree-ai-explain{opacity:1}}
 @media(prefers-reduced-motion:reduce){.tree-ai-explain,.tree-ai-explain .design-ai-spark{transition:none}}
+</style>
+
+<style scoped>
+.metric-details{margin:12px 0;font-size:12px}.metric-details summary{cursor:pointer}.metric-details-scroll{max-height:360px;overflow:auto}.metric-details table{border-collapse:collapse;width:100%;text-align:left}.metric-details th,.metric-details td{padding:6px 9px;border-bottom:1px solid #8883;white-space:nowrap}.metric-details th{position:sticky;top:0;background:var(--panel-bg,#fff)}.metric-failed{color:#c62828}
 </style>

@@ -53,39 +53,24 @@ async def test_smoke_outcomes(tmp_path,body,pattern,expected):
         await runner.close()
 
 
-@pytest.mark.asyncio
-async def test_import_gate_checks_current_receipt(tmp_path):
-    """A real managed run is required and changing the card invalidates it."""
-    identity,call=make_case(tmp_path,'print("READY test_start")\n')
-    work=tmp_path/'task/workspace';(work/'summary').mkdir(parents=True)
-    (work.parent/'request.json').write_text(json.dumps({'project_root':str(tmp_path),'testcase_baseline':[]}))
-    plan={'files':['test_start.py'],'card_ids':[identity],'smoke_runs':{}}
-    scope=work/'summary/case-import.json';scope.write_text(json.dumps(plan))
-    checker=CaseImportChecker(mode='smoke');checker.workspace=str(work)
-    assert not checker.do_check()[0]
-    runner=Runs()
-    try:
-        run=await runner.start(tmp_path,identity,'startup_smoke','READY test_start',2)
-        await asyncio.gather(*runner.tasks.values())
-        plan['smoke_runs'][identity]=run['id'];scope.write_text(json.dumps(plan))
-        assert checker.do_check()[0],checker.do_check()
-        call('begin_modify',ids=[identity])
-        call('update',cards=[dict(id=identity,runner=dict(command='echo {case}',description='Changed'))])
-        call('end_modify',ids=[identity])
-        assert not checker.do_check()[0]
-    finally:
-        await runner.close()
-
 
 def test_workflow_and_ui_binding():
-    """The import AI action attaches the four-stage workflow."""
+    """The import AI action attaches the nested import workflow."""
     workflow=next(w for w in get_plugin().workflows if w.name=='import-testcases')
     data=load_yaml_with_env_vars(workflow.config_file)
     assert len(data['stage'])==4
+    parent=data['stage'][1]
+    assert parent['name']=='import_testcases'
+    assert [s['name'] for s in parent['stage']]==['import_testcase_cards','configure_testcase_runners','configure_shared_coverage']
+    assert [s['checker'][0]['args']['mode'] for s in parent['stage']]==['cards','runners','coverage']
     root=Path(__file__).parents[1]/'src/flowcanvas'
     assert "design?.kind==='import-testcases'?'import-testcases'" in (root/'web/chat.js').read_text()
     assert '请启动附加的 import-testcases 工作流' in (root/'web/targets.js').read_text()
-    assert 'mode=startup_smoke' in data['stage'][2]['task'][1]
+    assert '逐个进行启动冒烟检查' not in (root/'web/targets.js').read_text()
+    assert '不逐个运行其他用例' in (root/'web/targets.js').read_text()
+    assert 'Do not start tests' in data['stage'][3]['task'][0]
+    assert data['stage'][2]['name']=='validate_coverage_smoke'
+    assert any('mode=coverage_smoke' in task for task in data['stage'][2]['task'])
 
 
 @pytest.mark.asyncio
@@ -114,7 +99,7 @@ class CaseImportHostTests(unittest.IsolatedAsyncioTestCase):
     """Exercise workflow creation without invoking any real project test."""
 
     async def test_import_host_binds_project(self):
-        """Start the actual four-stage MCP host without needing a compiled DUT."""
+        """Start the actual nested import MCP host without needing a compiled DUT."""
         import tempfile
         from flowcanvas.chat import ChatService
         from flowcanvas.workflow_runtime import WorkflowRuntime
@@ -131,6 +116,29 @@ class CaseImportHostTests(unittest.IsolatedAsyncioTestCase):
                 assert request['project_root']==str(project.resolve())
                 assert request['testcase_baseline']==[]
                 assert card['current_stage']=='inspect_testcase_scope'
-                assert len([s for s in card['stages'] if s.get('kind')!='startup'])==4
+                stages=[s for s in card['stages'] if s.get('kind')!='startup']
+                assert len(stages)==7
+                children=[s for s in stages if s.get('parent')=='import_testcases']
+                assert len(children)==3
+                assert all(s['depth']==1 for s in children)
             finally:
                 await runtime.close()
+
+
+def test_card_stage_does_not_require_runner_but_runner_stage_does(tmp_path):
+    """Bind a new card first without fabricating a command or weakening finalization."""
+    identity,call=make_case(tmp_path,'def test_start():\n    pass\n')
+    call('begin_modify',ids=[identity])
+    call('update',cards=[dict(id=identity,runner=None)])
+    work=tmp_path/'task/workspace';(work/'summary').mkdir(parents=True)
+    (work.parent/'request.json').write_text(json.dumps({'project_root':str(tmp_path),'testcase_baseline':[]}))
+    (work/'summary/case-import.json').write_text(json.dumps({'files':['test_start.py'],'card_ids':[identity]}))
+    cards=CaseImportChecker(mode='cards');cards.workspace=str(work)
+    runners=CaseImportChecker(mode='runners');runners.workspace=str(work)
+    assert cards.do_check()[0],cards.do_check()
+    assert not runners.do_check()[0]
+    with pytest.raises(ValueError,match='runner'):
+        call('end_modify',ids=[identity])
+    call('update',cards=[dict(id=identity,runner=dict(command='python -m pytest {case}',description='Real entry'))])
+    call('end_modify',ids=[identity])
+    assert runners.do_check()[0],runners.do_check()

@@ -29,7 +29,7 @@ python -m flowcanvas.test_runner --project /path/to/project --case tc_... --serv
 
 ## 项目级 coverage 配置
 
-`coverage` 与 `runner` 并列保存，默认 null（未接入），不影响测试运行。AI 通过 `test_cases(operation="configure_coverage", expected_revision=..., values={"coverage": {...}})` 配置；设置 null 清除配置。与其他写操作一致，需要完全访问和匹配 revision。
+`coverage` 保存在项目级，每张用例卡片独立保存 `runner`。覆盖率默认 null（未接入），不影响测试运行。AI 通过 `test_cases(operation="configure_coverage", expected_revision=..., values={"coverage": {...}})` 配置；设置 null 清除配置。与其他写操作一致，需要完全访问和匹配 revision。
 
 配置字段为 tool、description、artifact_path、extract_command、merge_command、report_path、parser、build_id_command。artifact_path 必须包含 `{run_dir}`；合并命令必须使用 `{inputs_manifest}`（本批次输入数据库路径的 JSON 数组文件）和 `{merge_dir}`；report_path 必须位于声明的合并目录模板中。运行结束后执行提取和合并命令，命令失败或报告无效时保留上次累计结果。配置校验不等价于实际工具验证。
 
@@ -74,3 +74,21 @@ build_id_command 必须针对实际执行位置和编译输入，不能仅使用
 验证目标使用现有源码绑定 ID 查找 class/covergroup/coverpoint/bin 的结构名，再匹配报告。编译时源码与当前源码词法指纹不一致、绑定失效或待核对时显示数据过期/无数据，不通过名称近似匹配。未产生数据不能判为零命中或验证通过。报告必须使用唯一、跨运行稳定的 covergroup 实例名，当前实验通过 `set_inst_name` 设置 UVM 组件完整路径。
 
 验证目标与行覆盖率共用批次、构建身份和清空入口。清空后迟到结果不加入新批次，旧数据库保留。新构建不与旧构建混合。覆盖率更新版本纳入目标页的轻量轮询，不因累计变化修改验证定义 revision。Python 目标目前可维护源码绑定，但本 VCS 提取器不会为 Python 断言生成命中数据。
+
+
+## 共享数据库运行模式
+
+VCS 项目使用平台内置 `coverage.provider=vcs`。每张用例仍独立保存 runner，
+把 `{coverage_db}`、`{coverage_name}` 传给真实仿真命令。正式运行固定写入
+`.flowcanvas/coverage/database/coverage.vdb`，由 FlowCanvas 统一调用 URG 提取，
+更新行覆盖率、翻转覆盖率和功能覆盖率；项目不再维护专属解析脚本或提取命令。
+服务也会自动监测外部命令更新的同一数据库，等待写入稳定后刷新面板。
+
+DUT 范围、实际构建输入和功能卡片映射放在固定的 `coverage/config.json`、
+`coverage/build.json`、`coverage/targets.json`；可选的编译数据库放在
+`coverage/database/compile.vdb`。详细字段和失败边界见 [coverage.md](coverage.md)。
+
+导入时只完整执行一个短冒烟用例。它复用正式环境和平台提取器，使用私有数据库，
+验证行数据与功能卡片映射，不污染正式累计；其余导入用例不逐个运行。
+清空累计删除运行数据库，保留编译元数据、配置和映射。旧命令式提供方仍可继续使用，
+但不享受 VCS 原生数据库自动监测；重新导入可切换到平台内置方式。

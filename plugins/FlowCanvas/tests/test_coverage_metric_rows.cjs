@@ -22,3 +22,16 @@ test('native instance paths retain module hierarchy',async()=>{
  const rows=coverageMetricRows({code_metrics:{branch:{dut:{covered:1,total:1,items:[item]}}}},'branch','Top');
  assert.equal(rows[0].path,'Top.u_child');assert.equal(rows[0].module,'Child');
 });
+
+ test('all native metrics retain zero hits and unavailable metrics remain empty',async()=>{
+  const {coverageMetricRows}=await modulePromise;
+  for (const metric of ['branch','cond','fsm','assert']) {
+   const items=[{file:'Top.sv',line:2,hits:0,hierarchy:'Top',module:'Top'},
+    {file:'Top.sv',line:null,hits:1,hierarchy:'Top',module:'Top'}];
+   const rows=coverageMetricRows({code_metrics:{[metric]:{dut:{items}}}},metric,'Top');
+   assert.equal(rows[0].covered,1);assert.equal(rows[0].total,2);
+   assert.deepEqual(rows[0].files[0].uncovered_lines,[2]);
+   assert.deepEqual(rows[0].files[0].covered_lines,[]);
+   assert.deepEqual(coverageMetricRows({},metric,'Top'),[]);
+  }
+ });
