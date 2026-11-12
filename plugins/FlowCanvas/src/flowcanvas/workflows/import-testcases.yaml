@@ -1,0 +1,72 @@
+# Import runnable tests and verify startup without claiming complete test success.
+template: null
+guide_doc:
+  enable: false
+skill:
+  use_skill: false
+  general_skill_list: []
+mission:
+  name: 导入测试用例
+  prompt:
+    system: |
+      Import existing tests from project {PROJECT_ROOT}, scoped to DUT {DUT}, into FlowCanvas.
+      Read documentation, test sources and actual build/run configuration. UVM configurations using
+      one base test with different sequences may be separate cases; do not register environment-only
+      base classes. Python cases use explicit pytest entries. Select existing runnable scenarios.
+      Write concise Chinese titles/descriptions based on documentation and verified against source;
+      without documentation derive them from real stimulus and checks. Do not invent passing results.
+      Use test_cases inspect/apply/begin_modify/update/end_modify. Reuse existing IDs; each card needs
+      name, title, description, its own runner={command,description}, and definition line bindings.
+      Keep project build flow and required dependencies. Place each run's outputs under {run_dir}.
+      Do not rewrite DUT or test behavior to make startup pass. Correct entry commands or configuration
+      only when evidence supports it. Use source bindings for implementation and relevant configuration.
+      Verify every imported case with a managed startup smoke, sequentially. Startup success is not
+      full test success. Do not collect/merge coverage from incomplete smoke runs.
+      Save scope and receipts in {OUT}/case-import.json, never edit card management files directly.
+      Use SetCurrentStageJournal and Complete through all stages, then Exit after acceptance.
+    tips:
+      always: []
+      random: []
+tools:
+  selected_tools: [ReadTextFile, EditTextFile, CurrentTips, Status, SetCurrentStageJournal, Complete, Exit]
+write_dirs: ["{OUT}"]
+stage:
+  - name: inspect_testcase_scope
+    desc: 确认测试用例与运行入口
+    task:
+      - "Read actual test entrypoints, scripts and test configuration. Select runnable scenarios in the requested module and exclude unrelated suites and base classes."
+      - "Write {OUT}/case-import.json with files (project-relative test implementation files), card_ids=[], smoke_runs={}. Record concise scope/exclusion notes as needed."
+    checker:
+      - name: scope
+        clss: flowcanvas.case_import_workflow.CaseImportChecker
+        args: {mode: scope}
+  - name: import_testcase_cards
+    desc: 导入卡片并配置独立运行命令
+    task:
+      - "Inspect existing cards, reuse matching entries, and apply only the needed new IDs. Begin modifications before writing each batch. Fill readable Chinese title/description, actual entry name, runner command/description and full implementation line-range bindings; then end_modify."
+      - "Choose the existing project script's test selector as name for UVM configuration-driven tests. Python name is test_function or TestClass::test_method. The runner expands {case} once and shell-quotes it; do not prepend another directory to it."
+      - "Keep smoke artifacts isolated with {run_dir}. Record all imported/reused IDs in card_ids. No full regression or coverage configuration is required for startup-only acceptance."
+    checker:
+      - name: cards
+        clss: flowcanvas.case_import_workflow.CaseImportChecker
+        args: {mode: cards}
+  - name: smoke_testcase_startup
+    desc: 逐个检查启动并自动停止
+    task:
+      - "Determine a specific readiness log pattern from the actual test framework/entrypoint. It must indicate execution of the selected test, not a compiler banner, process creation or merely collected tests. For pytest use verbose output identifying the selected test; for UVM use an existing test/sequence run-phase message. Never add a fake readiness print or an echo wrapper."
+      - "Call test_case_runs(start,case_id,mode=startup_smoke,ready_pattern=pattern,startup_timeout=120). Raise the timeout within 600 seconds only when required by the actual build/startup. Save run.id in smoke_runs under that case ID."
+      - "Read each run's logs until terminal status. The runner stops automatically after observing readiness; check smoke_status. If startup fails, diagnose the log, fix only supported configuration issues, and retry that case. Do not proceed to the next case while a run remains active."
+      - "A naturally finished short case keeps its real exit code. Intentional stopping after startup means only startup passed. No complete functional verification or coverage claim is allowed."
+    checker:
+      - name: startup_receipts
+        clss: flowcanvas.case_import_workflow.CaseImportChecker
+        args: {mode: smoke}
+  - name: reconcile_testcase_import
+    desc: 核对导入与启动检查结果
+    task:
+      - "Inspect the final cards, commands, source bindings and smoke logs. Every imported card needs a current passed startup receipt; command or binding changes require a new check."
+      - "Report imported cases, exclusions, startup-only stops and natural exits separately. Explain unresolved issues. Complete and Exit only after final acceptance."
+    checker:
+      - name: final_alignment
+        clss: flowcanvas.case_import_workflow.CaseImportChecker
+        args: {mode: smoke}

@@ -753,12 +753,12 @@ window.FlowCanvasAI={
       if(owner.attachment&&!owner.attachment_sent&&(design||owner.attachment.workflow_id!=='generate-testcase'))throw Error('当前对话已附加其他工作流，请使用独立任务对话');
     }else{
       owner=await request('/sessions',{backend:backendChoice});
-      await request('/sessions/'+owner.id+'/settings',{title:design?taskTitle+' · '+design.module:'AI 新增测试用例'});
+      await request('/sessions/'+owner.id+'/settings',{title:design?taskTitle+' · '+(design.module||project.name):'AI 新增测试用例'});
       await request('/sessions/'+owner.id+'/permissions',{mode:backendChoice==='opencode'?'full':'workspace'});
     }
     if(current&&!owner.id)owner=await ensureSession();
-    if(!design||design.kind==='plan-goals'||design.kind==='import-goals')await request('/sessions/'+owner.id+'/attachment',{workflow_id:design?.kind==='import-goals'?'import-targets':design?.kind==='plan-goals'?'plan-goals':'generate-testcase',task_only:true,rtl_file:project.rtl?.top_file?project.path+'/'+project.rtl.top_file:'',dut:project.rtl?.top||'RTL'});
-    const result=await request('/sessions/'+owner.id+'/messages',{text,model,effort,speed:speedMode,task_card:{title:taskTitle,workflow:design?.kind==='import-goals'?'导入验证目标':design?.kind==='plan-goals'?'规划验证目标':design?'':'新增测试用例',project:project.name,requirements:design?(design.instance||'')+(requirements?'\n'+requirements:''):requirements||''}});
+    if(!design||design.kind==='plan-goals'||design.kind==='import-goals'||design.kind==='import-testcases')await request('/sessions/'+owner.id+'/attachment',{workflow_id:design?.kind==='import-testcases'?'import-testcases':design?.kind==='import-goals'?'import-targets':design?.kind==='plan-goals'?'plan-goals':'generate-testcase',task_only:true,rtl_file:project.rtl?.top_file?project.path+'/'+project.rtl.top_file:'',dut:project.rtl?.top||'RTL'});
+    const result=await request('/sessions/'+owner.id+'/messages',{text,model,effort,speed:speedMode,task_card:{title:taskTitle,workflow:design?.kind==='import-testcases'?'导入测试用例':design?.kind==='import-goals'?'导入验证目标':design?.kind==='plan-goals'?'规划验证目标':design?'':'新增测试用例',project:project.name,requirements:design?(design.instance||'')+(requirements?'\n'+requirements:''):requirements||''}});
     await list();await choose(owner.id);
     return result;
   }

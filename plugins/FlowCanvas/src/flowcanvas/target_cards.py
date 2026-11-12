@@ -19,17 +19,17 @@ class CardRequest(BaseModel):
     action: Literal['update', 'delete'] = 'update'
     cascade: bool = False
     planned: bool = False
-    kind: Literal['group', 'point', 'testpoint'] | None = None
+    kind: Literal['group', 'point', 'testpoint', 'case'] | None = None
     parent: str | None = None
     files: list[str] = Field(default_factory=list, max_length=100)
     binding_id: str = ''
 
 
-def execute(root, request, owner='manual'):
+def execute(root, request, owner='manual', store=None):
     """Validate a complete batch before publishing source markers and one revision."""
     r = request if isinstance(request, CardRequest) else CardRequest.model_validate(request)
     owner = owner or 'manual'
-    store = Targets(root)
+    store = store or Targets(root)
     with LOCK:
         data = store.read()
         if r.operation == 'inspect':
@@ -48,7 +48,7 @@ def execute(root, request, owner='manual'):
                 result['sources'] = store.inspect(r.files)
             if r.binding_id:
                 result['source'] = store.source(r.binding_id)
-            result['instructions'] = SKILL.read_text()
+            result['instructions'] = getattr(store,'instructions',None) or SKILL.read_text()
             result['request_schema'] = CardRequest.model_json_schema()
             return result
         if data.revision != r.expected_revision:
@@ -56,8 +56,8 @@ def execute(root, request, owner='manual'):
         if r.operation == 'apply':
             if not r.count or r.cards or r.ids:
                 raise ValueError('apply requires only count and expected_revision')
-            created = [new_id('vt') for _ in range(r.count)]
-            data.targets.extend(Target(id=identity, name='待完善', lifecycle='draft',
+            created = [new_id('tc' if 'case' in store.prefixes else 'vt') for _ in range(r.count)]
+            data.targets.extend(store.target_model(id=identity, name='待完善', lifecycle='draft',
                                        operation_session=owner,
                                        origin='ai' if owner != 'manual' else 'manual')
                                 for identity in created)
@@ -72,6 +72,8 @@ def execute(root, request, owner='manual'):
         if unknown:
             raise ValueError('Unknown card IDs: ' + ', '.join(sorted(unknown)))
         selected = set(ids)
+        if hasattr(store,'check_idle'):
+            store.check_idle(selected)
         if r.operation == 'begin_modify' and r.action == 'delete':
             descendants = set(selected)
             while True:
@@ -119,12 +121,14 @@ def execute(root, request, owner='manual'):
             else:
                 reports = store.status()['reports']
                 for row in rows:
+                    if hasattr(store,'validate_card'):
+                        store.validate_card(row)
                     if row.kind is None or not row.description.strip() or row.name == '待完善':
                         raise ValueError('Provide a readable title and description: ' + row.id)
                     if row.bindings:
                         if reports[row.id]['status'] != 'bound':
                             raise ValueError('Resolve source bindings before finishing: ' + row.id)
-                    elif not r.planned:
+                    elif not r.planned or 'case' in store.prefixes:
                         raise ValueError('Binding required; use planned=true only for unimplemented targets: ' + row.id)
                     row.lifecycle = 'ready'
                     row.operation_status = 'paused'
@@ -140,14 +144,15 @@ def update_cards(store, data, request):
     by_id = {t.id: t for t in data.targets}
     original, inserts, pending = {}, {}, []
     for patch in request.cards:
-        if set(patch) - {'id', 'kind', 'name', 'description', 'parent', 'bindings'}:
+        if set(patch) - ({'id', 'kind', 'name', 'description', 'parent', 'bindings'} | ({'title','runner'} if 'case' in store.prefixes else set())):
             raise ValueError('Unsupported card information field')
         row = by_id[patch['id']]
         if 'kind' in patch and row.kind is not None and row.kind != patch['kind']:
             raise ValueError('An assigned card kind cannot change')
-        for key in ('kind','name','description','parent'):
-            if key in patch:
-                setattr(row,key,patch[key])
+        metadata={key:patch[key] for key in ('kind','name','title','description','parent','runner') if key in patch}
+        validated=store.target_model.model_validate({**row.model_dump(),**metadata})
+        for key in metadata:
+            setattr(row,key,getattr(validated,key))
         if 'bindings' not in patch:
             continue
         row.bindings=[]
@@ -181,7 +186,7 @@ def update_cards(store, data, request):
                             fingerprint=fingerprint(content))
             row.bindings.append(binding)
             pending.append(binding)
-    Definition.model_validate(data.model_dump())
+    store.definition_model.model_validate(data.model_dump())
     for patch in request.cards:
         row=by_id[patch['id']]
         if row.parent and by_id[row.parent].lifecycle=='deleting':

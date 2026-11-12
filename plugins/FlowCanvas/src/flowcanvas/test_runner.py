@@ -15,7 +15,6 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from .targets import atomic
 from .testcases import Cases
-from .testcase_syntax import inventory
 
 
 class TestRuns:
@@ -65,24 +64,32 @@ class TestRuns:
             await asyncio.gather(task, return_exceptions=True)
         return self.output(root, run_id)
 
-    async def start(self, root, case_id):
+    async def start(self, root, case_id, mode="test", ready_pattern="", startup_timeout=120):
+        if mode not in {'test','startup_smoke'}:
+            raise ValueError('Unknown run mode')
+        if mode=='startup_smoke':
+            if not ready_pattern or len(ready_pattern)>500 or not 1<=startup_timeout<=600:
+                raise ValueError('Startup smoke needs a test-start log pattern and a 1..600 second timeout')
+            re.compile(ready_pattern)
         async with self.lock:
             store=Cases(root); data=store.read()
-            template=data.runner
-            if not template: raise ValueError('尚未配置项目运行模板，请让 AI 先配置 runner')
             if any(r['status'] in {'starting','running'} for r in self.list(root)):
                 raise ValueError('本项目已有命令运行中，请等待完成，避免覆盖共享构建和日志')
             case=next((n for n in data.targets if n.id==case_id),None)
             if not case: raise ValueError('测试用例不存在')
+            template=case.runner
+            if not template: raise ValueError('尚未配置此测试用例的运行命令，请更新该卡片 runner')
             if case.lifecycle != 'ready': raise ValueError('用例正在创建或删除，尚不可运行')
             binding=next((b for b in case.bindings if b.role=='definition'),None)
             if not binding: raise ValueError('测试用例尚未绑定源码')
-            matches=[n for n in inventory(store.file(binding.file))['nodes'] if n['id']==binding.id]
-            if len(matches)!=1: raise ValueError('用例源码绑定失效，请先核对')
-            node=matches[0]
-            entry=node['name']
+            report=store.status()['reports'][case.id]
+            if report['status'] != 'bound':
+                raise ValueError('Case source changed or binding is invalid; inspect and update it first')
+            store.validate_card(case)
+            node=next(n for n in report['bindings'] if n['id']==binding.id)
+            entry=case.name
             if binding.file.endswith('.py'):
-                entry=str(store.file(binding.file))+'::'+('::'.join(node['scope'].split('.'))+'::' if node['scope'] else '')+entry
+                entry=str(store.file(binding.file))+'::'+case.name.replace('.', '::')
             # Values are shell-quoted once by this entry point, never interpolated by the model.
             run_id=uuid.uuid4().hex; folder=self.folder(root)
             run_dir=folder/run_id;run_dir.mkdir()
@@ -91,7 +98,11 @@ class TestRuns:
                      cwd=str(store.root),description=template.description,status='starting',started=time.time(),
                      ended=None,exit_code=None,source_fingerprint=node['fingerprint'])
             row['run_dir']=str(run_dir)
-            if data.coverage:
+            if mode=='startup_smoke':
+                from .smoke_runs import case_identity
+                row.update(mode=mode,smoke_status='pending',ready_pattern=ready_pattern,
+                           startup_timeout=startup_timeout,case_identity=case_identity(case))
+            if data.coverage and mode=='test':
                 from .coverage_runtime import state
                 row.update(coverage_config=data.coverage.model_dump(),coverage_epoch=state(root)['epoch'],coverage_status='pending')
             atomic(folder/(run_id+'.json'),row)
@@ -101,6 +112,9 @@ class TestRuns:
             return row
 
     async def execute(self,folder,row):
+        if row.get('mode')=='startup_smoke':
+            from .smoke_runs import execute_smoke
+            return await execute_smoke(self,folder,row)
         path=folder/(row['id']+'.json')
         try:
             with (folder/(row['id']+'.log')).open('ab',buffering=0) as log:
@@ -202,7 +216,7 @@ def routes(projects,runner):
         from .coverage_runtime import reset
         async with runner.lock:return reset(root(identity))
     @router.get('/{identity}/test-runs')
-    def runs(identity:str):return runner.list(root(identity))
+    def runs(identity:str):return [run for run in runner.list(root(identity)) if run.get('mode')!='startup_smoke']
     @router.post('/{identity}/test-runs')
     async def start(identity:str,request:RunRequest):
         try:return await runner.start(root(identity),request.case_id)

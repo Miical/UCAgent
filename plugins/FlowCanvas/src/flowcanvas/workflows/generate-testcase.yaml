@@ -13,7 +13,7 @@ mission:
       遵循 Guide_Doc/dut_test_case.md、dut_fixture.md、dut_api_instruction.md、dut_function_coverage_def.md 的接口与覆盖关联规范。
       本流程按单个场景增量建设：优先复用项目已有的测试目录、运行命令、API、dut/env fixture、Bundle、参考模型和覆盖模型；只补齐该场景需要的缺口，不要求先实现完整环境、全部API或全部功能覆盖；但当前用例的行覆盖率与功能覆盖率采集链路都必须配置完成。
       不修改 RTL，不伪造 DUT、fc_cover 或预期值，不为适配错误结果削弱断言。规格缺失时依据实际设计分析，区分实现事实和待确认需求，不把可疑 RTL 自动当成正确规格。
-      编写代码前先 test_cases(guide/read/create) 登记占位，始终复用该 ID；不通过 import 重复登记。修改既有卡片及绑定先 begin_update，结束后 finish_update；创建中沿用原操作，暂停后 resume_operation。
+      编写代码前先 test_cases(inspect/apply/begin_modify) 登记占位，始终复用该 ID；不通过 import 重复登记。修改既有卡片及绑定先 begin_modify，结束后 end_modify；创建中沿用原 ID，暂停后 begin_modify。
       默认不运行 DUT 仿真、pytest 收集、回归或动态 Bug 取证。静态检查不导入项目模块；不为检查而启动仿真。确需运行验证时交由用户后续点击运行测试用例。
       每阶段使用 SetCurrentStageJournal 和 Complete 推进，直到最终验收；完成只表示代码编写、静态检查及登记完成，不能宣称用例通过或覆盖命中。结束调用 Exit。
     tips:
@@ -26,9 +26,9 @@ stage:
   - name: select_and_reserve_testcase
     desc: 选择场景并登记用例
     task:
-      - "读取 test_cases 的 guide/read 和 verification_targets 的 inspect；检查已有用例、真实源码和运行入口，选定本次唯一场景，明确输入、预期依据、断言与拟关联的测试点，不重复已有用例。"
+      - "读取 test_cases 的 inspect 和 verification_targets 的 inspect；检查已有用例、真实源码和运行入口，选定本次唯一场景，明确输入、预期依据、断言与拟关联的测试点，不重复已有用例。"
       - "调查现有目录和接口，列出复用文件与最小缺口。存在完整环境时直接复用；只有 RTL 时也可继续，不以缺少 README 或完整环境阻塞整个流程。"
-      - "先 test_cases(create) 登记带简短中文 title、代码 name 和具体 description 的占位，再编写代码。保存 {OUT}/testcase_plan.json：case_id 为返回 ID，target_ids 为实际拟关联的测试点 ID 数组，files 为本次将修改或新增的项目相对源码路径数组。不得填旧用例 ID。"
+      - "先 test_cases(apply,count=1) 申请 ID，再 begin_modify 登记并用 update 填写中文 title、代码 name 和 description，再编写代码。保存 {OUT}/testcase_plan.json：case_id 为返回 ID，target_ids 为实际拟关联的测试点 ID 数组，files 为本次将修改或新增的项目相对源码路径数组。不得填旧用例 ID。"
       - "暂缺目标时可先留空 target_ids，后续只创建本场景必要的功能组、功能点和测试点及对应覆盖定义，不要求规划整个项目。"
     reference_files: ["Guide_Doc/dut_test_case.md"]
     output_files: ["{OUT}/testcase_plan.json"]
@@ -44,7 +44,7 @@ stage:
       - "尽量调用现有 api_{DUT}_*；确需新接口时仅补本场景所需函数，首参 env、末参 max_cycles 有默认值，按原生规范推进 DUT Step。缺少 dut/env fixture 时按指南补充真实 DUT 创建、必要时钟/复位、资源清理和覆盖采样。缺 Bundle、Mock 或参考模型时仅在场景确实需要时增加。"
       - "缺少编译产物且本场景需要时，可复用 Picker 编译工作流生成真实 DUT 包；复用已有包时核对来源与顶层，不重复运行全量规划工作流。"
       - "测试函数开头使用真实 fc_cover 的 mark_function，将本函数对象与实际 FG/FC/CK 关联；关联的每个测试点都须有真实激励和断言。复用已有覆盖模型，只补缺失定义并接入现有采样，不在测试里伪造 fc_cover。覆盖定义写入验证目标面板，先 inspect 原始源码，再通过 begin_modify/update/end_modify 以 file/line/line_count 绑定。"
-      - "运行模板已有则复用；缺少时根据实际目录和入口 configure 项目共享 command/description，使用独立的 {case} 参数（运行器会解析为绝对源码路径::测试入口），不能再拼接目录前缀；可以切换工作目录满足项目导入需要，不替换已有可用模板。补齐 testcase_plan.json 中的真实 target_ids 与 files。"
+      - "每个用例通过 test_cases(update) 设置自己的 runner={command,description}，按实际目录和入口填写；可以参考已有用例命令，使用独立的 {case} 参数（运行器会解析为绝对源码路径::测试入口），不能再拼接目录前缀；可以切换工作目录满足项目导入需要，不替换已有可用模板。补齐 testcase_plan.json 中的真实 target_ids 与 files。"
       - |
         Verilator / Toffee 默认模板（在项目现有 fixture 内增量接入，不重写整套环境）：
         ```python
@@ -82,8 +82,8 @@ stage:
       - "运行输出须隔离到 {run_dir}。Toffee 运行模板开启 --toffee-report --report-dump-json，并设置独立 --report-dir；Toffee 会再生成报告子目录，适配器 --report 应传本次报告目录，不猜固定 JSON 层级。根据真实工具版本核对参数。让 AI 确定原始行覆盖数据库、Toffee JSON 报告、提取步骤及合并命令，保存项目 coverage_plan，不能等运行完才临时猜路径。"
       - "优先使用 python -m flowcanvas.coverage_adapter：extract --adapter toffee 读取 Toffee JSON 和从本次原始行数据库转换的 LCOV，或 extract --adapter normalized 接受其他适配器的统一报告；merge 按原子行命中和 bin 次数合并，不平均百分比。必要时读取 --help。VCS 等已有原生合并器可继续使用，只要输出同一报告格式。"
       - "保存项目 verification/coverage/flowcanvas-map.json，内容为真实 FG/FC/CK 完整标签路径到测试点 ID；保存 build-inputs.json，列出 RTL、编译产物、覆盖定义和影响采样的共享代码相对路径，不包含普通新增用例。使用 identity 计算构建标识，禁止固定字符串。"
-      - "用 test_cases(configure_coverage) 保存 coverage-json-v1 的提取命令、独立原始/标准报告路径、合并命令和构建标识命令。testcase_plan.json 加 coverage_plan：adapter（toffee 或 normalized）、line_source 与 functional_source（均包含 {run_dir}）、mapping_file 与 build_inputs_file（项目相对路径）。必须补齐两种覆盖率采集：coverage_plan 中 line_enabled 与 functional_enabled 均为 true，并用 collector_files 列出真实采集源码。运行时缺失数据可以标 unavailable，但不能用 unavailable 代替创建时的配置任务；本创建流程只配置和静态核对，不运行 DUT。"
-      - "通过 test_cases(update/inspect/bind) 更新同一占位 ID，绑定测试函数，保留 creating 状态供下一阶段审查；同步新增或修改目标的源码绑定。"
+      - "用 test_case_runs(operation=configure, settings={coverage:配置}) 保存 coverage-json-v1 的提取命令、独立原始/标准报告路径、合并命令和构建标识命令。testcase_plan.json 加 coverage_plan：adapter（toffee 或 normalized）、line_source 与 functional_source（均包含 {run_dir}）、mapping_file 与 build_inputs_file（项目相对路径）。必须补齐两种覆盖率采集：coverage_plan 中 line_enabled 与 functional_enabled 均为 true，并用 collector_files 列出真实采集源码。运行时缺失数据可以标 unavailable，但不能用 unavailable 代替创建时的配置任务；本创建流程只配置和静态核对，不运行 DUT。"
+      - "通过 test_cases(update/inspect/update) 更新同一占位 ID，绑定测试函数，保留 creating 状态供下一阶段审查；同步新增或修改目标的源码绑定。"
     reference_files: ["{OUT}/testcase_plan.json", "Guide_Doc/dut_test_case.md", "Guide_Doc/dut_fixture.md", "Guide_Doc/dut_api_instruction.md", "Guide_Doc/dut_function_coverage_def.md"]
     checker:
       - name: implemented_case
@@ -93,7 +93,7 @@ stage:
     desc: 核对场景、接口与覆盖关联
     task:
       - "逐项审查本用例的输入、独立预期、真实 DUT/API 调用和断言是否验证了指定场景；排除空实现、assert False 占位、无条件通过、skip/xfail，以及只标记覆盖但没有实际激励的写法。"
-      - "核对 fixture 依赖链、DUT 包导入路径、时钟/复位与采样、API 超时/Step、清理、运行模板及覆盖标签均来自真实文件。核对两种覆盖率的编译/采样/落盘/提取/合并路径，确认 configure_coverage 已保存，报告和数据库属于当前 run_dir，构建指纹来自真实输入。确认复用接口未被破坏，所需新增环境足够支撑本场景，不要求实现无关功能。"
+      - "核对 fixture 依赖链、DUT 包导入路径、时钟/复位与采样、API 超时/Step、清理、运行模板及覆盖标签均来自真实文件。核对两种覆盖率的编译/采样/落盘/提取/合并路径，确认 test_case_runs(operation=configure, settings={coverage:配置}) 已保存，报告和数据库属于当前 run_dir，构建指纹来自真实输入。确认复用接口未被破坏，所需新增环境足够支撑本场景，不要求实现无关功能。"
       - "静态解析本次所有修改的 Python 文件，不导入或运行项目模块。检查不能证明运行成功时如实记录待验证项；不要通过 pytest --collect-only 等隐式加载 DUT 的方式绕过禁止仿真。"
       - "将本场景的验证意图及必要运行说明直接维护在测试用例卡片 description 中；技术静态检查有门禁，语义正确性仍由本阶段逐项阅读代码核对。"
     reference_files: ["{OUT}/testcase_plan.json", "Guide_Doc/dut_test_case.md", "Guide_Doc/dut_fixture.md", "Guide_Doc/dut_api_instruction.md"]
@@ -105,7 +105,7 @@ stage:
     desc: 完成源码绑定与用例登记
     task:
       - "read 重新核对同一用例的 title/name/description、真实源码绑定以及关联验证目标；代码变化导致 changed 时先阅读核对再 accept，不盲目确认。"
-      - "关闭本次新增或修改的验证目标操作，保持所有相关源码绑定有效。对原占位调用 test_cases(finish_create)，使卡片转为正式用例；失败则修复并重试，不新建替代记录。"
+      - "关闭本次新增或修改的验证目标操作，保持所有相关源码绑定有效。对原占位调用 test_cases(end_modify)，使卡片转为正式用例；失败则修复并重试，不新建替代记录。"
       - "简洁报告本次场景、用例入口、复用及补齐的环境/API、源码绑定、运行命令和未验证事项。明确本次未执行 DUT 测试，后续通过运行按钮验证；不能把工作流验收说成用例通过。"
     reference_files: ["{OUT}/testcase_plan.json"]
     checker:

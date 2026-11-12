@@ -1,5 +1,5 @@
 """Incremental case acceptance uses actual panel bindings without executing user code."""
-from target_test_support import inspect_fixture, bind_target
+from target_test_support import inspect_fixture, bind_target, reserve_case, bind_case
 
 import json
 from pathlib import Path
@@ -20,9 +20,9 @@ def authored(tmp_path):
     request_path=work.parent/"request.json"
     request_path.write_text(json.dumps(request))
     cases=Cases(root)
-    case=cases.reserve("test_zero",{"title":"Zero operands","description":"Check zero input sum"},0,"owner")
+    case=reserve_case(cases,"test_zero",{"title":"Zero operands","description":"Check zero input sum"},0,"owner")
     definition=cases.read()
-    definition.runner=RunTemplate(command="pytest --report-dir={run_dir}/report {case}",description="Existing project pytest runner")
+    definition.targets[0].runner=RunTemplate(command="pytest --report-dir={run_dir}/report {case}",description="Existing project pytest runner")
     definition.coverage=CoverageConfig(tool="toffee-verilator",description="Native report and LCOV",
         artifact_path="{run_dir}/coverage.json",extract_command="python extract.py --dat-dir {run_dir}/raw",
         merge_command="python merge.py {inputs_manifest} {merge_dir}",
@@ -47,9 +47,7 @@ def test_zero(env):
                    "    set_func_coverage(request, groups)\n"
                    "    set_line_coverage(request, path, dut=dut)\n")
     file=str(source.relative_to(root))
-    node=cases.inspect([file])[0]["nodes"][0]
-    cases.bind(case["id"],{"file":file,"start":node["start"],"fingerprint":node["fingerprint"]},
-               cases.read().revision)
+    bind_case(cases,case['id'],file,'test_zero',owner='owner',finish=False)
     targets=Targets(root)
     parent=None
     ids=[]
@@ -91,7 +89,7 @@ def test_scoped_authoring_accepts_real_bindings_without_importing(authored):
     assert ok,result
     assert result["simulation_executed"] is False
     assert check("ready")[0] is False
-    cases.lifecycle(identity,"finish_create",cases.read().revision,"owner")
+    __import__('flowcanvas.testcases',fromlist=['execute']).execute(root,dict(operation='end_modify',ids=[identity],expected_revision=cases.read().revision),'owner')
     assert check("ready")[0]
 
 
@@ -219,7 +217,7 @@ def test_report_directory_must_match_toffee_output_contract(authored):
     """Creation rejects assuming JSON is directly below Toffee's report root."""
     root,work,cases,identity,source,plan_path,request_path,check=authored
     data=cases.read()
-    data.runner.command="pytest {case} --toffee-report --report-dir={run_dir}/toffee"
+    data.targets[0].runner.command="pytest {case} --toffee-report --report-dir={run_dir}/toffee"
     data.coverage.extract_command="python -m flowcanvas.coverage_adapter extract --dat-dir {run_dir}/raw --report {run_dir}/toffee/toffee_report.json"
     cases.save(data,data.revision)
     ok,result=check()

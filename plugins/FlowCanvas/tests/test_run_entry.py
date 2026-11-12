@@ -4,6 +4,7 @@ import shlex
 import sys
 import pytest
 from flowcanvas.testcases import Cases, RunTemplate
+from target_test_support import reserve_case, bind_case
 from flowcanvas.test_runner import TestRuns as Runs
 
 
@@ -15,13 +16,10 @@ async def test_python_entry_survives_cd_and_project_spaces(tmp_path):
     source.parent.mkdir(parents=True)
     source.write_text("def test_ok():\n    assert 2 + 2 == 4\n")
     store=Cases(root)
-    row=store.reserve("test_ok",{"title":"Entry resolution","description":"Local assertion fixture"},0,"test")
-    node=store.inspect(["verification/test_entry.py"])[0]["nodes"][0]
-    store.bind(row["id"],{"file":"verification/test_entry.py","start":node["start"],
-                         "fingerprint":node["fingerprint"],"role":"definition"},store.read().revision)
-    store.lifecycle(row["id"],"finish_create",store.read().revision,"test")
+    row=reserve_case(store,"test_ok",{"title":"Entry resolution","description":"Local assertion fixture"},0,"test")
+    bind_case(store,row['id'],'verification/test_entry.py','test_ok',owner='test')
     data=store.read()
-    data.runner=RunTemplate(command="cd {project}/verification && "+shlex.quote(sys.executable)+" -m pytest -q {case}",
+    data.targets[0].runner=RunTemplate(command="cd {project}/verification && "+shlex.quote(sys.executable)+" -m pytest -q {case}",
                             description="Run from the test directory")
     store.save(data,data.revision)
     runner=Runs()

@@ -44,11 +44,11 @@ class TestcaseAuthoringChecker(Checker):
                 raise ValueError("Plan must identify a newly reserved case, not a preexisting case")
             if not case.title.strip() or not case.description.strip():
                 raise ValueError("Case needs a readable title and source-grounded description")
-            if self.mode != "ready" and (case.lifecycle != "creating" or
+            if self.mode != "ready" and (case.lifecycle not in {"creating", "updating"} or
                     case.operation_session != request["conversation_id"] or case.operation_status != "running"):
                 raise ValueError("Resume the original creating case before continuing this workflow")
             if self.mode == "ready" and case.lifecycle != "ready":
-                raise ValueError("Call finish_create on the original case after source validation")
+                raise ValueError("Call end_modify on the original case after source validation")
             files = plan.get("files")
             targets = plan.get("target_ids")
             if not isinstance(files, list) or not files or not all(isinstance(f, str) for f in files):
@@ -61,12 +61,12 @@ class TestcaseAuthoringChecker(Checker):
                     raise ValueError("Implementation paths must remain in the project")
             if self.mode == "reserved":
                 return True, {"case_id": case.id, "state": "reserved"}
-            if not definition.runner:
-                raise ValueError("Configure a real project runner before finishing authoring")
+            if not case.runner:
+                raise ValueError("Configure this case runner before finishing authoring")
             coverage_plan = plan.get("coverage_plan") or {}
             if not definition.coverage or coverage_plan.get("adapter") not in {"toffee", "normalized"}:
                 raise ValueError("Configure coverage extraction and record coverage_plan.adapter")
-            if "{run_dir}" not in definition.runner.command:
+            if "{run_dir}" not in case.runner.command:
                 raise ValueError("Run outputs must be isolated using {run_dir}")
             for field in ("line_source", "functional_source"):
                 if not isinstance(coverage_plan.get(field), str) or "{run_dir}" not in coverage_plan[field]:
@@ -97,8 +97,8 @@ class TestcaseAuthoringChecker(Checker):
                 extract = definition.coverage.extract_command
                 if "--dat-dir" not in extract and "--lcov" not in extract:
                     raise ValueError("Toffee extraction must convert current-run .dat with --dat-dir or supply --lcov")
-                report_dir = command_option(definition.runner.command, "--report-dir")
-                if "--toffee-report" in shlex.split(definition.runner.command) and "flowcanvas.coverage_adapter" in extract:
+                report_dir = command_option(case.runner.command, "--report-dir")
+                if "--toffee-report" in shlex.split(case.runner.command) and "flowcanvas.coverage_adapter" in extract:
                     report_source = command_option(extract, "--report")
                     if not report_dir or report_dir.rstrip("/") != (report_source or "").rstrip("/"):
                         raise ValueError("Pass the same per-run directory to --report and --report-dir; "

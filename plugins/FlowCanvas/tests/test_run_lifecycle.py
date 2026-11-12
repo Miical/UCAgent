@@ -14,7 +14,8 @@ from mcp.client.streamable_http import streamable_http_client
 from flowcanvas.chat import ChatService
 from flowcanvas.coverage_runtime import state
 from flowcanvas.test_runner import TestRuns
-from flowcanvas.testcases import Cases, execute
+from flowcanvas.testcases import Cases, configure
+from target_test_support import register_case
 from flowcanvas.workflow_bridge import WorkflowBridge
 
 
@@ -61,20 +62,18 @@ class RunLifecycleTests(unittest.IsolatedAsyncioTestCase):
                     '    (artifact / "report.json").write_text(json.dumps(report))\n'
                     'print("FC_" + phase.upper() + "_DONE", file=sys.stderr, flush=True)\n')
                 python = shlex.quote(sys.executable)
-                execute(project, {'operation': 'configure', 'expected_revision': 0, 'values': {
-                    'command': python + ' test_probe.py {case}', 'description': 'Execute the local assertion fixture.'}})
-                store = Cases(project)
-                candidate = store.discover(['test_probe.py'])['cases'][0]
-                store.import_files(['test_probe.py'], store.read().revision, [{**candidate,
-                    'reason': 'Directly executable Python assertion fixture.', 'title': 'Local lifecycle probe',
-                    'description': 'Complete one assertion before controlled coverage post-processing.'}])
-                execute(project, {'operation': 'configure_coverage', 'expected_revision': store.read().revision,
-                    'values': {'coverage': {'tool': 'local-fixture', 'description': 'Synthetic integration data, not measured hardware coverage.',
-                        'artifact_path': '{run_dir}/coverage.json',
-                        'extract_command': python + ' collection_fixture.py extract ' + outcome + ' {project} {run_dir}',
-                        'merge_command': python + ' collection_fixture.py merge ' + outcome + ' {project} {merge_dir} {inputs_manifest}',
-                        'report_path': '{merge_dir}/report.json',
-                        'build_id_command': python + ' -c ' + shlex.quote('print("fixture-build")')}}})
+                store=Cases(project)
+                register_case(store,'test_probe.py','test_probe','Local lifecycle probe','Complete one assertion before controlled post-processing.')
+                definition=store.read()
+                from flowcanvas.testcases import RunTemplate
+                definition.targets[0].runner=RunTemplate(command=python+' test_probe.py {case}',description='Local fixture command')
+                store.save(definition,definition.revision)
+                configure(project, {'coverage': {'tool': 'local-fixture', 'description': 'Synthetic integration data.',
+                    'artifact_path': '{run_dir}/coverage.json',
+                    'extract_command': python + ' collection_fixture.py extract ' + outcome + ' {project} {run_dir}',
+                    'merge_command': python + ' collection_fixture.py merge ' + outcome + ' {project} {merge_dir} {inputs_manifest}',
+                    'report_path': '{merge_dir}/report.json',
+                    'build_id_command': python + ' -c ' + shlex.quote('print("fixture-build")')}}, store.read().revision)
                 service = ChatService(root / 'state'); service.test_runs = TestRuns()
                 service.projects.activate({'id': 'fixture', 'path': str(project), 'name': 'Lifecycle fixture', 'needs_import': False})
                 owner = service.create(); self.assertEqual(owner['permission_mode'], 'workspace')

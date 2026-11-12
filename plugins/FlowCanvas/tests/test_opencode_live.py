@@ -1694,7 +1694,7 @@ else:
     async def check_public_testcase_run_monitoring(self, scenario):
         """Exercise public task-card execution with either an assertion or post-processing failure."""
         from flowcanvas.projects import routes as project_routes
-        from flowcanvas.testcases import Cases, execute
+        from flowcanvas.testcases import Cases, configure
         from flowcanvas.test_runner import TestRuns, routes as run_routes
         from flowcanvas.coverage_runtime import state
 
@@ -1749,26 +1749,15 @@ else:
                 response = await client.post('/api/chat/projects/import', json={'path': str(project), 'name': 'Run monitor fixture'})
                 self.assertEqual(response.status_code, 200, response.text)
                 identity = response.json()['id']
-                execute(project, {'operation': 'configure', 'expected_revision': 0, 'values': {
-                    'command': shlex.quote(sys.executable) + ' -m pytest -q -s {case}',
-                    'description': 'Local Python integration fixture; no simulation or remote execution.'}})
+                runner_config = {'command': shlex.quote(sys.executable) + ' -m pytest -q -s {case}', 'description': 'Local Python integration fixture; no simulation or remote execution.'}
                 store = Cases(project)
-                candidate = store.discover([source.name])['cases'][0]
-                store.import_files([source.name], store.read().revision, [{**candidate,
-                    'reason': 'Standalone pytest function with an actual assertion and progress output.',
-                    'title': 'Observed collection fixture' if coverage_failure else 'Observed mismatch fixture',
-                    'description': 'Check arithmetic before collecting configured coverage.' if coverage_failure else
-                        'Emit progress, then compare actual 9 with expected 10.'}])
+                from target_test_support import register_case, set_case_runners
+                name=next(n.name for n in ast.parse(source.read_text()).body if isinstance(n,ast.FunctionDef) and n.name.startswith('test_'))
+                register_case(store,source.name,name,'Observed result','Check arithmetic and observe the result.')
+                set_case_runners(store,runner_config)
                 if coverage_failure:
                     python = shlex.quote(sys.executable)
-                    execute(project, {'operation': 'configure_coverage', 'expected_revision': store.read().revision,
-                        'values': {'coverage': {'tool': 'local-fixture',
-                            'description': 'Local collection fixture; report its result independently of pytest.',
-                            'artifact_path': '{run_dir}/coverage.json',
-                            'extract_command': python + ' collection_probe.py extract {run_dir}',
-                            'merge_command': python + ' collection_probe.py merge {inputs_manifest} {merge_dir}',
-                            'report_path': '{merge_dir}/report.json',
-                            'build_id_command': python + ' -c ' + shlex.quote('print("fixture-build")')}}})
+                    configure(project, {'coverage': {'tool': 'local-fixture', 'description': 'Local collection fixture; report its result independently of pytest.', 'artifact_path': '{run_dir}/coverage.json', 'extract_command': python + ' collection_probe.py extract {run_dir}', 'merge_command': python + ' collection_probe.py merge {inputs_manifest} {merge_dir}', 'report_path': '{merge_dir}/report.json', 'build_id_command': python + ' -c ' + shlex.quote('print("fixture-build")')}}, store.read().revision)
                 case = store.read().targets[0]
                 before = source.read_bytes()
                 collector_before = collector.read_bytes() if coverage_failure else None
@@ -1782,7 +1771,7 @@ else:
                 response = await client.post('/api/chat/sessions/' + owner['id'] + '/messages', json={
                     'model': model['id'], 'effort': 'low' if 'low' in model['efforts'] else 'default',
                     'text': f'Run the existing case {case.id} in the current project {project}. '
-                        'Use test_cases(read) to verify the ID and shared runner. Call test_case_runs(start, case_id) '
+                        'Use test_cases(inspect) to verify the ID and shared runner. Call test_case_runs(start, case_id) '
                         'exactly once and retain run.id. Monitor with test_case_runs(read, run_id, offset, wait_seconds=10), '
                         'advancing the returned offset until the run is terminal and no unread log remains. '
                         'Report an observed exception or assertion promptly; do not confuse a quiet interval with deadlock. '
@@ -1876,7 +1865,7 @@ else:
     async def test_public_testcase_deletion_preserves_shared_code(self):
         """Delete one bound case with a real model and run its unchanged shared-code sibling."""
         from flowcanvas.projects import routes as project_routes
-        from flowcanvas.testcases import Cases, execute
+        from flowcanvas.testcases import Cases, configure
         from flowcanvas.test_runner import TestRuns
 
         with tempfile.TemporaryDirectory(prefix='flowcanvas-opencode-delete-case-') as directory:
@@ -1918,16 +1907,12 @@ else:
             try:
                 imported = await client.post('/api/chat/projects/import', json={'path': str(project), 'name': 'Deletion fixture'})
                 self.assertEqual(imported.status_code, 200, imported.text)
-                execute(project, {'operation': 'configure', 'expected_revision': 0, 'values': {
-                    'command': shlex.quote(sys.executable) + ' -m pytest -q {case}',
-                    'description': 'Run the selected local assertion fixture; no hardware simulation.'}})
+                runner_config = {'command': shlex.quote(sys.executable) + ' -m pytest -q {case}', 'description': 'Run the selected local assertion fixture; no hardware simulation.'}
                 store = Cases(project)
-                candidates = store.discover([source.name])['cases']
-                self.assertEqual(len(candidates), 2)
-                store.import_files([source.name], store.read().revision, [{**candidate,
-                    'reason': 'Independent pytest function with stimulus and an actual value assertion.',
-                    'title': 'Full word replacement' if candidate['name'] == 'test_full_word_write' else 'Low byte update',
-                    'description': 'Exercise shared byte-lane writes and check the resulting word.'} for candidate in candidates])
+                from target_test_support import register_case, set_case_runners
+                for name in ('test_full_word_write','test_low_byte_write'):
+                    register_case(store,source.name,name,'Word update','Exercise shared byte-lane writes.')
+                set_case_runners(store,runner_config)
                 definition = store.read()
                 removed = next(row for row in definition.targets if row.name == 'test_full_word_write')
                 retained = next(row for row in definition.targets if row.name == 'test_low_byte_write')
@@ -1950,13 +1935,13 @@ else:
                 response = await client.post('/api/chat/sessions/' + owner['id'] + '/messages', json={
                     'model': model['id'], 'effort': 'low' if 'low' in model['efforts'] else 'default',
                     'text': f'Delete only test case {removed.id} ({removed.name}) from project {project}. '
-                        'First call test_cases(read) for the current revision and immediately call '
-                        'test_cases(begin_delete, target_id, expected_revision) before inspecting source or deletion scope. '
+                        'First call test_cases(inspect) for the current revision and immediately call '
+                        'test_cases(begin_modify, ids, action=delete, expected_revision) before inspecting source or deletion scope. '
                         'If the runner rejects deletion because the case is active, stop and explain. '
                         'After registration, read guide and inspect bindings and references. Remove the selected test '
                         'implementation and helpers used only by it, preserving shared drivers, other tests, '
                         'their imports, and historical runs and logs. Do not delete a file containing retained definitions. '
-                        'After source cleanup, call test_cases(delete, target_id, expected_revision) for only this ID. '
+                        'After source cleanup, call test_cases(end_modify, ids, expected_revision) for only this ID. '
                         'Do not edit project JSON directly, run tests or simulation, delegate, or start a workflow. '
                         'Report actual changes and retained shared code in English. Do not claim the remaining test passed without running it.',
                     'task_card': {'title': 'Delete test case', 'workflow': '', 'project': 'Deletion fixture', 'requirements': removed.name}})
@@ -1981,11 +1966,11 @@ else:
                 self.assertTrue(observed_deleting, 'No in-progress deletion was observed')
                 calls = [item for item in owner['items'] if item['kind'] == 'tool' and item['title'] == 'ucagent_test_cases']
                 arguments = [json.loads(item['input']) for item in calls]
-                self.assertEqual([arg['operation'] for arg in arguments[:2]], ['read', 'begin_delete'])
-                for operation in ('begin_delete', 'delete'):
+                self.assertEqual([arg['operation'] for arg in arguments[:2]], ['inspect', 'begin_modify'])
+                for operation in ('begin_modify', 'end_modify'):
                     selected = [arg for arg in arguments if arg['operation'] == operation]
                     self.assertEqual(len(selected), 1)
-                    self.assertEqual(selected[0]['target_id'], removed.id)
+                    self.assertEqual(selected[0]['ids'], [removed.id])
                 self.assertTrue(all(item['status'] == 'completed' for item in calls))
                 after = store.read()
                 self.assertEqual(after.revision, definition.revision + 2)
@@ -2031,7 +2016,7 @@ else:
     async def test_public_testcase_authoring(self):
         """Create a real bound Python case through the same APIs as an AI task card."""
         from flowcanvas.projects import routes as project_routes
-        from flowcanvas.testcases import Cases, execute, routes as case_routes
+        from flowcanvas.testcases import Cases, configure, routes as case_routes
         from flowcanvas.test_runner import TestRuns
 
         with tempfile.TemporaryDirectory(prefix='flowcanvas-opencode-authoring-') as directory:
@@ -2073,14 +2058,12 @@ else:
                     'path': str(project), 'name': 'Authoring fixture', 'top': 'Probe', 'top_file': 'Probe.v'})
                 self.assertEqual(response.status_code, 200, response.text)
                 identity = response.json()['id']
-                execute(project, {'operation': 'configure', 'expected_revision': 0, 'values': {
-                    'command': shlex.quote(sys.executable) + ' -m pytest -q {case}',
-                    'description': 'Local Python fixture; run from the project root using the configured interpreter.'}})
+                runner_config = {'command': shlex.quote(sys.executable) + ' -m pytest -q {case}', 'description': 'Local Python fixture; run from the project root using the configured interpreter.'}
                 store = Cases(project)
-                candidate = store.discover(['test_existing.py'])['cases'][0]
-                store.import_files(['test_existing.py'], store.read().revision, [{**candidate,
-                    'reason': 'Standalone pytest function with an explicit full-mask assertion.',
-                    'title': 'Full-mask replacement', 'description': 'Write all four byte lanes and check the resulting word.'}])
+                from target_test_support import register_case, set_case_runners
+                name=next(n.name for n in ast.parse(seed.read_text()).body if isinstance(n,ast.FunctionDef) and n.name.startswith('test_'))
+                register_case(store,'test_existing.py',name,'Full-mask replacement','Check the resulting word.')
+                set_case_runners(store,runner_config)
                 original = {path: path.read_bytes() for path in (driver, seed, rtl)}
                 seed_id = store.read().targets[0].id
                 response = await client.post('/api/chat/sessions', json={'backend': 'opencode'})
@@ -2097,11 +2080,11 @@ else:
                     'model': model['id'], 'effort': 'low' if 'low' in model['efforts'] else 'default',
                     'text': f'Create one test case in the current project {project}. First call run_workflow for the '
                         'attached generate-testcase workflow and complete its actual stages, journals, Complete and Exit. '
-                        'Read test_cases(guide/read) and existing tests. Reuse driver.MaskedWord without modifying driver.py '
+                        'Read test_cases(inspect) and existing tests. Reuse driver.MaskedWord without modifying driver.py '
                         'or test_existing.py. Probe.v is only the workflow input fixture: do not modify it or claim a hardware simulation. '
                         'In new file test_Probe_zero_mask.py implement test_zero_mask_preserves_word(env): '
                         'initialize a nonzero word, write a different value with mask=0, and assert the original word remains. '
-                        'Register test_cases(create) BEFORE writing code, retain that same ID for update/bind and finish_create. '
+                        'Use test_cases(apply,count=1), then begin_modify BEFORE writing code; update the same ID with line bindings and end_modify. '
                         'Use a concise Chinese title describing the scenario and a concrete description. Do not use import '
                         'to create a duplicate. Preserve the existing runner and case. Do not run tests or simulations, '
                         'do not delegate. Follow the native UCAgent import/API/fixture/mark_function conventions. '

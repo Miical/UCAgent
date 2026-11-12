@@ -67,7 +67,6 @@ class PublishedCaseTests(unittest.TestCase):
         (self.root / "request.json").write_text(json.dumps({"project_root": str(self.project), "dut": "Probe"}))
         self.store = Cases(self.project)
         data = self.store.read()
-        data.runner = RunTemplate(command='python -m pytest "{case}"', description="pytest")
         self.store.save(data, data.revision)
         self.checker = DefaultPanelChecker("cases", "summary/Probe_functions_and_checks.md",
                                           "summary/Probe_verification_needs_and_plan.md",
@@ -77,12 +76,8 @@ class PublishedCaseTests(unittest.TestCase):
     def register(self):
         """Import one real independently runnable test using public discovery."""
         file = str((self.published / "test_probe.py").relative_to(self.project))
-        candidate = self.store.discover([file])["cases"][0]
-        return self.store.import_files([file], self.store.read().revision, [{
-            "file": file, "start": candidate["start"], "fingerprint": candidate["fingerprint"],
-            "reason": "Independent pytest test", "title": "Arithmetic result",
-            "description": "Check the expected result",
-        }])
+        from target_test_support import register_case
+        return register_case(self.store,file,'test_result','Arithmetic result','Check the expected result')
 
     def test_obsolete_published_source_is_rejected(self):
         """Removing a native test must not leave a runnable published ghost test."""

@@ -86,38 +86,52 @@ class WorkflowBridge:
                         'next_action': 'Inspect the current cards and source; correct the batch and retry. No changes were committed.'}
 
         @self.mcp.tool()
-        async def test_cases(operation: str = 'read', expected_revision: int = 0,
-                             files: list[str] | None = None, name: str = '',
-                             target_id: str = '', binding_id: str = '', values: dict | None = None) -> dict:
-            """Manage project test cases and source bindings. Existing-card modifications MUST begin_update before source inspection or edits, then update/bind/accept the same ID and finish_update after validating bindings. Unregistered, paused or foreign-owner writes are rejected. New authoring MUST create a placeholder before source edits, then update/bind that same ID and finish_create after valid binding. Deletion MUST first read the revision and immediately begin_delete for the user-selected ID BEFORE source inspection or scope analysis, then inspect scope/references, clean up and delete. resume_operation resumes a paused placeholder. Start with guide/read; configure the shared runner command/description before import; discover returns candidates only. Inspect stimulus and run entry; exclude environment-only base tests. import requires values.selected entries with file/start/fingerprint/reason/title/description. Generate a source-grounded description for every imported test. configure_coverage saves the optional project coverage extraction/merge configuration (executed after each run). configure/configure_coverage/import/create/update/delete/bind/accept require workspace or full access and current revision. Discovery never implies a passing test."""
+        async def test_cases(operation: str = 'inspect', expected_revision: int = 0,
+                             count: int = 0, ids: list[str] | None = None,
+                             cards: list[dict] | None = None, action: str = 'update',
+                             files: list[str] | None = None, binding_id: str = '') -> dict:
+            """Manage test case cards with inspect/apply/begin_modify/update/end_modify. All operations support batches. apply(count) allocates draft IDs; begin_modify(ids,action=update|delete) starts owned work. update(cards=[{id,name,title,description,runner,bindings}]) uses explicit code entry names and line-range bindings {file,line,line_count,role}. end_modify requires title, description, runnable name and valid definition binding. No syntax discovery or import operation: inspect(files) reads source for AI selection. Running cases cannot be modified or deleted. All writes require current expected_revision. inspect returns instructions and execution settings; set per-case runner={command,description} with update; shared coverage is configured through test_case_runs."""
             from .testcases import execute
-            root = session.get('project_root')
+            root=session.get('project_root')
             if not root:
-                raise ValueError('当前对话未绑定项目，请在项目中创建新对话')
-            if operation not in {'guide', 'read', 'discover', 'inspect', 'source'} and session.get('permission_mode') not in {'workspace', 'full'}:
+                raise ValueError('当前对话未绑定项目')
+            if operation!='inspect' and session.get('permission_mode') not in {'workspace','full'}:
                 raise ValueError('请选择工作区访问或完全访问模式')
-            return await asyncio.to_thread(execute, root, dict(operation=operation,
-                expected_revision=expected_revision, files=files or [], name=name,
-                target_id=target_id, binding_id=binding_id, values=values or {}), owner=session['id'])
+            return await asyncio.to_thread(execute,root,dict(operation=operation,
+                expected_revision=expected_revision,count=count,ids=ids or [],cards=cards or [],
+                action=action,files=files or [],binding_id=binding_id),owner=session['id'])
 
         @self.mcp.tool()
         async def test_case_runs(operation: str = 'list', case_id: str = '', run_id: str = '',
-                                 offset: int = 0, wait_seconds: int = 10) -> dict:
-            """Run and monitor a case through the shared runner. start(case_id) returns run.id; read(run_id, offset) returns new text and next offset, waiting at most 10 seconds for output. Continue read until terminal status and no unread output, then analyze exit code, assertions, errors and coverage_status. Never restart just to poll. stop(run_id) interrupts this run. list/read are read-only; start/stop are available in workspace and full access modes."""
+                                 offset: int = 0, wait_seconds: int = 10,
+                                 settings: dict | None = None, expected_revision: int = 0,
+                                 mode: str = "test", ready_pattern: str = "", startup_timeout: int = 120) -> dict:
+            """Run and monitor cases. For startup checks start with mode=startup_smoke, ready_pattern matching actual test execution, startup_timeout=1..600; it stops automatically after readiness, skips coverage, and records smoke_status separately from test results. configure(settings={coverage},expected_revision) updates shared execution settings; inspect test_cases for schema. list also returns configuration schema. Run a case through the shared runner. start(case_id) returns run.id; read(run_id, offset) returns new text and next offset, waiting at most 10 seconds for output. Continue read until terminal status and no unread output, then analyze exit code, assertions, errors and coverage_status. Never restart just to poll. stop(run_id) interrupts this run. list/read are read-only; start/stop are available in workspace and full access modes."""
             root = session.get('project_root')
             if not root:
                 raise ValueError('当前对话未绑定项目')
-            if operation not in {'list', 'read', 'start', 'stop'}:
-                raise ValueError('operation 必须为 list/read/start/stop')
+            if operation not in {'list', 'read', 'start', 'stop', 'configure'}:
+                raise ValueError('operation 必须为 list/read/start/stop/configure')
             runner = service.test_runs
+            if operation == 'configure':
+                if session.get('permission_mode') not in {'workspace','full'}:
+                    raise ValueError('请选择工作区访问或完全访问模式')
+                from .testcases import configure
+                async with runner.lock:
+                    return await asyncio.to_thread(configure,root,settings or {},expected_revision)
             if operation == 'list':
-                return {'runs': runner.list(root)}
+                from .testcases import Cases, CasesDefinition
+                configuration=Cases(root).read()
+                return {'runs': runner.list(root), 'revision':configuration.revision,
+                        'coverage':configuration.coverage,
+                        'configuration_schema':CasesDefinition.model_json_schema()}
             if operation == 'start':
-                run = await runner.start(root, case_id)
-                project = next((row for row in service.projects.state['recent'] if row['path'] == root), None)
-                session['ai_test_run'] = {'run': run, 'project': project}
-                service.changed(session)
-                service.save(session)
+                run = await runner.start(root, case_id, mode, ready_pattern, startup_timeout)
+                if mode == 'test':
+                    project = next((row for row in service.projects.state['recent'] if row['path'] == root), None)
+                    session['ai_test_run'] = {'run': run, 'project': project}
+                    service.changed(session)
+                    service.save(session)
                 return {'run': run, 'offset': 0}
             if operation == 'stop':
                 return await runner.stop(root, run_id)

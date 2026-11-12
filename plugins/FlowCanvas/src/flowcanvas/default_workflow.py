@@ -114,34 +114,45 @@ class DefaultPanelChecker(Checker):
                                    if "__pycache__" not in p.parts}
                 if published_files != set(files):
                     raise ValueError("Published Python source inventory differs from native checked code")
-                scan = store.discover(files)
-                if scan["errors"]:
-                    raise ValueError("Published tests cannot be parsed: " + str(scan["errors"]))
-                expected = {(c["file"], c.get("scope", ""), c["name"]) for c in scan["cases"]}
+                expected = {}
+                for file in files:
+                    path=root/file
+                    if not (path.name.startswith('test_') or path.name.endswith('_test.py')):
+                        continue
+                    tree=ast.parse(path.read_text())
+                    for node in tree.body:
+                        if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef)) and node.name.startswith('test_'):
+                            expected[(file,node.name)] = node
+                        if isinstance(node,ast.ClassDef) and node.name.startswith('Test'):
+                            for method in node.body:
+                                if isinstance(method,(ast.FunctionDef,ast.AsyncFunctionDef)) and method.name.startswith('test_'):
+                                    expected[(file,node.name+'::'+method.name)] = method
                 if not expected:
                     raise ValueError("No native pytest cases found")
-                reports = store.status()["reports"]
+                reports = store.status()['reports']
                 seen = set()
                 for case in definition.targets:
-                    report = reports[case.id]
-                    if case.lifecycle != "ready" or report["status"] != "bound" or not case.title.strip() or not case.description.strip():
-                        raise ValueError("Case needs a finished card and current source binding: " + case.id)
-                    for binding in report["bindings"]:
-                        if binding["role"] != "definition":
+                    report=reports[case.id]
+                    if case.lifecycle!='ready' or report['status']!='bound' or not case.title.strip() or not case.description.strip():
+                        raise ValueError('Case needs a finished card and current source binding: '+case.id)
+                    for binding in report['bindings']:
+                        if binding['role']!='definition':
                             continue
-                        key = (binding["file"], binding.get("scope", ""), binding["symbol"])
+                        key=(binding['file'],case.name.replace('.', '::'))
                         if key in expected:
-                            if case.name != binding["symbol"]:
-                                raise ValueError("Case name differs from bound test: " + case.id)
+                            node=expected[key]
+                            first=min([node.lineno]+[d.lineno for d in node.decorator_list])
+                            if binding['line']>first or binding['end_line']<node.end_lineno:
+                                raise ValueError('Definition binding must contain the complete test: '+case.id)
                             if key in seen:
-                                raise ValueError("Native test has multiple cards: " + str(key))
+                                raise ValueError('Native test has multiple cards: '+str(key))
                             seen.add(key)
-                        elif Path(binding["file"]).is_relative_to(published.relative_to(root)):
-                            raise ValueError("Obsolete card refers to a removed native test: " + case.id)
-                if seen != expected:
-                    raise ValueError("Native tests missing panel cards: " + str(sorted(expected-seen)[:15]))
-                if not definition.runner:
-                    raise ValueError("Configure the project test runner before accepting tests")
+                        elif Path(binding['file']).is_relative_to(published.relative_to(root)):
+                            raise ValueError('Obsolete card refers to a removed native test: '+case.id)
+                if seen != set(expected):
+                    raise ValueError('Native tests missing panel cards: '+str(sorted(set(expected)-seen)[:15]))
+                if any(case.runner is None for case in definition.targets):
+                    raise ValueError("Configure a runner on every test case before accepting tests")
                 if self.mode == "final" and not definition.coverage:
                     raise ValueError("Configure real per-run coverage extraction before final acceptance")
                 return True, {"panel_tests": len(seen), "published_files": len(files)}

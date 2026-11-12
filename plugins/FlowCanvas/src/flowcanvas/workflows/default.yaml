@@ -4,7 +4,7 @@ template_overwrite:
 flowcanvas_panel:
   instruction: |
     FlowCanvas is authoritative for verification plans, FG/FC/CK targets and test-case plans.
-    Call verification_targets operation=inspect and test_cases operation=guide before maintaining project {PROJECT_ROOT}.
+    Call verification_targets operation=inspect and test_cases operation=inspect before maintaining project {PROJECT_ROOT}.
     When native tasks or skills ask to write the verification plan or functions-and-checks
     document, update the corresponding panel cards instead. Check generates both compatibility
     documents from the panel; do not maintain a separate plan in those documents.
@@ -14,7 +14,7 @@ flowcanvas_panel:
     IDs with apply, register owned modifications with begin_modify(action=update), update card
     information and complete binding lists, then end_modify. Use begin_modify(action=delete)
     and end_modify for deletion. All operations accept batches and all writes use current revision.
-    For test_cases keep its create/begin_update/finish_create/finish_update lifecycle.
+    For test_cases use the same five-operation lifecycle, with explicit name/title/description and definition line bindings.
     Preserve native stages, skills, batch arguments, simulations and failure analysis.
     Source binding never substitutes for native verification evidence.
   planning: |
@@ -36,9 +36,9 @@ flowcanvas_panel:
     Register every native pytest test once, including API/environment/static/random tests,
     with a definition binding to its published function. Finish all creation/update operations.
     Delete obsolete records through the tool lifecycle.
-    Configure the runner with standalone "{case}" (an absolute pytest entry), the published
+    Set each test card runner with standalone "{case}" (an absolute pytest entry), the published
     tests directory as cwd, and its parent on PYTHONPATH for DUT imports. Keep reports under
     {run_dir}. Configure real coverage extraction using the shared FlowCanvas report format,
-    following test_cases guide. Configuration alone does not prove successful collection.
+    through test_case_runs configure, following test_cases inspect instructions. Configuration alone does not prove successful collection.
     Final acceptance requires every card ready and bound, exactly one card per native test,
     and published Python sources identical to the native checked implementation.

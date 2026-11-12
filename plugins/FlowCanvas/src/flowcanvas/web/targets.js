@@ -39,15 +39,15 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
   }
   async function api(request){const url='/api/chat/projects/'+encodeURIComponent(project.id)+'/'+endpoint;const response=await fetch(url,request?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)}:{});const body=await response.json();if(!response.ok)throw Error(typeof body.detail==='string'?body.detail:JSON.stringify(body.detail));return body;}
   async function saveCard(request){
-    if(caseMode||bugMode)return api(request);
+    if(bugMode)return api(request);
     let revision=request.expected_revision,id=request.target_id;
     if(!id){
       const allocated=await api({operation:'apply',expected_revision:revision,count:1});
       revision=allocated.revision;id=allocated.ids[0];
     }
     const started=await api({operation:'begin_modify',expected_revision:revision,ids:[id],action:'update'});
-    const updated=await api({operation:'update',expected_revision:started.revision,cards:[{id,...request.values,...(request.kind?{kind:request.kind,parent:request.parent||null}:{}),...(request.name?{name:request.name}:{})}]});
-    return api({operation:'end_modify',expected_revision:updated.revision,ids:[id],planned:true});
+    const updated=await api({operation:'update',expected_revision:started.revision,cards:[{id,...request.values,...(!caseMode&&request.kind?{kind:request.kind,parent:request.parent||null}:{}),...(request.name?{name:request.name}:{})}]});
+    return api({operation:'end_modify',expected_revision:updated.revision,ids:[id],...(!caseMode?{planned:true}:{})});
   }
   function fail(error){panel.querySelector('.targets-error').textContent=error.message;}
   async function animateRemovedCards(next){
@@ -81,7 +81,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       const results=await Promise.allSettled(requests);
       if(results[0].status==='rejected')throw results[0].reason;
       if(inlineEditing)return;
-      if(!caseMode&&!bugMode)results[0].value.targets=results[0].value.targets.filter(node=>node.lifecycle!=='draft'&&node.kind);
+      if(!bugMode)results[0].value.targets=results[0].value.targets.filter(node=>node.lifecycle!=='draft'&&node.kind);
       await animateRemovedCards(results[0].value);
       if(data){
         const previous=new Map(data.targets.map(node=>[node.id,node]));
@@ -158,7 +158,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
   async function source(binding){
     const {dialog,content}=modal('源码 · '+binding.file);dialog.classList.add('targets-source-dialog');content.textContent='正在读取并校验…';
     try{
-      const response=await api({operation:caseMode||bugMode?'source':'inspect',binding_id:binding.id});const result=caseMode||bugMode?response:response.source;
+      const response=await api({operation:bugMode?'source':'inspect',binding_id:binding.id});const result=bugMode?response:response.source;
       content.replaceChildren(el('p','targets-muted',result.file+' · 选中 L'+result.line+'–'+result.end_line));
       const pre=el('pre','targets-source');pre.tabIndex=0;pre.setAttribute('aria-label','完整源码，选中第 '+result.line+' 至 '+result.end_line+' 行');
       const full=result.file_content!==undefined;const start=full?1:result.line;
@@ -178,6 +178,8 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     const {dialog,content}=modal(node?'编辑'+kinds[node.kind][1]:'新建'+kinds[kind][1]);
     const caseTitle=caseMode?field(content,'标题',node?.title||''):null;if(caseTitle){caseTitle.required=true;caseTitle.placeholder='例如：连续随机读访问';}
     const name=field(content,caseMode?'代码名称（类名 / 函数名）':'名称',node?.name||'');const desc=field(content,'说明',node?.description||'',true);
+    const runnerCommand=caseMode?field(content,'运行命令',node?.runner?.command||''):null;
+    const runnerDescription=caseMode?field(content,'运行说明',node?.runner?.description||''):null;
     const condition=bugMode?field(content,'复现步骤',node?.condition||'',true):null;const expected=bugMode?field(content,'预期行为',node?.expected||'',true):null;
     let actual,evidence,bugStatus,severity;
     if(bugMode){
@@ -186,7 +188,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       bugStatus=choice('状态',node?.example?{unverified:'示例 · 未验证'}:bugStatuses,node?.status||'unverified');severity=choice('严重程度',severities,node?.severity||'medium');
     }
     const error=el('p','targets-error');content.append(error);
-    const save=button('保存',async()=>{save.disabled=true;try{const values={description:desc.value};if(caseTitle){if(!caseTitle.value.trim())throw Error('请填写测试用例标题');values.title=caseTitle.value.trim();}if(condition)Object.assign(values,{condition:condition.value,expected:expected.value});if(bugMode)Object.assign(values,{actual:actual.value,evidence:evidence.value,status:bugStatus.value,severity:severity.value});await saveCard(node?{operation:'update',target_id:node.id,expected_revision:data.revision,values:{...values,name:name.value}}:{operation:'create',kind,parent,name:name.value,values,expected_revision:data.revision});if(node){for(const [key,value] of Object.entries({...values,name:name.value}))localTextWrites.set(node.id+':'+key,value);}if(parent)opened.add(parent);dialog.close();await refresh();}catch(e){error.textContent=e.message;save.disabled=false;}} ,'targets-primary');content.append(save);(caseTitle||name).focus();
+    const save=button('保存',async()=>{save.disabled=true;try{const values={description:desc.value};if(caseTitle){if(!caseTitle.value.trim())throw Error('请填写测试用例标题');values.title=caseTitle.value.trim();if(!runnerCommand.value.trim()||!runnerDescription.value.trim())throw Error('请填写此用例的运行命令和说明');values.runner={command:runnerCommand.value.trim(),description:runnerDescription.value.trim()};}if(condition)Object.assign(values,{condition:condition.value,expected:expected.value});if(bugMode)Object.assign(values,{actual:actual.value,evidence:evidence.value,status:bugStatus.value,severity:severity.value});await saveCard(node?{operation:'update',target_id:node.id,expected_revision:data.revision,values:{...values,name:name.value}}:{operation:'create',kind,parent,name:name.value,values,expected_revision:data.revision});if(node){for(const [key,value] of Object.entries({...values,name:name.value}))localTextWrites.set(node.id+':'+key,value);}if(parent)opened.add(parent);dialog.close();await refresh();}catch(e){error.textContent=e.message;save.disabled=false;}} ,'targets-primary');content.append(save);(caseTitle||name).focus();
   }
   /** Edit one display field without changing the runnable symbol or source binding. */
   function editCaseText(node,key,label){
@@ -243,7 +245,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     dialog.addEventListener('close',()=>{clearTimeout(leaveTimer);clearTimeout(closeTimer);anchor.removeEventListener('mouseleave',leave);anchor.removeEventListener('mouseenter',enter);document.removeEventListener('pointerdown',outside);});
     content.append(el('p','ai-task-objective',importCases?'整理现有可运行用例，补齐说明与源码绑定。':planGoals?'执行 UCAgent 原始规划与覆盖模型阶段。':importGoals?'扫描现有验证代码，整理目标并绑定源码。':addGoal?'补充验证目标、说明与源码绑定。':deleteGoal?'删除选中目标及其子目标，保留无关代码。':goalTask?'分析覆盖目标与未命中 bin，给出补测建议。':runTask?'运行用例，持续监控异常并分析结果。':deleteTask?'删除指定用例及专属代码，保留共享组件。':coverageTask?'分析 '+design.module+' 的覆盖缺口与补测方向。':design?'解释 '+design.module+' 的功能、接口及内部逻辑。':'生成可运行用例，补齐说明与源码绑定。'));
     if(design){const scope=el('div','ai-design-scope',design.instance);scope.title=design.instance;content.append(scope);}
-    if(!design||planGoals||importGoals)dialog.querySelector('header strong').after(el('span','ai-workflow-binding',importGoals?'◇ 导入验证目标':planGoals?'◇ 规划验证目标':'◇ 新增测试用例'));
+    if(!design||planGoals||importGoals||importCases)dialog.querySelector('header strong').after(el('span','ai-workflow-binding',importCases?'◇ 导入测试用例':importGoals?'◇ 导入验证目标':planGoals?'◇ 规划验证目标':'◇ 新增测试用例'));
     const note=field(content,'想验证什么？（可选）','',true);note.placeholder=importCases?'补充用例路径、运行入口或导入范围…':planGoals?'补充验证范围、重点或约束…':importGoals?'补充扫描范围或需要关注的验证代码…':addGoal?'补充希望覆盖的功能或场景…':deleteGoal?'补充删除范围或需要保留的内容…':goalTask?'补充关注的功能、覆盖缺口或激励场景…':runTask?'补充关注的异常或运行要求…':deleteTask?'补充删除范围或需要保留的内容…':coverageTask?'补充关注的覆盖缺口或测试场景…':design?'补充想了解的设计细节…':'补充要求，例如读写边界场景…';note.setAttribute('aria-label','具体要求（可选）');note.oninput=()=>{note.style.height='36px';note.style.height=Math.min(100,Math.max(36,note.scrollHeight))+'px';};
     const choice=el('input');choice.type='checkbox';choice.setAttribute('role','switch');
     const newChat=el('div','ai-action-new-chat');choice.setAttribute('aria-label','新对话');newChat.append(choice,el('span','','新对话'));
@@ -252,7 +254,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       try{
         if(!window.FlowCanvasAI)throw Error('对话服务尚未就绪，请稍后重试');
         const caseContext=design?.testcase?JSON.stringify(design.testcase):'';
-        const text=importCases?'【AI任务：从项目导入测试用例】项目：'+project.path+'。先调用 test_cases(guide/read)，依据项目已有脚本核对运行模板；缺少模板时通过 configure 保存真实命令和说明，不编造配置。扫描项目现有测试及运行入口，用 discover 获取候选，阅读激励、断言和继承关系，排除环境基类、依赖与生成产物。按 guide 用 import(files, values.selected) 显式选择可独立运行的用例，填写源码依据、简短中文 title 和具体 description，保留已有 ID，不重复导入。修改已有卡片先 begin_update，完成后 finish_update。最后 read 核对用例、运行入口及源码绑定，报告导入数量与未解决事项；没有真实用例时说明并建议新增。不修改 RTL、不启动仿真、不直接编辑管理文件。用户要求：'+(note.value.trim()||'从项目现有验证代码中导入可独立运行的测试用例。'):planGoals?'请启动附加的 plan-goals 工作流，按各阶段原始要求执行。用户要求：'+(note.value.trim()||'按工作流要求执行。'):importGoals?'请启动附加的 import-targets 工作流，读取当前项目已有验证环境，按阶段将验证目标导入 FlowCanvas。用户要求：'+(note.value.trim()||'参考已有验证文档生成简洁中文标题和描述；无文档时依据实际源码生成，并核对全部绑定。'):addGoal?'【AI任务：新增验证目标】项目：'+project.path+'；父目标：'+JSON.stringify(design.target)+'。先 verification_targets(inspect) 读取规范和已有目标。按层级通过 apply(count) 申请新 ID，再 begin_modify(ids,action=update)，使用 update(cards) 填写中文 name、description、parent 和有依据的 bindings，最后 end_modify；无实现的规划显式 planned=true。不要重复申请；中断用原 ID 再次 begin_modify 恢复。不修改 RTL，不运行仿真。用户要求：'+(note.value.trim()||'新增有意义的验证目标。'):deleteGoal?'【AI任务：删除验证目标】项目：'+project.path+'；指定目标：'+JSON.stringify(design.target)+'。先 verification_targets(inspect) 获取最新 revision，立即 begin_modify(ids,action=delete,cascade=true) 登记目标及子级，成功后再检查源码、共享引用和实际删除范围。清理专属实现，保留共享代码、RTL、其他用例和历史产物。用 end_modify(ids=登记返回的全部ID) 完成删除。不直接编辑管理文件，不运行仿真。用户要求：'+(note.value.trim()||'删除此目标及子目标，保留无关代码。'):goalTask?'【AI任务：分析功能覆盖率】请只读分析项目 '+project.path+' 的验证目标：'+design.instance+'。选中目标及子目标快照：'+JSON.stringify(design.coverage)+'。先调用 verification_targets(inspect) 读取最新定义和覆盖数据，按稳定 ID 定位目标，读取对应源码、coverpoint/bin 定义和相关测试。解释目标意图、采样条件、累计命中情况与缺口，明确区分功能组、功能点、测试点和 bin，不把命中等同于正确性通过，不把缺失或过期数据当作未命中。针对未命中项提出具体激励、边界条件和可复用的用例，引用真实源码位置。不要修改文件、运行仿真或启动工作流。用户要求：'+(note.value.trim()||'优先分析主要缺口，给出有依据的补测建议。'):runTask?'【AI任务：运行测试用例】项目：'+project.path+'；指定用例：'+caseContext+'。先用 test_cases(read) 核实 ID 与运行模板，再调用 test_case_runs(start, case_id) 一次，保存返回的 run.id。持续调用 test_case_runs(read, run_id, offset, wait_seconds=10)，用返回的 offset 增量读取，直到运行结束且日志全部读取完成。实时关注断言、UVM_ERROR/UVM_FATAL、异常退出和超时，发现异常及时汇报；不要因短暂无输出断言死锁。必须等待执行完毕后报告运行结果，分析退出码、关键日志、失败原因与覆盖率采集结果；退出码为零不等于验证通过。不要自行修改代码、重复启动或重试；如明确不可恢复可通过 stop 停止并说明原因。用户要求：'+(note.value.trim()||'监控运行，报告结果并给出分析。'):deleteTask?'【AI任务：删除测试用例】项目：'+project.path+'；仅删除指定用例：'+caseContext+'。删除任务的第一步是登记卡片：仅调用 test_cases(read) 获取最新 revision 并定位用户指定 ID，立即调用 test_cases(begin_delete, target_id, expected_revision)。若接口因用例正在运行而拒绝，停止删除并说明原因。登记成功后再读取 guide、检查源码绑定、共享引用和实际删除范围，仅删除该用例专属实现和注册/导入引用，保留共享基类、驱动、环境、RTL、其他测试及历史日志。不要删除包含其他定义的整个文件。完成源码清理后使用 test_cases(delete, target_id, expected_revision) 删除对应记录；报告实际修改和无法安全删除的内容，不要启动仿真。用户要求：'+(note.value.trim()||'删除此测试用例，保留共享代码和历史运行记录。'):coverageTask?'请只读分析项目 '+project.path+' 的'+coverageLabel+'，不修改文件、不运行仿真、不启动工作流。实例：'+design.instance+'；模块：'+design.module+'；源码位置：'+JSON.stringify(design.source)+'；当前累计覆盖率快照：'+JSON.stringify(design.coverage)+'。读取真实源码和项目 .flowcanvas/coverage 下的覆盖率产物，分别说明自身与包含子模块的覆盖率，定位未覆盖和部分覆盖的代码，分析可能缺失的激励、边界条件及建议补充的测试场景。引用具体文件和行号；不要把未覆盖等同于缺陷，没有数据不能声称已覆盖，快照与产物不一致时明确说明。用户要求：'+(note.value.trim()||'优先分析主要覆盖缺口，给出可执行的补测建议。'):design?'请只读分析当前项目 '+project.path+' 中的设计，不修改文件、不运行仿真、不启动其他工作流。目标实例：'+design.instance+'；模块：'+design.module+'；源码定位：'+JSON.stringify(design.source)+ '。先读取真实源码及必要的子模块，解释模块职责、端口协议、关键数据通路、状态变化及与父子模块的关系，引用具体文件和行号。不能用模块名猜测功能；无法确定的内容明确说明。用户要求：'+(note.value.trim()||'给出简洁清晰的中文设计说明。'):'【AI任务：新增测试用例】\n绑定工作流：generate-testcase。请先调用 run_workflow 启动已附加的工作流，再按阶段执行。\n请为当前项目新增一个可独立运行的测试用例。项目：'+project.path+'。用户补充：'+(note.value.trim()||'请检查已有测试和验证目标，选择尚未充分验证且不重复的场景。')+'。先调用 test_cases(operation=guide) 读取规范，检查现有用例、目标和运行模板；按 UCAgent 文档规范复用现有 API、fixture 和覆盖模型，围绕本用例边写边补齐必要环境，不要求先建设完整验证环境。编写代码前必须先通过 test_cases(create) 注册占位，保存返回的用例 ID；实现后只 update/bind 同一 ID，不要另行 import。绑定有效且说明齐全后调用 finish_create 转为正式用例。中断后用 resume_operation 恢复原条目。通过 test_cases 工具保存 title（概括测试场景的中文标题）、name（代码类名或函数名）、具体说明和源码绑定，不能只给方案。不要修改 RTL，不要自动启动仿真；结束时汇报新增文件与未验证事项。';
+        const text=importCases?'请启动附加的 import-testcases 工作流，导入项目 '+project.path+' 的已有测试用例，配置每个用例的运行命令并逐个进行启动冒烟检查，启动确认后自动停止，不视为完整测试通过。用户要求：'+(note.value.trim()||'参考已有验证文档和真实源码，导入可运行用例。'):planGoals?'请启动附加的 plan-goals 工作流，按各阶段原始要求执行。用户要求：'+(note.value.trim()||'按工作流要求执行。'):importGoals?'请启动附加的 import-targets 工作流，读取当前项目已有验证环境，按阶段将验证目标导入 FlowCanvas。用户要求：'+(note.value.trim()||'参考已有验证文档生成简洁中文标题和描述；无文档时依据实际源码生成，并核对全部绑定。'):addGoal?'【AI任务：新增验证目标】项目：'+project.path+'；父目标：'+JSON.stringify(design.target)+'。先 verification_targets(inspect) 读取规范和已有目标。按层级通过 apply(count) 申请新 ID，再 begin_modify(ids,action=update)，使用 update(cards) 填写中文 name、description、parent 和有依据的 bindings，最后 end_modify；无实现的规划显式 planned=true。不要重复申请；中断用原 ID 再次 begin_modify 恢复。不修改 RTL，不运行仿真。用户要求：'+(note.value.trim()||'新增有意义的验证目标。'):deleteGoal?'【AI任务：删除验证目标】项目：'+project.path+'；指定目标：'+JSON.stringify(design.target)+'。先 verification_targets(inspect) 获取最新 revision，立即 begin_modify(ids,action=delete,cascade=true) 登记目标及子级，成功后再检查源码、共享引用和实际删除范围。清理专属实现，保留共享代码、RTL、其他用例和历史产物。用 end_modify(ids=登记返回的全部ID) 完成删除。不直接编辑管理文件，不运行仿真。用户要求：'+(note.value.trim()||'删除此目标及子目标，保留无关代码。'):goalTask?'【AI任务：分析功能覆盖率】请只读分析项目 '+project.path+' 的验证目标：'+design.instance+'。选中目标及子目标快照：'+JSON.stringify(design.coverage)+'。先调用 verification_targets(inspect) 读取最新定义和覆盖数据，按稳定 ID 定位目标，读取对应源码、coverpoint/bin 定义和相关测试。解释目标意图、采样条件、累计命中情况与缺口，明确区分功能组、功能点、测试点和 bin，不把命中等同于正确性通过，不把缺失或过期数据当作未命中。针对未命中项提出具体激励、边界条件和可复用的用例，引用真实源码位置。不要修改文件、运行仿真或启动工作流。用户要求：'+(note.value.trim()||'优先分析主要缺口，给出有依据的补测建议。'):runTask?'【AI任务：运行测试用例】项目：'+project.path+'；指定用例：'+caseContext+'。先用 test_cases(inspect) 核实 ID 与运行模板，再调用 test_case_runs(start, case_id) 一次，保存返回的 run.id。持续调用 test_case_runs(read, run_id, offset, wait_seconds=10)，用返回的 offset 增量读取，直到运行结束且日志全部读取完成。实时关注断言、UVM_ERROR/UVM_FATAL、异常退出和超时，发现异常及时汇报；不要因短暂无输出断言死锁。必须等待执行完毕后报告运行结果，分析退出码、关键日志、失败原因与覆盖率采集结果；退出码为零不等于验证通过。不要自行修改代码、重复启动或重试；如明确不可恢复可通过 stop 停止并说明原因。用户要求：'+(note.value.trim()||'监控运行，报告结果并给出分析。'):deleteTask?'请删除项目 '+project.path+' 中的指定用例：'+caseContext+'。先 test_cases(inspect)，再 begin_modify(ids,action=delete) 登记，核对并清理用例专属源码，保留共享组件、RTL 和历史运行记录，最后 end_modify(ids)。运行中的用例禁止删除。不运行仿真。用户要求：'+(note.value.trim()||'删除此测试用例。'):coverageTask?'请只读分析项目 '+project.path+' 的'+coverageLabel+'，不修改文件、不运行仿真、不启动工作流。实例：'+design.instance+'；模块：'+design.module+'；源码位置：'+JSON.stringify(design.source)+'；当前累计覆盖率快照：'+JSON.stringify(design.coverage)+'。读取真实源码和项目 .flowcanvas/coverage 下的覆盖率产物，分别说明自身与包含子模块的覆盖率，定位未覆盖和部分覆盖的代码，分析可能缺失的激励、边界条件及建议补充的测试场景。引用具体文件和行号；不要把未覆盖等同于缺陷，没有数据不能声称已覆盖，快照与产物不一致时明确说明。用户要求：'+(note.value.trim()||'优先分析主要覆盖缺口，给出可执行的补测建议。'):design?'请只读分析当前项目 '+project.path+' 中的设计，不修改文件、不运行仿真、不启动其他工作流。目标实例：'+design.instance+'；模块：'+design.module+'；源码定位：'+JSON.stringify(design.source)+ '。先读取真实源码及必要的子模块，解释模块职责、端口协议、关键数据通路、状态变化及与父子模块的关系，引用具体文件和行号。不能用模块名猜测功能；无法确定的内容明确说明。用户要求：'+(note.value.trim()||'给出简洁清晰的中文设计说明。'):'请启动附加的 generate-testcase 工作流，为项目 '+project.path+' 新增一个真实可运行用例。先 test_cases(inspect)，再 apply(count)、begin_modify，随后编写实现并 update 填写中文 title、description、入口 name 和源码行范围绑定，最后 end_modify。运行命令放在卡片 runner，共享覆盖配置使用 test_case_runs(configure)。复用已有环境，不修改 RTL，不自动运行仿真。用户要求：'+(note.value.trim()||'选择尚未充分验证的场景。');
         const result=await window.FlowCanvasAI.startCase({text,current:!choice.checked,project,requirements:note.value.trim(),design});
         const sourceRect=dialog.getBoundingClientRect();
         const destination=[...document.querySelectorAll('.conversation .ai-task-sent')].at(-1);
@@ -288,10 +290,11 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     const occupied=pendingRun!==null||runCases.size>0;
     for(const button of panel.querySelectorAll('[data-case-run]')){
       const running=runCases.has(button.dataset.caseRun)||pendingRun===button.dataset.caseRun;
-      button.disabled=!runsLoaded||occupied||!data?.runner||button.dataset.caseUnavailable==='true';
+      const hasRunner=!!data?.targets?.find(node=>node.id===button.dataset.caseRun)?.runner?.command?.trim();
+      button.disabled=!runsLoaded||occupied||!hasRunner||button.dataset.caseUnavailable==='true';
       button.classList.toggle('is-case-running',running);
       button.setAttribute('aria-busy',String(running));
-      button.title=running?'运行中':button.dataset.runLabel;
+      button.title=running?'运行中':!hasRunner?'此用例尚未配置运行命令':!runsLoaded?'正在获取运行状态':occupied?'请等待当前用例运行结束':button.dataset.runLabel;
       button.setAttribute('aria-label',button.title);
     }
   }

@@ -123,7 +123,7 @@ class Targets:
         parsed, errors, counts = {}, {}, Counter()
         for file in sorted(files):
             try:
-                if self.path.name == 'verification.json':
+                if self.path.name in {'verification.json', 'testcases.json'}:
                     from .line_bindings import snapshot
                     parsed[file] = snapshot(self.file(file), [b for n in definition.targets for b in n.bindings if b.file == file])
                 else:
@@ -165,7 +165,7 @@ class Targets:
                 'summary': dict(Counter(r['status'] for r in reports.values()))}
 
     def inspect(self, files):
-        if self.path.name == 'verification.json':
+        if self.path.name in {'verification.json', 'testcases.json'}:
             from .line_bindings import inspect_files
             return inspect_files(self, files)
         result = []

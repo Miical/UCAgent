@@ -317,13 +317,13 @@ RTL 绑定、仅有计划、过期或缺失绑定均不能代替实现。
 删除使用 begin_modify(action=delete) → end_modify，含子级时显式 cascade=true，并用返回的完整 ID 列表结束。
 批量调用全成功或全不写入；update 只接受本会话已登记且运行中的卡片，bindings 是完整替换列表。
 inspect(files) 获取可绑定的源码位置，inspect(binding_id) 查看绑定源码。无实现的规划用 planned=true 结束。
-中断后沿用原 ID 和 action 再次 begin_modify 恢复。测试用例仍使用其原有 create/begin_update/finish_create/finish_update 流程。
+中断后沿用原 ID 和 action 再次 begin_modify 恢复。测试用例使用相同五个入口，update 中填写 name/title/description、此用例 runner 及 definition 行范围绑定。
 
 ### 增量新增测试用例
 
 generate-testcase 按“选择场景并登记 → 用例与依赖增量实现 → 接口/断言/覆盖关联审查 → 完成绑定登记”执行。遵循原生 dut_test_case、dut_fixture、dut_api_instruction 和覆盖模型指南，复用已有测试目录、API、fixture、驱动和覆盖采样，只补当前场景缺少的部分。未配置参考模型时不强制建立；已有配置时遵守参数顺序。不要求先实现完整验证环境或全量验证目标。
 
-summary/testcase_plan.json 保存同一新建 case_id、关联 target_ids 与项目相对 files；源码写入绑定项目。验收核对运行前捕获的原有用例 ID、占位所属会话、项目路径、真实 Python 语法、pytest 命名及 fixture 参数、API 导入/调用、行为断言、覆盖标记和有效绑定。最终须 finish_create 为 ready，不能用旧用例或结果文档冒充创建。该验收只做静态分析，不导入项目模块、不自动运行仿真，不证明依赖链运行可用或断言语义正确；场景与依赖仍需 AI 阅读核对，动态结果由后续运行按钮获得。
+summary/testcase_plan.json 保存同一新建 case_id、关联 target_ids 与项目相对 files；源码写入绑定项目。验收核对运行前捕获的原有用例 ID、占位所属会话、项目路径、真实 Python 语法、pytest 命名及 fixture 参数、API 导入/调用、行为断言、覆盖标记和有效绑定。最终须 end_modify 为 ready，不能用旧用例或结果文档冒充创建。该验收只做静态分析，不导入项目模块、不自动运行仿真，不证明依赖链运行可用或断言语义正确；场景与依赖仍需 AI 阅读核对，动态结果由后续运行按钮获得。
 
 统一覆盖率报告同时承载行覆盖率和功能覆盖率，支持 Toffee JSON/LCOV 适配、稳定目标 ID 投影及精确累计。新增用例需预先配置每次运行后的提取与合并方案。协议、适配命令及限制见 [覆盖率接口](docs/coverage.md)。
 
@@ -355,3 +355,22 @@ claim that a configured coverage extractor has successfully run.
 无文档时依据实际源码生成。工作流只读已有实现，通过卡片工具添加绑定标识，
 不编译、不仿真、不导入测试用例。范围与明确排除理由保存在工作流输出
 `summary/import-scope.json`；验收检查 card_ids 中的卡片为 ready/bound、范围位于所选源码，并要求未导入部分有明确说明；语义完整性由 AI 核对。
+
+测试用例卡片工具 `test_cases` 只提供 inspect/apply/begin_modify/update/end_modify，
+支持批量及会话锁定。apply(count) 只分配 ID；结束时必须有中文标题、描述、可执行的 name
+及有效 definition 行范围绑定。运行中的用例拒绝修改或删除。Python name 使用
+`test_function` 或 `TestClass::test_method`，运行器将其与绑定文件组成绝对 pytest 入口。
+共享覆盖率设置使用 `test_case_runs(operation=configure, settings={coverage},
+expected_revision=...)`；不属于卡片编辑入口。inspect 返回当前设置及配置 Schema。
+
+每张测试用例卡片保存 `runner={command,description}`；通过 test_cases 的 begin_modify/update/end_modify 修改。
+运行器只执行选中卡片的命令，不使用项目级运行命令回退。所有用例仍共享项目覆盖率配置。
+
+### 导入测试用例与启动冒烟
+
+导入 AI 卡片绑定 `import-testcases`：确认范围、导入卡片及各自 runner、逐个启动检查、
+核对最终结果。`test_case_runs(start, mode="startup_smoke", ready_pattern=..., startup_timeout=120)`
+使用卡片原命令，在独立运行目录记录日志；观察到实际用例开始执行的日志后等待短暂观察期，
+自动终止进程组，不提取或合并覆盖率。未出现开始执行证据、启动错误、非零自然退出或超时均失败。
+通过结果保存在 `smoke_status`，主动停止的记录仍是 interrupted，不作为完整测试通过；
+普通运行列表不展示这些启动探测。验收核对 run ID、用例身份、命令及绑定指纹，修改后须重检。

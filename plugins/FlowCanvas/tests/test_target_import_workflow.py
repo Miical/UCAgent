@@ -66,9 +66,9 @@ def test_catalog_and_button_bind_import_workflow():
     assert any(w['id']=='import-targets' and w['enabled'] for w in catalog['workflows'])
     script=(root/'web/chat.js').read_text()
     assert "design?.kind==='import-goals'?'import-targets'" in script
-    assert "design.kind==='import-goals')await request" in script
+    assert "design.kind==='import-goals'" in next(line for line in script.splitlines() if "/attachment" in line and "await request" in line and "import-testcases" in line).split("await request")[0]
     panel=(root/'web/targets.js').read_text()
-    assert "if(!design||planGoals||importGoals)" in panel
+    assert "if(!design||planGoals||importGoals||importCases)" in panel
     assert '请启动附加的 import-targets 工作流' in panel
 
 
