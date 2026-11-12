@@ -217,7 +217,10 @@ card mappings and verify them against the compiled source snapshot.
 
 ### Native code metrics and assertions
 
-The VCS reader requests `line+tgl+branch+cond+fsm+assert+group` from URG.
+The VCS reader requests `line+tgl+branch+cond+fsm+assert+group` from URG,
+with `-nomdacmp` to expand multidimensional toggle arrays. The parser also
+accepts compressed `Other bits of` rows by subtracting explicitly listed bits
+(including unreachable bits) from the declared array range before scoring.
 Branch and condition scores come from actual covered/not-covered detail rows,
 including case/default branches and per-instance observations. FSM scores count
 transitions and sequences; state details are retained separately because URG

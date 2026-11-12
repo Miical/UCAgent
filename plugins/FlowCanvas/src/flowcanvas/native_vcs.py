@@ -125,7 +125,7 @@ async def extract(root, database, output, build_id):
     report_dir=output.parent/'urg-report'
     with (output.parent/'urg.log').open('wb') as log:
         process=await asyncio.create_subprocess_exec(executable,'-full64','-dir',*databases,
-            '-metric','line+tgl+branch+cond+fsm+assert+group','-format','text','-show','ratios','-group','show_bin_values',
+            '-metric','line+tgl+branch+cond+fsm+assert+group','-format','text','-nomdacmp','-show','ratios','-group','show_bin_values',
             '-group','lrm_bin_name','-report',str(report_dir),cwd=root,env=environment,
             stdout=log,stderr=asyncio.subprocess.STDOUT,start_new_session=True)
         try:

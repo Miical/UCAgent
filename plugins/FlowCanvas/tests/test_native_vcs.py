@@ -37,7 +37,7 @@ a Yes Yes Yes INPUT
 Module Instance : tb.dut
 Instance :
 '''
-    urg=root/'urg';urg.write_text('#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\np=Path(sys.argv[sys.argv.index("-report")+1]);p.mkdir(parents=True,exist_ok=True)\n(p/"modinfo.txt").write_text('+repr(output)+')\n');urg.chmod(0o755)
+    urg=root/'urg';urg.write_text('#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\nassert "-nomdacmp" in sys.argv\np=Path(sys.argv[sys.argv.index("-report")+1]);p.mkdir(parents=True,exist_ok=True)\n(p/"modinfo.txt").write_text('+repr(output)+')\n');urg.chmod(0o755)
     atomic(folder/'config.json',dict(provider='vcs',dut_instance='tb.dut',urg_executable=str(urg)))
     return folder,database
 
