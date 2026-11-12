@@ -7,7 +7,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .targets import Targets, Binding, LOCK, Request as TargetRequest, new_id, re_indent
-from .target_syntax import inventory
+from .testcase_syntax import inventory
 
 
 class Request(TargetRequest):

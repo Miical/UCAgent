@@ -1,5 +1,10 @@
 # Curated menu entries, displayed in file order. Execution lives in workflow YAML.
 workflows:
+  - id: import-targets
+    name: 导入验证目标
+    description: 读取已有验证文档与源码，生成中文验证目标卡片并核对源码绑定，不运行仿真。
+    workflow: flowcanvas:import-targets
+    enabled: true
   - id: plan-goals
     name: 规划并实现验证目标
     description: 先完成 Picker 编译与加载验收，再执行 UCAgent 的需求规划、设计理解、测试点定义、边界细化和覆盖模型实现。

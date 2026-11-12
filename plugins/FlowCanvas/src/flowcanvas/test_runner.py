@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from .targets import atomic
 from .testcases import Cases
-from .target_syntax import inventory
+from .testcase_syntax import inventory
 
 
 class TestRuns:

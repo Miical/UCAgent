@@ -9,7 +9,7 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing import Literal
-from .target_syntax import inventory
+from .testcase_syntax import inventory
 
 LOCK = threading.RLock()
 SKILL = Path(__file__).parent / 'skills/verification-targets/SKILL.md'
@@ -22,16 +22,17 @@ class Binding(BaseModel):
     kind: str
     role: Literal['definition', 'stimulus', 'check', 'coverage', 'rtl'] = 'definition'
     fingerprint: str = ''
+    line_count: int = Field(default=0, ge=0)
 
 
 class Target(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    id: str = Field(pattern=r'^(fg|fp|tp)_[0-9a-f]{32}$')
-    kind: Literal['group', 'point', 'testpoint']
+    id: str = Field(pattern=r'^(vt|fg|fp|tp)_[0-9a-f]{32}$')
+    kind: Literal['group', 'point', 'testpoint'] | None = None
     parent: str | None = None
     name: str = Field(min_length=1, max_length=200)
     description: str = ''
-    lifecycle: Literal['ready', 'creating', 'updating', 'deleting'] = 'ready'
+    lifecycle: Literal['draft', 'ready', 'creating', 'updating', 'deleting'] = 'ready'
     operation_status: Literal['running', 'paused'] = 'paused'
     operation_session: str = ''
     origin: Literal['manual', 'ai', 'scan'] = 'manual'
@@ -51,8 +52,12 @@ class Definition(BaseModel):
             raise ValueError('目标 ID 重复')
         ids = []
         for n in self.targets:
+            if n.kind is None:
+                if n.lifecycle not in {'draft', 'creating', 'deleting'} or n.parent or n.bindings:
+                    raise ValueError('Unassigned cards cannot have parents or bindings')
+                continue
             expected = {'group': 'fg', 'point': 'fp', 'testpoint': 'tp'}[n.kind]
-            if not n.id.startswith(expected + '_'):
+            if not n.id.startswith((expected + '_', 'vt_')):
                 raise ValueError('目标类型和 ID 前缀不一致')
             if n.kind == 'group':
                 if n.parent is not None:
@@ -106,7 +111,7 @@ class Targets:
         for target in definition.targets:
             for binding in target.bindings:
                 path = (self.root / binding.file).resolve()
-                if not path.is_relative_to(self.root) or path.suffix not in {'.sv','.svh','.py'}:
+                if not path.is_relative_to(self.root) or path.suffix not in {'.v','.sv','.svh','.py'}:
                     raise ValueError('绑定路径必须是项目内源码')
         definition.revision = expected_revision + 1
         atomic(self.path, definition.model_dump())
@@ -118,7 +123,11 @@ class Targets:
         parsed, errors, counts = {}, {}, Counter()
         for file in sorted(files):
             try:
-                parsed[file] = inventory(self.file(file))
+                if self.path.name == 'verification.json':
+                    from .line_bindings import snapshot
+                    parsed[file] = snapshot(self.file(file), [b for n in definition.targets for b in n.bindings if b.file == file])
+                else:
+                    parsed[file] = inventory(self.file(file))
                 counts.update(parsed[file]['markers'])
             except (ValueError, OSError, SyntaxError) as exc:
                 errors[file] = str(exc)
@@ -156,6 +165,9 @@ class Targets:
                 'summary': dict(Counter(r['status'] for r in reports.values()))}
 
     def inspect(self, files):
+        if self.path.name == 'verification.json':
+            from .line_bindings import inspect_files
+            return inspect_files(self, files)
         result = []
         for file in files:
             parsed = inventory(self.file(file))
@@ -315,7 +327,7 @@ class Targets:
         with LOCK:
             data=self.read();changed=False
             for row in data.targets:
-                if row.lifecycle!='ready' and row.operation_status=='running':
+                if row.lifecycle!='ready' and row.operation_status=='running' and row.operation_session != 'manual':
                     owner=sessions.get(row.operation_session)
                     if not owner or not execution_active(owner):row.operation_status='paused';changed=True
             if changed:self.save(data,data.revision)
@@ -471,37 +483,13 @@ class Request(BaseModel):
 
 
 def execute(root, request, owner=""):
-    """Require an owned operation before AI mutations, atomically with the write."""
-    with LOCK:
-        r = request if isinstance(request, Request) else Request.model_validate(request)
-        store = Targets(root)
-        if r.operation in {"begin_update", "finish_update"}:
-            return store.edit_operation(r.target_id, r.operation, r.expected_revision, owner)
-        if r.operation in {"update", "bind", "accept"}:
-            store.require_edit(r.target_id, owner)
-        return _execute(root, r, owner)
-
-
-def _execute(root, request, owner=""):
-    """Dispatch a request after the public transaction boundary validates ownership."""
-    store = Targets(root)
-    r = request if isinstance(request, Request) else Request.model_validate(request)
-    if r.operation == 'read': return store.status()
-    if r.operation == 'inspect': return store.inspect(r.files)
-    if r.operation == 'import': return store.import_files(r.files, r.expected_revision)
-    if r.operation == 'begin_create': return store.begin_create(r.kind,r.name,r.parent,r.expected_revision,r.values,owner)
-    if r.operation in {'begin_delete','finish_create','resume_operation'}: return store.operation(r.target_id,r.operation,r.expected_revision,owner,r.values.get('cascade') is True,r.values.get('planned') is True)
-    if r.operation == 'create': return store.create(r.kind,r.name,r.parent,r.expected_revision,**r.values)
-    if r.operation == 'delete': return store.delete(r.target_id,r.expected_revision,r.values.get('cascade') is True)
-    if r.operation == 'update': return store.update(r.target_id,r.values,r.expected_revision)
-    if r.operation == 'accept': return store.accept(r.target_id,r.expected_revision,r.values)
-    if r.operation == 'bind': return store.bind(r.target_id,r.values,r.expected_revision)
-    if r.operation == 'source': return store.source(r.binding_id)
-    if r.operation == 'guide': return {'skill':SKILL.read_text()+'\nAI 新建先 begin_create 注册占位，再 update/bind 同一 ID，最后 finish_create；尚无验证实现时明确使用 values={planned:true} 完成待实现规划，不伪造绑定。AI 删除首先 read 获取 revision 并定位指定 ID，立即 begin_delete（含子目标需 cascade=true）登记卡片；登记成功后才检查源码、共享引用和删除范围，最后清理代码并 delete。不要检查完才登记。中断后 resume_operation 恢复同一 ID。均需最新 expected_revision。'+'\n删除使用 delete(target_id, expected_revision)。含子目标时必须明确 values.cascade=true；仅删除登记定义，源码须单独核对处理，保留共享代码和历史产物。', 'schema':Definition.model_json_schema()}
-    raise ValueError('未知操作')
+    """Dispatch the five-operation verification card contract."""
+    from .target_cards import execute as execute_cards
+    return execute_cards(root, request, owner)
 
 
 def routes(projects, sessions=None):
+    from .target_cards import CardRequest
     router = APIRouter(prefix='/api/chat/projects')
     def root(identity):
         project = next((p for p in projects.state['recent'] if p['id']==identity),None)
@@ -519,7 +507,7 @@ def routes(projects, sessions=None):
         try: return Targets(root(identity)).status()
         except (ValueError,OSError) as exc: raise HTTPException(422,str(exc)) from None
     @router.post('/{identity}/targets')
-    def action(identity:str, request:Request):
+    def action(identity:str, request:CardRequest):
         try: return execute(root(identity),request)
         except (ValueError,OSError,KeyError,StopIteration,SyntaxError) as exc: raise HTTPException(422,str(exc)) from None
     return router

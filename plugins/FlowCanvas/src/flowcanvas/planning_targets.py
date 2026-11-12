@@ -84,7 +84,7 @@ class PlanningTargetsChecker(Checker):
                             "error": "Every accepted panel card needs current implementation source bindings",
                             "observed": failures[:20],
                             "next_action": "Publish implementation in the project; inspect and bind each original card. "
-                                           "Read changed source and reconcile it before accept; do not bind RTL as implementation.",
+                                           "Read changed source and reconcile it before updating bindings; do not bind RTL as implementation.",
                         }
                     if self.cov_file:
                         source = Path(self.get_path(self.cov_file))
@@ -122,6 +122,6 @@ class PlanningTargetsChecker(Checker):
                 "error_code": "PANEL_TARGETS_INVALID",
                 "error": str(exc),
                 "artifact": self.doc_file,
-                "next_action": "Use verification_targets guide/read to finish panel records and repair the "
+                "next_action": "Use verification_targets inspect to finish panel records and repair the "
                                "full-label-path to ID map. Do not edit the generated document.",
             }

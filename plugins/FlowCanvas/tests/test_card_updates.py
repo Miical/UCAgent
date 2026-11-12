@@ -1,9 +1,9 @@
-"""AI card edits require durable, owned operation registration."""
+"""Test case edits retain their existing owned operation contract; targets use test_target_cards."""
 import pytest
 from flowcanvas import targets, testcases
 
 
-@pytest.fixture(params=[targets,testcases])
+@pytest.fixture(params=[testcases])
 def card(request,tmp_path):
     """Create a ready unbound card through the real store for each supported panel."""
     module=request.param

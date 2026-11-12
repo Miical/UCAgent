@@ -130,9 +130,9 @@ stage:
       - name: dut_function_grouping
         desc: "DUT功能分组与层次划分[{COUNT_FG}]"
         task:
-          - "FlowCanvas：开始分组前调用 verification_targets(operation=guide)，再 read 读取当前项目已有目标和最新 revision；读取 {OUT}/flowcanvas-target-map.json（存在时），复用已有目标，不重复创建。"
+          - "FlowCanvas：开始分组前调用 verification_targets(operation=inspect)，并 读取当前项目已有目标和最新 revision；读取 {OUT}/flowcanvas-target-map.json（存在时），复用已有目标，不重复创建。"
           - "FlowCanvas：定义每个 FG 时同步登记 group 卡片。name 使用简短、明确的中文标题，根据该组说明概括，不把 FG 标签或代码函数名直接作为显示标题。详细说明写入 values.description，不新增 title 字段。"
-          - "FlowCanvas：新目标先 begin_create(kind=group, name=中文标题, values={description:详细说明}, expected_revision=最新版本) 注册占位；描述完成后以 finish_create(values={planned:true}) 结束无源码计划的创建。每次写入使用最新 revision。将完整 FG 路径到返回目标 ID 的映射保存到 {OUT}/flowcanvas-target-map.json，格式为扁平 JSON 对象（标签路径为 key，目标 ID 为 value）。只通过工具修改面板记录，不直接修改 .flowcanvas 管理文件。"
+          - "FlowCanvas：先 inspect 读取现有卡片与最新 revision。新目标用 apply(count) 批量申请 ID，然后 begin_modify(ids,action=update)，update(cards) 写入 kind、简洁中文 name、description 和正确父级，end_modify(ids,planned=true) 完成未实现计划。kind 按本阶段选择 group/point/testpoint；保留既有 ID，维护 {OUT}/flowcanvas-target-map.json 中完整 FG/FC/CK 路径到 ID 的扁平映射。所有写入使用最新 expected_revision，不直接编辑管理文件。"
           - "基于{DUT}功能，将相关功能归类成组"
           - "为每组定义<FG-组名>标签，组名要有意义"
           - "先完成面板功能组卡片及中文说明；将 FG 标签路径映射到卡片 ID，不编写功能分析文档。"
@@ -153,7 +153,7 @@ stage:
         desc: "具体功能点识别与定义[{COUNT_FC}]"
         task:
           - "FlowCanvas：定义每个 FC 时同步在对应 group ID 下登记 point 卡片。name 使用简短中文功能标题；缺少短标题时从功能说明概括简短中文标题。description 保留详细行为说明；标签和代码符号不直接代替标题。"
-          - "FlowCanvas：先读取最新目标和 {OUT}/flowcanvas-target-map.json，复用原 ID；新功能点先 begin_create(kind=point,parent=所属功能组ID)，补齐 name、description 后 finish_create(values={planned:true})。将完整 FG/FC 标签路径映射到原目标 ID，保存同一映射文件；每次写入带最新 expected_revision。"
+          - "FlowCanvas：先 inspect 读取现有卡片与最新 revision。新目标用 apply(count) 批量申请 ID，然后 begin_modify(ids,action=update)，update(cards) 写入 kind、简洁中文 name、description 和正确父级，end_modify(ids,planned=true) 完成未实现计划。kind 按本阶段选择 group/point/testpoint；保留既有 ID，维护 {OUT}/flowcanvas-target-map.json 中完整 FG/FC/CK 路径到 ID 的扁平映射。所有写入使用最新 expected_revision，不直接编辑管理文件。"
           - "在每个功能分组内，定义具体的功能点"
           - "用<FC-功能名>标签标记每个功能"
           - "确保覆盖该组的所有功能"
@@ -177,7 +177,7 @@ stage:
         desc: "检测点设计与定义[{COUNT_CK}]"
         task:
           - "FlowCanvas：定义每个 CK 时同步在对应 point ID 下登记 testpoint 卡片。name 是概括场景的简短中文标题，例如“双零输入”或“最大值进位”；description 保存具体条件和验证行为，不把 CK 标签、函数名或整段长说明直接作为标题，也不新增固定的条件、预期字段。"
-          - "FlowCanvas：read 获取最新 revision，读取 {OUT}/flowcanvas-target-map.json 复用已有卡片；新测试点先 begin_create(kind=testpoint,parent=所属功能点ID)，补齐名称和说明后 finish_create(values={planned:true})。保存完整 FG/FC/CK 路径到目标 ID 的映射；尚无覆盖代码时不伪造源码绑定或覆盖命中。"
+          - "FlowCanvas：先 inspect 读取现有卡片与最新 revision。新目标用 apply(count) 批量申请 ID，然后 begin_modify(ids,action=update)，update(cards) 写入 kind、简洁中文 name、description 和正确父级，end_modify(ids,planned=true) 完成未实现计划。kind 按本阶段选择 group/point/testpoint；保留既有 ID，维护 {OUT}/flowcanvas-target-map.json 中完整 FG/FC/CK 路径到 ID 的扁平映射。所有写入使用最新 expected_revision，不直接编辑管理文件。"
           - "为每个功能点设计具体的检测点"
           - "用<CK-检测名>标签标记，如<CK-BASIC>基本功能，<CK-BOUNDARY>边界条件"
           - "检测点要包含：正常情况、边界条件、异常情况"
@@ -202,7 +202,7 @@ stage:
       - name: functional_line_mapping_gap_analysis
         desc: "功能规格逐行查漏补缺[{LINE_MAP_PROGRESS}|{COUNT_CK}]"
         task:
-          - "FlowCanvas：本阶段新增或调整 FG/FC/CK 时，先 begin_update 登记修改，再维护对应卡片的中文 name、description，完成后 finish_update；同步维护 {OUT}/flowcanvas-target-map.json；先 read 并复用已有 ID，重命名不创建替代卡片，不遗漏新发现的检测点。"
+          - "FlowCanvas：本阶段新增或调整 FG/FC/CK 时，先 begin_modify(action=update) 登记修改，再维护对应卡片的中文 name、description，完成后 end_modify；同步维护 {OUT}/flowcanvas-target-map.json；先 inspect 并复用已有 ID，重命名不创建替代卡片，不遗漏新发现的检测点。"
           - "目标：逐行审查当前批次的目标文档，把每条有功能意义的非空白内容映射到 {OUT}/{DUT}_functions_and_checks.md 中准确的 FG/FC/CK；只有确实不描述 DUT 功能、接口、约束、状态、时序、异常或边界行为的非空白内容才能使用带具体理由的 IGNORE。当前进度：{COMPLETED_LINE_BLOCKS}/{TOTAL_LINE_BLOCKS}；当前行块：{CURRENT_LINE_BLOCKS}"
           - "输入边界：当前规范目标文件为 {CURRENT_LINE_MAP_TARGETS}。物理行范围和原文以当前行块为准；Check/Complete 返回的 current_line_block_contents 或 next_line_block_contents 可提供同一批次的结构化内容。这些 content 只是当前行块，不是全文。Guide_Doc 只提供格式，不是覆盖目标；不得猜测未返回的文件，也不得修改、重排或插空行到目标文档来适配映射"
           - "执行循环：读取当前行块；仅在标题层级、表头、术语或前置条件不足以判断语义时，用 ReadTextFile 读取 file 指向的上下文；逐条分类并写入 map_file；随后调用 Check。每批通过后只处理返回的下一批，全部通过后再调用 Complete"
@@ -247,7 +247,7 @@ stage:
   - name: functional_specification_refine
     desc: "功能规格/测试点细化与边界条件补充[{COMPLETED_POINTS}/{TOTAL_POINTS}|{COUNT_CK}]"
     task:
-      - "FlowCanvas：细化、拆分或重命名目标时，先 begin_update 登记原卡片修改，再更新面板中文 name、description，完成后 finish_update；维护 {OUT}/flowcanvas-target-map.json；复用保留目标的 ID，新目标按层级先登记占位，计划说明完成后 finish_create(values={planned:true})。删除前先按目标工具 guide 登记删除状态并核对范围；不直接改管理文件。"
+      - "FlowCanvas：细化、拆分或重命名目标时，先 begin_modify(action=update) 登记原卡片修改，再更新面板中文 name、description，完成后 end_modify；维护 {OUT}/flowcanvas-target-map.json；复用保留目标的 ID，新目标按层级先登记占位，计划说明完成后 end_modify(planned=true)。删除前先按目标工具 guide 登记删除状态并核对范围；不直接改管理文件。"
       - "目标：对功能规格进行细化，补充边界条件和异常情况"
       - "第1步：阅读{OUT}/{DUT}_functions_and_checks.md，理解已有功能点和检测点"
       - "第2步：分批次针对每个功能点，分析粒度是否太粗，是否覆盖了所有边界条件和异常情况"
@@ -299,7 +299,7 @@ stage:
           bindings: true
           cov_file: "{OUT}/tests/{DUT}_function_coverage_def.py"
     task:
-      - "FlowCanvas：读取面板和 ID 映射；已有卡片先 begin_update 登记修改，成功后才检查、修改实现和绑定，完成后 finish_update；创建中沿用原创建操作。为本阶段每张相应层级的卡片实现并绑定独立可定位的验证节点。将覆盖模型发布到 {PROJECT_ROOT}/verification/coverage/{DUT}/{DUT}_function_coverage_def.py，与 {OUT}/tests/{DUT}_function_coverage_def.py 保持一致（绑定标识注释除外）。功能组绑定 CovGroup 创建语句，功能点绑定独立赋值或函数，测试点优先使用独立命名检查函数；不要只绑定整个文件、通用入口或 RTL。inspect 项目内发布文件，再 bind 原卡片 ID，role 使用 coverage/check/definition。修改完成后 read 核对；changed 须阅读源码核对后 accept，不能盲目确认。最终验收要求所有卡片 ready 且绑定状态 bound，planned/missing/changed/conflict/unverified 均不能通过。尚不集成到测试用例或运行功能回归，绑定成功不代表验证通过。"
+      - "FlowCanvas：读取面板和 ID 映射；已有卡片先 begin_modify(action=update) 登记修改，成功后才检查、修改实现和绑定，完成后 end_modify；创建中沿用原创建操作。为本阶段每张相应层级的卡片实现并绑定独立可定位的验证节点。将覆盖模型发布到 {PROJECT_ROOT}/verification/coverage/{DUT}/{DUT}_function_coverage_def.py，与 {OUT}/tests/{DUT}_function_coverage_def.py 保持一致（绑定标识注释除外）。功能组绑定 CovGroup 创建语句，功能点绑定独立赋值或函数，测试点优先使用独立命名检查函数；不要只绑定整个文件、通用入口或 RTL。inspect(files) 读取项目内原始源码，由 AI 选定完整范围，update(cards[].bindings) 使用 file/line/line_count/role 绑定原卡片 ID，role 使用 coverage/check/definition。修改完成后 inspect 核对；changed 须阅读源码后用 update(cards[].bindings) 提交当前 fingerprint，不能盲目确认。最终验收要求所有卡片 ready 且绑定状态 bound，planned/missing/changed/conflict/unverified 均不能通过。尚不集成到测试用例或运行功能回归，绑定成功不代表验证通过。"
       - "目标：创建覆盖率统计系统，跟踪哪些功能已测试"
       - "第1步：读取功能分析文档{OUT}/{DUT}_functions_and_checks.md"
       - "第2步：为每个功能分组<FG-*>创建CovGroup覆盖组"
@@ -313,7 +313,7 @@ stage:
       - name: coverage_group_creation
         desc: "功能覆盖组创建"
         task:
-          - "FlowCanvas：读取面板和 ID 映射；已有卡片先 begin_update 登记修改，成功后才检查、修改实现和绑定，完成后 finish_update；创建中沿用原创建操作。为本阶段每张相应层级的卡片实现并绑定独立可定位的验证节点。将覆盖模型发布到 {PROJECT_ROOT}/verification/coverage/{DUT}/{DUT}_function_coverage_def.py，与 {OUT}/tests/{DUT}_function_coverage_def.py 保持一致（绑定标识注释除外）。功能组绑定 CovGroup 创建语句，功能点绑定独立赋值或函数，测试点优先使用独立命名检查函数；不要只绑定整个文件、通用入口或 RTL。inspect 项目内发布文件，再 bind 原卡片 ID，role 使用 coverage/check/definition。修改完成后 read 核对；changed 须阅读源码核对后 accept，不能盲目确认。最终验收要求所有卡片 ready 且绑定状态 bound，planned/missing/changed/conflict/unverified 均不能通过。尚不集成到测试用例或运行功能回归，绑定成功不代表验证通过。"
+          - "FlowCanvas：读取面板和 ID 映射；已有卡片先 begin_modify(action=update) 登记修改，成功后才检查、修改实现和绑定，完成后 end_modify；创建中沿用原创建操作。为本阶段每张相应层级的卡片实现并绑定独立可定位的验证节点。将覆盖模型发布到 {PROJECT_ROOT}/verification/coverage/{DUT}/{DUT}_function_coverage_def.py，与 {OUT}/tests/{DUT}_function_coverage_def.py 保持一致（绑定标识注释除外）。功能组绑定 CovGroup 创建语句，功能点绑定独立赋值或函数，测试点优先使用独立命名检查函数；不要只绑定整个文件、通用入口或 RTL。inspect(files) 读取项目内原始源码，由 AI 选定完整范围，update(cards[].bindings) 使用 file/line/line_count/role 绑定原卡片 ID，role 使用 coverage/check/definition。修改完成后 inspect 核对；changed 须阅读源码后用 update(cards[].bindings) 提交当前 fingerprint，不能盲目确认。最终验收要求所有卡片 ready 且绑定状态 bound，planned/missing/changed/conflict/unverified 均不能通过。尚不集成到测试用例或运行功能回归，绑定成功不代表验证通过。"
           - "为每个功能分组<FG-*>创建对应的CovGroup对象"
           - "实现get_coverage_groups(dut)基础框架"
           - "确保覆盖组可以正常创建和访问"
@@ -338,7 +338,7 @@ stage:
       - name: coverage_point_implementation
         desc: "覆盖率检查点实现"
         task:
-          - "FlowCanvas：读取面板和 ID 映射；已有卡片先 begin_update 登记修改，成功后才检查、修改实现和绑定，完成后 finish_update；创建中沿用原创建操作。为本阶段每张相应层级的卡片实现并绑定独立可定位的验证节点。将覆盖模型发布到 {PROJECT_ROOT}/verification/coverage/{DUT}/{DUT}_function_coverage_def.py，与 {OUT}/tests/{DUT}_function_coverage_def.py 保持一致（绑定标识注释除外）。功能组绑定 CovGroup 创建语句，功能点绑定独立赋值或函数，测试点优先使用独立命名检查函数；不要只绑定整个文件、通用入口或 RTL。inspect 项目内发布文件，再 bind 原卡片 ID，role 使用 coverage/check/definition。修改完成后 read 核对；changed 须阅读源码核对后 accept，不能盲目确认。最终验收要求所有卡片 ready 且绑定状态 bound，planned/missing/changed/conflict/unverified 均不能通过。尚不集成到测试用例或运行功能回归，绑定成功不代表验证通过。"
+          - "FlowCanvas：读取面板和 ID 映射；已有卡片先 begin_modify(action=update) 登记修改，成功后才检查、修改实现和绑定，完成后 end_modify；创建中沿用原创建操作。为本阶段每张相应层级的卡片实现并绑定独立可定位的验证节点。将覆盖模型发布到 {PROJECT_ROOT}/verification/coverage/{DUT}/{DUT}_function_coverage_def.py，与 {OUT}/tests/{DUT}_function_coverage_def.py 保持一致（绑定标识注释除外）。功能组绑定 CovGroup 创建语句，功能点绑定独立赋值或函数，测试点优先使用独立命名检查函数；不要只绑定整个文件、通用入口或 RTL。inspect(files) 读取项目内原始源码，由 AI 选定完整范围，update(cards[].bindings) 使用 file/line/line_count/role 绑定原卡片 ID，role 使用 coverage/check/definition。修改完成后 inspect 核对；changed 须阅读源码后用 update(cards[].bindings) 提交当前 fingerprint，不能盲目确认。最终验收要求所有卡片 ready 且绑定状态 bound，planned/missing/changed/conflict/unverified 均不能通过。尚不集成到测试用例或运行功能回归，绑定成功不代表验证通过。"
           - "为每个功能点添加watch_point和检查函数"
           - "用独立命名函数实现检查逻辑，传递引用参数(dut对象)"
           - "每个测试点保留独立检查入口，函数实现应易于阅读与源码绑定"
@@ -363,7 +363,7 @@ stage:
           - name: implemente_function_checks_in_batch
             desc: "分批功能点检查函数实现[{COMPLETED_POINTS}/{TOTAL_POINTS}]"
             task:
-              - "FlowCanvas：读取面板和 ID 映射；已有卡片先 begin_update 登记修改，成功后才检查、修改实现和绑定，完成后 finish_update；创建中沿用原创建操作。为本阶段每张相应层级的卡片实现并绑定独立可定位的验证节点。将覆盖模型发布到 {PROJECT_ROOT}/verification/coverage/{DUT}/{DUT}_function_coverage_def.py，与 {OUT}/tests/{DUT}_function_coverage_def.py 保持一致（绑定标识注释除外）。功能组绑定 CovGroup 创建语句，功能点绑定独立赋值或函数，测试点优先使用独立命名检查函数；不要只绑定整个文件、通用入口或 RTL。inspect 项目内发布文件，再 bind 原卡片 ID，role 使用 coverage/check/definition。修改完成后 read 核对；changed 须阅读源码核对后 accept，不能盲目确认。最终验收要求所有卡片 ready 且绑定状态 bound，planned/missing/changed/conflict/unverified 均不能通过。尚不集成到测试用例或运行功能回归，绑定成功不代表验证通过。"
+              - "FlowCanvas：读取面板和 ID 映射；已有卡片先 begin_modify(action=update) 登记修改，成功后才检查、修改实现和绑定，完成后 end_modify；创建中沿用原创建操作。为本阶段每张相应层级的卡片实现并绑定独立可定位的验证节点。将覆盖模型发布到 {PROJECT_ROOT}/verification/coverage/{DUT}/{DUT}_function_coverage_def.py，与 {OUT}/tests/{DUT}_function_coverage_def.py 保持一致（绑定标识注释除外）。功能组绑定 CovGroup 创建语句，功能点绑定独立赋值或函数，测试点优先使用独立命名检查函数；不要只绑定整个文件、通用入口或 RTL。inspect(files) 读取项目内原始源码，由 AI 选定完整范围，update(cards[].bindings) 使用 file/line/line_count/role 绑定原卡片 ID，role 使用 coverage/check/definition。修改完成后 inspect 核对；changed 须阅读源码后用 update(cards[].bindings) 提交当前 fingerprint，不能盲目确认。最终验收要求所有卡片 ready 且绑定状态 bound，planned/missing/changed/conflict/unverified 均不能通过。尚不集成到测试用例或运行功能回归，绑定成功不代表验证通过。"
               - "第1步：理解功能点<FC-*>和检测点<CK-*>的预期行为"
               - "第2步：需要为以下检查点实现检查函数": "{LIST_CURRENT_POINTS}"
               - "第3步：使用独立命名函数实现检查逻辑，传递引用参数(dut对象)"

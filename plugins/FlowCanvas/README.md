@@ -239,28 +239,29 @@ FlowCanvas 初始注册七个固定工具：list_workflow_runs、run_workflow、
 
 “验证目标”使用固定三层结构：功能组 → 功能点 → 测试点。权威文件为项目
 `.flowcanvas/verification.json`；Pydantic 模型 `flowcanvas.targets.Definition` 是 Schema
-来源，工具的 `guide` 操作同时返回 JSON Schema 和 Skill。无代码的规划可以先创建，
+来源，工具的 `inspect` 操作同时返回 JSON Schema 和说明。无代码的规划可以先创建，
 描述、条件与预期行为可留空。测试用例与运行结果不混入此树。
 
 页面支持创建/编辑、按指定文件预览和导入、搜索、源码查看与绑定校验。导入会在源码
-定义前插入 `@flowcanvas id=bind_…` 注释，使用 pyslang/Python AST 获取范围，行号不作 ID。
+选定代码前插入 `@flowcanvas id=bind_…` 注释，以注释后的 line_count 行确定范围，不使用语法解析。
 扫描不重建已发布的卡片；名称和说明也不会随源码扫描被覆盖。
 页面只轮询定义文件的 revision，在发布变更、打开页面或点击“核对代码”时检查绑定，
 不监听源码实时重建树。源码位置变化更新定位；内容变化需要核对确认；删除、重复标识
-或解析错误会显示失效、冲突或无法校验，不能据此声称覆盖命中或验证通过。
+或范围越界会显示失效、冲突或无法校验，不能据此声称覆盖命中或验证通过。
 
 配套 Skill：`src/flowcanvas/skills/verification-targets/SKILL.md`。
-对话 MCP 工具 `verification_targets` 提供 guide/read/inspect/source 和
-create/import/update/bind/accept。模型先读取 guide；所有修改带 expected_revision，
+对话 MCP 工具 `verification_targets` 只提供 inspect/apply/begin_modify/update/end_modify 五个批量入口。
+inspect 查询卡片、规范和原始源码；apply(count) 仅分配草稿 ID，不显示流光；begin_modify 登记 update/delete 并开始流光；
+update 更新卡片信息及完整 bindings；end_modify 校验后完成修改或删除。所有修改带 expected_revision，
 由服务端校验三层关系、ID 唯一性和项目内路径。项目内写操作支持工作区访问和完全访问。工具绑定会话的项目，不能
 传入任意项目路径。也可以用 `python -m flowcanvas.targets --project … --request request.json`
 调用同一实现。
 
 第一版导入约定：SV covergroup / coverpoint 或 cross / 显式普通 bins；Python class /
-函数或方法 / assert，模块函数使用文件名分组。复杂 Python 结构可显式 create + bind。
+函数或方法 / assert，模块函数使用文件名分组。复杂 Python 结构通过 apply/begin_modify/update/end_modify 显式维护。
 SV 的 ignore_bins/illegal_bins 不作为正常测试点导入；bin 数组保留模板，隐式 cross
-不展开。仅为常见 UVM 注册/日志宏提供语法占位；未支持的宏或解析输入需要补齐，不能
-把源码扫描当成完整编译。移动文件尚不自动追踪，标识冲突不会自动猜测修复。
+不展开。AI 阅读文档、宏定义和源码自行选择完整范围；服务端只检查标识、行数和指纹，
+不证明语法节点完整，也不进行编译。移动文件尚不自动追踪，标识冲突不会自动猜测修复。
 
 
 ### Picker 编译 RTL 工作流
@@ -312,7 +313,11 @@ RTL 绑定、仅有计划、过期或缺失绑定均不能代替实现。
 用户队列优先，子 Agent 仍活动时等待；主动停止、执行错误和服务重启不会自动重开任务。
 重新运行或恢复工作流后可再次启用。每轮仅调度一次，完成回执优先于滞后的页面状态。
 
-AI 修改现有验证目标和测试用例时，须先 begin_update 登记修改，再 update/bind/accept，最后 finish_update；创建中沿用原操作。修改状态持续显示流光并锁住卡片交互，停止后保留暂停状态，可用 resume_operation 恢复。工具校验操作所属对话，拒绝未登记、暂停或其他对话的修改；手动编辑空闲卡片仍可直接保存。已有源码绑定全部校验有效后才能结束修改。
+验证目标的新建使用 apply → begin_modify(action=update) → update → end_modify；已有卡片跳过 apply。
+删除使用 begin_modify(action=delete) → end_modify，含子级时显式 cascade=true，并用返回的完整 ID 列表结束。
+批量调用全成功或全不写入；update 只接受本会话已登记且运行中的卡片，bindings 是完整替换列表。
+inspect(files) 获取可绑定的源码位置，inspect(binding_id) 查看绑定源码。无实现的规划用 planned=true 结束。
+中断后沿用原 ID 和 action 再次 begin_modify 恢复。测试用例仍使用其原有 create/begin_update/finish_create/finish_update 流程。
 
 ### 增量新增测试用例
 
@@ -342,3 +347,11 @@ The final gates compare that source tree to the native checked output, require
 current bindings for targets and testcases, and require runner/coverage configuration.
 These gates supplement the native test/evidence checks; they do not themselves
 claim that a configured coverage extractor has successfully run.
+
+### 导入已有验证目标
+
+“从项目导入验证目标”AI 卡片附加 `import-targets` 工作流，依次确认源码范围、
+创建并绑定卡片、核对面板与源码。参考已有验证文档生成简洁中文标题和描述；
+无文档时依据实际源码生成。工作流只读已有实现，通过卡片工具添加绑定标识，
+不编译、不仿真、不导入测试用例。范围与明确排除理由保存在工作流输出
+`summary/import-scope.json`；验收检查 card_ids 中的卡片为 ready/bound、范围位于所选源码，并要求未导入部分有明确说明；语义完整性由 AI 核对。

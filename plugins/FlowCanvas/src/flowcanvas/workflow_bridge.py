@@ -63,24 +63,27 @@ class WorkflowBridge:
                 self.call = None
 
         @self.mcp.tool()
-        async def verification_targets(operation: str = 'read', expected_revision: int = 0,
-                                       files: list[str] | None = None, kind: str = 'group',
-                                       name: str = '', parent: str = '', target_id: str = '',
-                                       binding_id: str = '', values: dict | None = None) -> dict:
-            """Manage the bound project's verification hierarchy and source markers. Start with guide, then read. Before modifying an existing card or its bindings, begin_update(target_id, expected_revision); keep the same ID through update/bind/accept, then finish_update after live binding validation. Unregistered, paused or foreign-owner writes are rejected. AI creation must begin_create before edits, update/bind the same ID and finish_create afterward. For a plan without implementation or bindings, finish_create with values.planned=true; this does not claim implementation or coverage. AI deletion must first read the current revision and immediately begin_delete for the user-selected ID BEFORE source inspection or scope analysis, then inspect scope/references, clean up and delete; descendants require values.cascade=true. resume_operation resumes paused work. Read/inspect/source are read-only. create/import/update/bind/accept require workspace or full access and current revision. guide returns the skill and authoritative schema."""
+        async def verification_targets(operation: str = 'inspect', expected_revision: int = 0, count: int = 0,
+                                       ids: list[str] | None = None, cards: list[dict] | None = None,
+                                       action: str = 'update', cascade: bool = False,
+                                       planned: bool = False, kind: str | None = None,
+                                       parent: str | None = None, files: list[str] | None = None,
+                                       binding_id: str = '') -> dict:
+            """Manage verification target cards in batches. inspect reads cards and instructions; files inspects raw source and binding_id reads bound source. apply(count) returns new unassigned IDs without shimmer. begin_modify(ids,action=update|delete) starts or resumes owned operations. update(cards=[{id,kind,name,description,parent,bindings}]) patches owned running cards; kind is group/point/testpoint, assigned once. bindings replaces the full list using file/line/line_count/role (or existing id/file/line_count/role); optional fingerprint guards the selected text. end_modify(ids) finishes the registered action; planned=true permits unimplemented cards without bindings. Deleting children requires explicit IDs or cascade=true. All writes use current expected_revision and are atomic. Use concise Chinese titles/descriptions grounded in documentation and actual source; never edit management JSON."""
             from .targets import execute
             root = session.get('project_root')
             if not root:
                 raise ValueError('当前对话未绑定项目，请在项目中创建新对话')
-            if operation not in {'guide', 'read', 'inspect', 'source'} and session.get('permission_mode') not in {'workspace', 'full'}:
+            if operation != 'inspect' and session.get('permission_mode') not in {'workspace', 'full'}:
                 raise ValueError('请选择工作区访问或完全访问模式')
             try:
                 return await asyncio.to_thread(execute, root, dict(operation=operation,
-                    expected_revision=expected_revision,files=files or [],kind=kind,name=name,
-                    parent=parent,target_id=target_id,binding_id=binding_id,values=values or {}), owner=session['id'])
+                    expected_revision=expected_revision, count=count, ids=ids or [], cards=cards or [],
+                    action=action, cascade=cascade, planned=planned, kind=kind, parent=parent,
+                    files=files or [], binding_id=binding_id), owner=session['id'])
             except (ValueError, FileNotFoundError) as exc:
                 return {'error': str(exc), 'operation': operation,
-                        'next_action': 'Read current definitions and correct the request using guide; resume_operation does not repair bindings.'}
+                        'next_action': 'Inspect the current cards and source; correct the batch and retry. No changes were committed.'}
 
         @self.mcp.tool()
         async def test_cases(operation: str = 'read', expected_revision: int = 0,

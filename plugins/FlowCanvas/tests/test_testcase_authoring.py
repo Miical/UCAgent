@@ -1,4 +1,6 @@
 """Incremental case acceptance uses actual panel bindings without executing user code."""
+from target_test_support import inspect_fixture, bind_target
+
 import json
 from pathlib import Path
 import pytest
@@ -57,8 +59,8 @@ def test_zero(env):
     cov_file=str(coverage.relative_to(root))
     for kind,name in (("group","group_label"),("point","point_label"),("testpoint","check_label")):
         row=targets.create(kind,name,parent,targets.read().revision,description="Scenario behavior")
-        node=next(n for n in targets.inspect([cov_file])[0]["nodes"] if n["name"].startswith(name))
-        targets.bind(row["id"],{"file":cov_file,"start":node["start"],"fingerprint":node["fingerprint"],"role":"coverage"},
+        node=next(n for n in inspect_fixture(targets,[cov_file])[0]["nodes"] if n["name"].startswith(name))
+        bind_target(targets,row["id"],{"file":cov_file,"start":node["start"],"fingerprint":node["fingerprint"],"role":"coverage"},
                      targets.read().revision)
         parent=row["id"];ids.append(parent)
     mapping=root/"verification/coverage/map.json"

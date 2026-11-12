@@ -1,4 +1,6 @@
 """Exercise panel-authoritative planning and real source-binding acceptance."""
+from target_test_support import inspect_fixture, bind_target
+
 import json
 from pathlib import Path
 import tempfile
@@ -54,9 +56,9 @@ class PanelAcceptanceTests(unittest.TestCase):
         """Bind three distinct parsed implementation nodes using public transactions."""
         for identity, symbol in zip(self.ids,("create_group","observe_point","check_zero")):
             file = str(self.published.relative_to(self.project))
-            parsed = self.store.inspect([file])
+            parsed = inspect_fixture(self.store,[file])
             node = next(n for n in parsed[0]["nodes"] if n["name"] == symbol)
-            self.store.bind(identity,{"file":file,"start":node["start"],
+            bind_target(self.store,identity,{"file":file,"start":node["start"],
                                      "fingerprint":node["fingerprint"],"role":"coverage"},
                             self.store.read().revision)
 

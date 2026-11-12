@@ -187,7 +187,7 @@ class WorkflowRuntime:
                 return {'card': card, 'accepted': True}
             if card is None:
                 project_root = None
-                if identity in {'rtl-summary', 'picker-compile', 'plan-goals', 'generate-testcase', 'default'}:
+                if identity in {'rtl-summary', 'picker-compile', 'plan-goals', 'generate-testcase', 'import-targets', 'default'}:
                     if not self.session.get('project_root'):
                         raise ValueError('Open a FlowCanvas project before running this RTL workflow')
                     project_root = Path(self.session['project_root']).resolve()
@@ -238,6 +238,10 @@ class WorkflowRuntime:
                     if readme.is_file():
                         shutil.copy2(readme, root / 'workspace' / dut / 'README.md')
                     request.update(project_root=str(project_root), conversation_id=self.session['id'])
+                if identity == 'import-targets':
+                    from .targets import Targets
+                    request.update(project_root=str(project_root), conversation_id=self.session['id'],
+                                   target_baseline=[row.id for row in Targets(project_root).read().targets])
                 if identity == 'generate-testcase':
                     from .testcases import Cases
                     request.update(project_root=str(project_root), conversation_id=self.session['id'],

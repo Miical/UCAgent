@@ -1,4 +1,6 @@
 """Adapter interoperability, exact merges and source-bound publication."""
+from target_test_support import inspect_fixture, bind_target
+
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,8 +22,8 @@ def coverage_project(tmp_path):
     ids=[]
     for kind,name in (("group","group"),("point","point"),("testpoint","check")):
         row=store.create(kind,name,ids[-1] if ids else None,store.read().revision,description=name)
-        node=next(n for n in store.inspect(["coverage.py"])[0]["nodes"] if n["name"].startswith(name+" ="))
-        store.bind(row["id"],dict(file="coverage.py",start=node["start"],fingerprint=node["fingerprint"],role="coverage"),store.read().revision)
+        node=next(n for n in inspect_fixture(store,["coverage.py"])[0]["nodes"] if n["name"].startswith(name+" ="))
+        bind_target(store,row["id"],dict(file="coverage.py",start=node["start"],fingerprint=node["fingerprint"],role="coverage"),store.read().revision)
         ids.append(row["id"])
     mapping=root/"map.json"
     mapping.write_text(json.dumps({"FG-API/FC-ADD/CK-ZERO":ids[-1]}))

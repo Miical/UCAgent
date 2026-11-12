@@ -4,19 +4,22 @@ template_overwrite:
 flowcanvas_panel:
   instruction: |
     FlowCanvas is authoritative for verification plans, FG/FC/CK targets and test-case plans.
-    Call verification_targets/test_cases operation=guide before maintaining project {PROJECT_ROOT}.
+    Call verification_targets operation=inspect and test_cases operation=guide before maintaining project {PROJECT_ROOT}.
     When native tasks or skills ask to write the verification plan or functions-and-checks
     document, update the corresponding panel cards instead. Check generates both compatibility
     documents from the panel; do not maintain a separate plan in those documents.
     Maintain {OUT}/flowcanvas-target-map.json as a flat full FG/FC/CK path -> stable target ID
     map covering every project target, with the same hierarchy.
-    Register creations before implementation and begin_update before editing existing cards or
-    bound source; finish/resume operations through the tools and retain IDs.
+    For verification targets use only inspect/apply/begin_modify/update/end_modify. Allocate new
+    IDs with apply, register owned modifications with begin_modify(action=update), update card
+    information and complete binding lists, then end_modify. Use begin_modify(action=delete)
+    and end_modify for deletion. All operations accept batches and all writes use current revision.
+    For test_cases keep its create/begin_update/finish_create/finish_update lifecycle.
     Preserve native stages, skills, batch arguments, simulations and failure analysis.
     Source binding never substitutes for native verification evidence.
   planning: |
     Put scope, risks, strategy and expected behavior in initial group card descriptions.
-    Finish planned targets with values.planned=true; refine their children in native FG/FC/CK stages.
+    Finish planned targets with planned=true; refine their children in native FG/FC/CK stages.
     If README is absent, inspect RTL and package interfaces, distinguish implementation-derived
     assumptions from requirements, and continue unless a necessary requirement remains unknown.
   implementation: |
@@ -24,7 +27,7 @@ flowcanvas_panel:
     paths and imports, to {PROJECT_ROOT}/verification/default/{DUT}/tests; publish the compiled
     DUT package beside tests at {PROJECT_ROOT}/verification/default/{DUT}/{DUT}.
     Synchronize every change without overwriting unrelated files.
-    Bind each original target to its own definition/check/coverage node in the published
+    Use verification_targets update(cards[].bindings) to bind each original target to its own definition/check/coverage node in the published
     {DUT}_function_coverage_def.py. Inspect and reconcile changed bindings before accepting them.
   cases: |
     Plan every new test as a test_cases card before implementation: readable title, scenario,

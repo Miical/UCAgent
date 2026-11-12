@@ -1,0 +1,64 @@
+# Import existing source-backed verification goals without running simulations.
+template: null
+guide_doc:
+  enable: false
+skill:
+  use_skill: false
+  general_skill_list: []
+mission:
+  name: 导入验证目标
+  prompt:
+    system: |
+      Import existing verification targets into the current FlowCanvas project {PROJECT_ROOT}.
+      The selected DUT is {DUT}. Inspect its verification entrypoints, file lists and shared dependencies.
+      Import only the user's selected module scope, not unrelated library verification environments.
+      Use concise readable Chinese card titles and descriptions. Prefer existing verification documents
+      and test plans; cross-check them against code. Without documents, derive text from real source.
+      Report differences between plans and implementation. Never fabricate coverage hits or passing tests.
+      Use verification_targets inspect to read instructions, current cards, and raw source.
+      New cards use apply(count), then begin_modify(ids,action=update), update(cards) and end_modify(ids).
+      Existing cards skip apply. All writes use the latest expected_revision. Preserve original IDs and
+      resume interrupted operations; avoid duplicate records. update carries kind/name/description/parent
+      and bindings using file/line/line_count/role; existing markers use id instead of line. Do not edit management JSON directly.
+      Do not run simulations, compile a DUT, create test cases, or rewrite verification behavior.
+      Binding marker comments may be added by the tool. If definitions are reused across objects or
+      cannot be mapped uniquely, explicitly exclude them with a reason instead of silently merging them.
+      Store only a compact import scope in {OUT}/import-scope.json; plans and descriptions belong on cards.
+      Continue through all stages using SetCurrentStageJournal and Complete, then Exit after acceptance.
+    tips:
+      always: []
+      random: []
+tools:
+  selected_tools: [ReadTextFile, EditTextFile, CurrentTips, Status, SetCurrentStageJournal, Complete, Exit]
+write_dirs: ["{OUT}"]
+stage:
+  - name: inspect_verification_scope
+    desc: 确认验证源码与文档范围
+    task:
+      - "Read project verification entrypoints, build file lists and relevant verification documents. Follow necessary includes, but exclude unrelated DUTs, tools, logs and build products."
+      - "Use verification_targets inspect(files) to read raw source with no syntax parser; identify coverage/checking ranges yourself. Write {OUT}/import-scope.json with files (project-relative verification sources), documents (existing reference documents, or []), card_ids (initially []), and exclusions (initially []). No README is required."
+    output_files: ["{OUT}/import-scope.json"]
+    checker:
+      - name: scope
+        clss: flowcanvas.target_import_workflow.TargetImportChecker
+        args: {final: false}
+  - name: import_verification_cards
+    desc: 创建中文卡片并绑定已有实现
+    task:
+      - "Read existing cards and reuse matching source bindings. Map covergroup to group, coverpoint/cross to point, explicit normal bins to testpoint; exclude ignore/illegal bins and do not invent implicit combinations. Python checking structures may be mapped from class/function/assert nodes where appropriate."
+      - "Reference the verified documentation when writing concise Chinese titles and descriptions; otherwise explain source intent plainly. Include sampling/trigger and expected checking behavior when the code supports it. Do not duplicate one behavior just because it appears in a document and in code."
+      - "Import in manageable batches using the five target operations. Select complete source ranges, starting at a source line and spanning line_count lines; the tool inserts a stable marker before the range. Record all imported/reused IDs in card_ids, including parent cards. Allocate only required IDs, assign types and parent links with update, bind actual implementation positions, and end each completed batch. Preserve unrelated existing cards."
+      - "For helper or duplicated definitions that should not be separate cards, add an exclusions entry {file,reason} to import-scope.json with a concrete explanation. Never hide a required target just to pass acceptance. Unimplemented document plans are reported separately, not represented as implemented cards."
+    checker:
+      - name: imported_cards
+        clss: flowcanvas.target_import_workflow.TargetImportChecker
+        args: {final: true}
+  - name: reconcile_import
+    desc: 核对面板与源码一致性
+    task:
+      - "Inspect the final cards and source scope again. Confirm titles/descriptions match documents and code, parent links reflect the verification hierarchy, and every imported card is ready and bound. Review source completeness and semantic parent relationships yourself; range checks do not prove syntax completeness. Explain all exclusions and unresolved documentation-only plans."
+      - "Report actual imported counts, source range and unresolved issues. State that this workflow has not run verification or imported coverage results. Finish with Complete and Exit; do not repeat import or simulation to produce a report."
+    checker:
+      - name: final_alignment
+        clss: flowcanvas.target_import_workflow.TargetImportChecker
+        args: {final: true}

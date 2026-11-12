@@ -26,7 +26,7 @@ stage:
   - name: select_and_reserve_testcase
     desc: 选择场景并登记用例
     task:
-      - "读取 test_cases 和 verification_targets 的 guide/read；检查已有用例、真实源码和运行入口，选定本次唯一场景，明确输入、预期依据、断言与拟关联的测试点，不重复已有用例。"
+      - "读取 test_cases 的 guide/read 和 verification_targets 的 inspect；检查已有用例、真实源码和运行入口，选定本次唯一场景，明确输入、预期依据、断言与拟关联的测试点，不重复已有用例。"
       - "调查现有目录和接口，列出复用文件与最小缺口。存在完整环境时直接复用；只有 RTL 时也可继续，不以缺少 README 或完整环境阻塞整个流程。"
       - "先 test_cases(create) 登记带简短中文 title、代码 name 和具体 description 的占位，再编写代码。保存 {OUT}/testcase_plan.json：case_id 为返回 ID，target_ids 为实际拟关联的测试点 ID 数组，files 为本次将修改或新增的项目相对源码路径数组。不得填旧用例 ID。"
       - "暂缺目标时可先留空 target_ids，后续只创建本场景必要的功能组、功能点和测试点及对应覆盖定义，不要求规划整个项目。"
@@ -43,7 +43,7 @@ stage:
       - "遵循原生普通定向用例规范：文件 test_{DUT}_<feature>.py，函数 test_<scenario>(env, ...)，通过 from {DUT}_api import * 导入接口及 fixtures。参考模型是否启用依据项目 .ucagent/runtime_config.json 中已解析的 runtime_options，不拿本工作流隔离目录的配置代替项目配置；存在配置时按配置使用 env/ref_model 参数顺序，不从环境变量自行推断。未配置参考模型时不强制搭建，用独立可解释的预期与真实断言完成场景。"
       - "尽量调用现有 api_{DUT}_*；确需新接口时仅补本场景所需函数，首参 env、末参 max_cycles 有默认值，按原生规范推进 DUT Step。缺少 dut/env fixture 时按指南补充真实 DUT 创建、必要时钟/复位、资源清理和覆盖采样。缺 Bundle、Mock 或参考模型时仅在场景确实需要时增加。"
       - "缺少编译产物且本场景需要时，可复用 Picker 编译工作流生成真实 DUT 包；复用已有包时核对来源与顶层，不重复运行全量规划工作流。"
-      - "测试函数开头使用真实 fc_cover 的 mark_function，将本函数对象与实际 FG/FC/CK 关联；关联的每个测试点都须有真实激励和断言。复用已有覆盖模型，只补缺失定义并接入现有采样，不在测试里伪造 fc_cover。覆盖定义写入验证目标面板，并通过 inspect/bind 绑定。"
+      - "测试函数开头使用真实 fc_cover 的 mark_function，将本函数对象与实际 FG/FC/CK 关联；关联的每个测试点都须有真实激励和断言。复用已有覆盖模型，只补缺失定义并接入现有采样，不在测试里伪造 fc_cover。覆盖定义写入验证目标面板，先 inspect 原始源码，再通过 begin_modify/update/end_modify 以 file/line/line_count 绑定。"
       - "运行模板已有则复用；缺少时根据实际目录和入口 configure 项目共享 command/description，使用独立的 {case} 参数（运行器会解析为绝对源码路径::测试入口），不能再拼接目录前缀；可以切换工作目录满足项目导入需要，不替换已有可用模板。补齐 testcase_plan.json 中的真实 target_ids 与 files。"
       - |
         Verilator / Toffee 默认模板（在项目现有 fixture 内增量接入，不重写整套环境）：
