@@ -212,14 +212,12 @@ function selectRow(id) {
 function onRowClick(row) {
   cursorId.value = row.id
   selectRow(row.id)
+  window.parent.postMessage({type:'flowcanvas-open-module',instance:row.id,pin:false},location.origin)
 }
 
 function onRowDblClick(row) {
-  // The browser has already delivered the first click (hence the
-  // selection + broadcast); this only adds the descend, exactly as the
-  // canvas's dblclick handler does. ``descend`` no-ops on a leaf.
   store.select(row.id)
-  store.descend(row.id)
+  window.parent.postMessage({type:'flowcanvas-open-module',instance:row.id,pin:true},location.origin)
 }
 
 function selectFirstMatch() {

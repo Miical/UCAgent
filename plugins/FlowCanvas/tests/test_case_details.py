@@ -59,7 +59,7 @@ async def test_bundled_surfer_assets_and_isolation(tmp_path):
     from flowcanvas.server import create_app
     app=create_app(state_dir=tmp_path/'state')
     async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app),base_url='http://testserver') as client:
-        for path in ('/','/surfer/','/surfer/surfer_bg.wasm','/surfer/fst-converter.wasm','/surfer/fst-fallback-worker.js'):
+        for path in ('/','/rtl-viewer/','/surfer/','/surfer/surfer_bg.wasm','/surfer/fst-converter.wasm','/surfer/fst-fallback-worker.js'):
             response=await client.get(path)
             assert response.status_code==200
             assert response.headers['cross-origin-embedder-policy']=='require-corp'

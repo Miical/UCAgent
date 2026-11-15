@@ -1,4 +1,4 @@
-"""Durable one-case/one-conversation ownership and validated per-message viewing context."""
+"""Durable scoped conversation ownership and validated per-message viewing context."""
 import json
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
@@ -10,7 +10,10 @@ from .testcases import Cases
 class CaseView(BaseModel):
     """Bounded browser selection; authoritative case and artifact metadata come from the server."""
     model_config = ConfigDict(extra='forbid')
-    tab: Literal['overview','source','runs','wave'] = 'overview'
+    tab: Literal['overview','source','coverage','runs','wave'] = 'overview'
+    module_instance: str | None = Field(default=None,max_length=4000)
+    coverage_metric: Literal['line','toggle','branch','expr','cond','fsm','assert'] | None = None
+    coverage_file: str | None = Field(default=None,max_length=4096)
     binding_id: str | None = Field(default=None,max_length=100)
     run_id: str | None = Field(default=None,pattern='^[0-9a-f]{32}$')
     waveform: str | None = Field(default=None,max_length=2000)
@@ -19,12 +22,17 @@ class CaseView(BaseModel):
 
 
 class CaseBackend(BaseModel):
-    """Choose the backend only when materializing a case's first conversation."""
+    """Choose a backend and optionally materialize an idempotent new scoped draft."""
     backend: Literal['codex','opencode'] = 'codex'
+    draft_id: str = Field(default='',pattern='^([0-9a-f]{32})?$')
 
 
 def case_record(service, project_id, case_id):
     """Resolve an opened project and live case ID without changing the active project."""
+    if case_id.startswith('module_'):
+        from .module_details import module_record
+        project,card,_=module_record(service,project_id,identity=case_id)
+        return project,card
     project=next((p for p in service.projects.state['recent'] if p['id']==project_id),None)
     if not project:raise HTTPException(404,'Project not found')
     card=next((c for c in Cases(project['path']).read().targets if c.id==case_id),None)
@@ -41,6 +49,21 @@ def view_snapshot(service, session, view):
         raise HTTPException(409,'Conversation belongs to another project')
     value=dict(project_id=project['id'],project_root=project['path'],case_id=card.id,
                title=card.title,name=card.name,description=card.description,view=view.model_dump(exclude_none=True))
+    if getattr(card,'entity_type','')=='module':
+        from .module_details import module_record
+        if view.tab not in {'overview','source','coverage'} or view.binding_id or view.run_id or view.waveform:
+            raise HTTPException(422,'Design conversations support overview, source and coverage context')
+        _,selected,source=module_record(service,project['id'],identity=card.id,instance=view.module_instance or '')
+        source.pop('file_content',None);source['content']=source['content'][:12000]
+        value.update(entity_type='design',instance=selected.instance,module=selected.name,source=source,children=selected.children)
+        if view.tab=='overview':value['overview']=selected.overview
+        if view.tab=='coverage':
+            from .coverage_runtime import public
+            state=public(project['path'])
+            value['current_source']=value.pop('source')
+            value['coverage']=dict(metric=view.coverage_metric or 'line',file=view.coverage_file,build_id=state.get('build_id'),report_path='.flowcanvas/coverage')
+        return value
+    if view.tab=='coverage':raise HTTPException(422,'Coverage view belongs to the design tab')
     if view.binding_id:
         source=next((b for b in card.bindings if b.id==view.binding_id),None)
         if not source:raise HTTPException(422,'Source binding does not belong to this case')
@@ -69,23 +92,30 @@ def view_snapshot(service, session, view):
 
 
 def routes(service):
-    """Look up without creating; materialize once on the first user send, serialized by ASGI."""
+    """Look up scoped histories; materialize drafts once on first send, serialized by ASGI."""
     router=APIRouter(prefix='/api/chat/projects')
-    def lookup(project_id,case_id):
-        """Session metadata is the durable binding index, including archived conversations."""
+    def lookup(project_id,case_id,draft_id=''):
+        """Resolve a specific draft or the most recently updated non-archived scoped history."""
         binding=dict(project_id=project_id,case_id=case_id)
-        return next((s for s in service.sessions.values() if s.get('case_binding')==binding),None)
+        candidates=[s for s in service.sessions.values() if s.get('case_binding')==binding
+                    and (s.get('case_draft_id')==draft_id if draft_id else not s.get('archived'))]
+        return max(candidates,key=lambda s:s.get('updated',0),default=None)
+    @router.get('/{project_id}/modules/{case_id}/conversation')
     @router.get('/{project_id}/testcases/{case_id}/conversation')
     async def inspect(project_id:str,case_id:str):
         """Opening a case must never create an empty conversation or launch a backend."""
         case_record(service,project_id,case_id)
         return dict(session=lookup(project_id,case_id))
+    @router.post('/{project_id}/modules/{case_id}/conversation')
     @router.post('/{project_id}/testcases/{case_id}/conversation')
     async def materialize(project_id:str,case_id:str,value:CaseBackend):
-        """Reuse the sole binding even for duplicate requests from separate browser tabs."""
+        """Reuse default history or create exactly one session for an explicit new draft."""
         project,card=case_record(service,project_id,case_id)
-        session=lookup(project_id,case_id)
+        session=lookup(project_id,case_id,value.draft_id)
         if session is None:
             session=service.create(value.backend,project=project,case_binding=dict(project_id=project_id,case_id=case_id))
+            if value.draft_id:
+                session['case_draft_id']=value.draft_id
+                service.save(session)
         return session
     return router

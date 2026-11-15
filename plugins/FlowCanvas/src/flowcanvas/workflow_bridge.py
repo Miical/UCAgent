@@ -102,6 +102,14 @@ class WorkflowBridge:
                 action=action,files=files or [],binding_id=binding_id),owner=session['id'])
 
         @self.mcp.tool()
+        async def module_overview(operation:str='inspect',instance:str='',overview:dict|None=None,
+                                  expected_revision:str='',source_revision:str='')->dict:
+            """Create the selected design module overview through a standard schema. inspect returns the authoritative writing guide, real source, the current explanation, JSON schema and revision tokens. Read and follow the guide before generating. save requires overview matching that schema and both tokens from inspect. Describe functional units and relationships, never timeline phases; the application draws the graph automatically. Cite actual source ranges and exact assignments, distinguish inferred explanations, and never edit UI code or managed JSON. Writes validate source references, excerpts, graph endpoints, ports and revision conflicts."""
+            from .module_overviews import execute
+            return await asyncio.to_thread(execute,service,session,operation,instance,overview,
+                                           expected_revision,source_revision)
+
+        @self.mcp.tool()
         async def case_waveform(operation: str = 'inspect', run_id: str = '', waveform: str = 'waveforms/waves.vcd',
                                 query: str = '**', signals: list[str] | None = None, start: str | None = None,
                                 end: str | None = None, offset: int = 0, limit: int = 100,

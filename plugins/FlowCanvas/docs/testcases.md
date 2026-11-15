@@ -107,11 +107,15 @@ its tab is open. Closing a tab releases its inspector without deleting the case 
 conversation; closing the active tab selects a neighbor or returns to the main tab.
 
 Opening a case performs a read-only binding lookup. The first send lazily creates
-one conversation, stored with `case_binding={project_id,case_id}` in its server
-session metadata. Concurrent creation requests reuse the existing binding,
-including archived conversations. The binding survives reloads and service
-restarts. Explicitly deleting the conversation removes that history and permits
-a new binding on the next send. Deleting a card does not erase its conversation.
+its initial conversation with `case_binding={project_id,case_id}` in server metadata.
+The dedicated chat's new-conversation button creates another empty history with
+the same binding, without starting a model turn. An explicit `draft_id` makes
+retries idempotent. Default materialization reuses the latest non-archived history.
+The history picker lists only conversations belonging to the current case or design
+tab; the main chat lists ordinary conversations. Selecting history preserves the
+binding and the active workspace tab, and the browser remembers that selection.
+Creating a conversation keeps previous histories and their running turns intact.
+Deleting a card does not erase its conversations.
 
 Messages capture the viewed tab, source binding/line selection, selected run and
 selected waveform file at send time. The server resolves the case and validates
@@ -144,3 +148,13 @@ to the run; configure its runner to keep artifacts under `{run_dir}`.
 模型通过 `case_waveform` 的 `inspect` 获取真实信号目录、原生时间边界与保存格式，通过 `values` 分页读取四态信号变化，再用 `save` 保存选取的信号及逐点解释。保存要求匹配 `expected_revision`，核对信号存在、点位范围及点位信号状态；时间使用原生刻度十进制字符串，不使用日志周期号代替。最多选择 32 条信号、16 个点，每个点填写标题、解释、观察或推断标记及相关信号。
 
 记录位于本次运行的 `waveform-analysis.json`，绑定实际波形的 SHA-256。波形变化后旧解读不再应用；更新通过工具完成，不直接编辑管理文件。每条解读的 `points[i].signals` 是该点所需的最小信号组，`analysis.signals` 保存各组的去重并集。Surfer 默认选取第一条的信号，不添加会占据信号行的原生 Marker；点位编号和解释保留在下方解读栏，“AI 解读”作为独立栏目逐点显示说明及实际信号值，点击点位时替换上一条的信号组，缩放到该点的 `start/end` 时间窗口，再移动游标到该点。未指定窗口时根据相邻点间距自动选择局部范围，并限制在实际波形时间边界内。点位状态来自波形，文字解释仍是模型解读，不构成测试通过证明。
+
+
+## 设计总览标签
+
+设计总览保留一个项目级标签，提供“概览、源码、覆盖率”三个子标签，默认进入概览。层级树选择不同模块时更新同一标签，专属对话支持新建和切换多份历史；切换模块本身不新增标签或对话，关闭标签不删除历史。发送消息时附带当前模块、子标签及相关源码或覆盖率选择，后端按项目与 RTL 层级校验。模块概览的内容及生成规范见 [模块概览](module-overviews.md)。
+
+
+### 设计总览的覆盖率子标签
+
+设计总览依次提供“概览、源码、覆盖率”三个子标签。覆盖率按当前选中的模块展示对应指标及构建源码高亮，支持指标和文件选择，沿用设计专属对话。覆盖率列表中的源码入口也打开设计总览的覆盖率子标签，不新增顶层标签或源码弹窗。源码仍由覆盖率 API 校验构建指纹，不用当前源码替代历史构建内容；无数据时明确显示空状态。

@@ -137,6 +137,11 @@ let toggleTimer=null,sourceRequest=0
 function scheduleToggle(row){clearTimeout(toggleTimer);toggleTimer=setTimeout(()=>toggleCoverageRow(row),220)}
 function closeOnBackdrop(event){if(event.target===sourceDialog.value)sourceDialog.value.close()}
 async function openSource(row,file=row.files?.[0]?.path){
+  if(window.parent!==window){
+    clearTimeout(toggleTimer);const request=++sourceRequest
+    try{const data=await loadSource(row,file);if(request!==sourceRequest)return;window.parent.postMessage(JSON.parse(JSON.stringify({type:'flowcanvas-open-coverage-source',instance:row.path,metric,files:row.files||[],data})),location.origin)}catch(error){store.projectCoverageError=error.message}
+    return
+  }
   sourceRow.value=row;sourceFiles.value=row.files||[];sourceFile.value=file
   clearTimeout(toggleTimer);const request=++sourceRequest
   sourceTitle.value=row.module+' · 构建源码';sourceError.value='正在读取…';sourceLines.value=[]

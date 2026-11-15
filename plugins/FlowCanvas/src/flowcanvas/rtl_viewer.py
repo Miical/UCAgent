@@ -82,4 +82,5 @@ def routes(service):
         except (OSError, ValueError) as exc:
             raise HTTPException(422, '无法读取 RTL 项目：' + str(exc)) from None
 
+    service.rtl_view = view
     return router

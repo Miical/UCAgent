@@ -47,6 +47,29 @@ async def test_lazy_unique_binding_and_restart(tmp_path):
     assert len(restored.sessions)==2
 
 
+@pytest.mark.asyncio
+async def test_multiple_scoped_histories_are_idempotent_and_durable(tmp_path):
+    """Explicit new chats keep old histories and retries never create duplicates."""
+    service,app,root,first,second=setup(tmp_path)
+    async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app),base_url='http://test') as client:
+        url='/api/chat/projects/project/testcases/'+first+'/conversation'
+        original=(await client.post(url,json={})).json()
+        draft='a'*32
+        results=await asyncio.gather(*(client.post(url,json={'draft_id':draft}) for _ in range(3)))
+        created=results[0].json()
+        assert all(result.json()['id']==created['id'] for result in results)
+        assert created['id']!=original['id'] and len(service.sessions)==2
+        assert created['case_binding']==original['case_binding']
+        assert (await client.get(url)).json()['session']['id']==created['id']
+        assert (await client.post(url,json={})).json()['id']==created['id']
+        service.sessions[created['id']]['archived']=True;service.save(service.sessions[created['id']])
+        assert (await client.get(url)).json()['session']['id']==original['id']
+        assert (await client.post(url,json={'draft_id':draft})).json()['id']==created['id']
+        assert (await client.post(url,json={'draft_id':'../invalid'})).status_code==422
+    restored=ChatService(tmp_path/'state')
+    assert len(restored.sessions)==2 and restored.sessions[created['id']]['case_binding']==original['case_binding']
+
+
 def test_context_freezes_authoritative_card_and_rejects_foreign_artifacts(tmp_path):
     """A source/run selection is validated against ownership before it becomes prompt context."""
     service,app,root,first,second=setup(tmp_path)

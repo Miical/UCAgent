@@ -59,7 +59,7 @@ def create_app(state_dir=None) -> FastAPI:
         response = await call_next(request)
         if request.url.path.startswith(('/assets/', '/api/chat', '/rtl-viewer/')):
             response.headers['Cache-Control'] = 'no-store'
-        if request.url.path == '/' or request.url.path.startswith('/surfer/'):
+        if request.url.path == '/' or request.url.path.startswith(('/surfer/', '/rtl-viewer/')):
             response.headers['Cross-Origin-Embedder-Policy'] = 'require-corp'
             response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
         return response
@@ -76,6 +76,8 @@ def create_app(state_dir=None) -> FastAPI:
     app.include_router(project_routes(service.projects, service.sessions, service.root / "workflow_runs"))
     from .rtl_viewer import routes as viewer_routes
     app.include_router(viewer_routes(service))
+    from .module_details import routes as module_routes
+    app.include_router(module_routes(service))
     from .targets import routes as target_routes
     app.include_router(target_routes(service.projects, service.sessions))
     from .testcases import routes as testcase_routes

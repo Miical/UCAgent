@@ -1,3 +1,16 @@
+/** Shared AI action button, hover animation and scoped task preview. */
+let flowCanvasTaskIconSequence=0;
+window.FlowCanvasCaseTaskButton=function(kind,label,scope){
+  const el=(tag,cls)=>{const node=document.createElement(tag);if(cls)node.className=cls;return node;};
+  const gradientId='case-task-spark-'+(++flowCanvasTaskIconSequence);
+  const task=el('button','ai-case-add');task.type='button';task.title='AI '+label;task.setAttribute('aria-label','AI '+label);
+  task.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="'+gradientId+'" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#4285ff"/><stop offset=".55" stop-color="#9164ec"/><stop offset="1" stop-color="#df77ba"/></linearGradient></defs><path d="M12 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6M8 10h3M8 14h8M8 18h5"/><path class="ai-colored-spark" d="M18 2l1.2 3.8L23 7l-3.8 1.2L18 12l-1.2-3.8L13 7l3.8-1.2Z" fill="url(#'+gradientId+')" stroke="url(#'+gradientId+')"/></svg>';
+  const open=preview=>{if(!task.disabled)document.dispatchEvent(new CustomEvent('flowcanvas-case-task',{detail:{...scope,anchor:task,preview}}));};
+  let timer;task.onmouseenter=()=>{clearTimeout(timer);timer=setTimeout(()=>{if(task.isConnected&&task.matches(':hover'))open(true);},220);};task.onmouseleave=()=>clearTimeout(timer);
+  task.onclick=()=>{clearTimeout(timer);open(false);};return task;
+};
+
+
 /** Selected-case inspector with independently selected source bindings and real execution records. */
 window.FlowCanvasCaseDetails=function(host,project){
   const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
@@ -33,15 +46,8 @@ window.FlowCanvasCaseDetails=function(host,project){
       section(label).append(el('p',value?'':'case-detail-empty',value||'待补充'));
     }
   }
-  /** Reuse the AI task hover-preview and pin behavior with an immutable case/run scope. */
-  function taskButton(kind,label,extra={}){
-    const task=el('button','ai-case-add');task.type='button';task.title='AI '+label;task.setAttribute('aria-label','AI '+label);
-    task.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="case-ai-spark" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#4285ff"/><stop offset=".55" stop-color="#9164ec"/><stop offset="1" stop-color="#df77ba"/></linearGradient></defs><path d="M12 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6M8 10h3M8 14h8M8 18h5"/><path class="ai-colored-spark" d="M18 2l1.2 3.8L23 7l-3.8 1.2L18 12l-1.2-3.8L13 7l3.8-1.2Z" fill="url(#case-ai-spark)" stroke="url(#case-ai-spark)"/></svg>';
-    const scope={project:project(),testcase:selected,kind,...extra};
-    const open=preview=>{if(!task.disabled)document.dispatchEvent(new CustomEvent('flowcanvas-case-task',{detail:{...scope,anchor:task,preview}}));};
-    let timer;task.onmouseenter=()=>{clearTimeout(timer);timer=setTimeout(()=>{if(task.isConnected&&task.matches(':hover'))open(true);},220);};task.onmouseleave=()=>clearTimeout(timer);
-    task.onclick=()=>{clearTimeout(timer);open(false);};return task;
-  }
+  /** Bind the shared action button to the currently selected test case. */
+  function taskButton(kind,label,extra={}){return window.FlowCanvasCaseTaskButton(kind,label,{project:project(),testcase:selected,kind,...extra});}
   /** Open a cited current-source range in the existing viewer, scoped to this project. */
   function sourceReference(file,line,end){
     const label=file+(line?':'+line+(end&&end!==line?'-'+end:''):'');

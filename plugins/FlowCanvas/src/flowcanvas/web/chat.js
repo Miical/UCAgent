@@ -11,6 +11,12 @@ let session=null, models=[], unsubscribe=null, busy=false, selected=null, switch
 let sessionRows=[],showArchived=false,backendCatalogs=[],backendWorkspace=null,catalogNumber=0;
 let backendChoice=localStorage.getItem('flowcanvas.backend')||'codex';
 let caseContext=null,caseSwitch=0,caseSwitching=false,ordinarySession=null,caseReady=Promise.resolve();
+const caseSessions=new Map();
+try{for(const [key,value] of Object.entries(JSON.parse(localStorage.getItem('flowcanvas.case.sessions')||'{}')))caseSessions.set(key,value);}catch{}
+/** Keep the selected history local to its owning case or design tab. */
+function rememberCaseSession(binding,id){caseSessions.set(binding.project_id+':'+binding.case_id,id);try{localStorage.setItem('flowcanvas.case.sessions',JSON.stringify(Object.fromEntries(caseSessions)));}catch{}}
+/** Limit the history picker to the active conversation scope. */
+function inConversationScope(row){return caseContext?row.case_binding?.project_id===caseContext.project.id&&row.case_binding?.case_id===caseContext.testcase.id:!row.case_binding;}
 /** Unsaved case drafts must never share the ordinary new-conversation slot. */
 function draftKey(){return selected||(caseContext?'case:'+caseContext.project.id+':'+caseContext.testcase.id:'__new__');}
 const drafts=new Map();
@@ -531,7 +537,7 @@ async function list(){
 function paintSessions(){
   const query=$('session-search').value.trim().toLocaleLowerCase();
   $('session-options').replaceChildren();
-  const rows=sessionRows.filter(row=>Boolean(row.archived)===showArchived&&(row.title||'新对话').toLocaleLowerCase().includes(query)).sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.updated-a.updated);
+  const rows=sessionRows.filter(row=>inConversationScope(row)&&Boolean(row.archived)===showArchived&&(row.title||'新对话').toLocaleLowerCase().includes(query)).sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.updated-a.updated);
   for(const row of rows){
     const wrap=document.createElement('div');wrap.className='session-row';
     const button=document.createElement('button');button.type='button';button.className='model-option session-option';
@@ -588,7 +594,7 @@ async function deleteSession(row){
     if(selected===row.id){++switchNumber;unsubscribe?.();unsubscribe=null;selected=null;session=null;$('message').value='';localStorage.removeItem('flowcanvas.session');}
     saveDraft();
     const rows=await list();
-    if(!selected){const next=rows.find(item=>!item.archived);if(next)await choose(next.id);else await create();}
+    if(!selected){const next=rows.find(item=>!item.archived&&inConversationScope(item));if(next)await choose(next.id);else await create();}
     return true;
   }catch(exc){error(exc.message);return false;}
 }
@@ -601,6 +607,8 @@ async function choose(id,internal=false){
   if(!internal){
     const target=await request('/sessions/'+id);
     if(target.case_binding){
+      rememberCaseSession(target.case_binding,id);
+      if(caseContext?.project.id===target.case_binding.project_id&&caseContext?.testcase.id===target.case_binding.case_id){await choose(id,true);return;}
       document.dispatchEvent(new CustomEvent('flowcanvas-case-restore',{detail:target.case_binding}));return;
     }
     if(caseContext){ordinarySession=id;document.dispatchEvent(new CustomEvent('flowcanvas-case-ordinary'));await caseReady;return;}
@@ -612,16 +620,23 @@ async function choose(id,internal=false){
   $('message').value=drafts.get(id)||'';quoteDraft=quotes.get(id)||[];paintQuote();resizeDraft();session=null;controls();$('reconnect-notice').hidden=true;
   const data=await request('/sessions/'+id);if(number!==switchNumber)return;
   if(backendWorkspace!==data.workspace)backendCatalogs=[];
+  if(data.case_binding)rememberCaseSession(data.case_binding,id);
   render(data);modelSelection();$('sessions').value=id;paintSessions();
   unsubscribe=subscribe(id,data=>{if(selected===id)render(data);},connected=>{if(selected!==id)return;$('reconnect-notice').hidden=connected;if(!connected)$('connection').textContent='连接中断，正在重新连接…';else controls();});
   if(backendWorkspace!==data.workspace)await loadBackends();
 }
-/** Open a local draft; repeated clicks never publish an empty conversation. */
+/** Open an ordinary draft or explicitly create a new history in the current scope. */
 async function create(backend=backendChoice,changingBackend=false){
   if(caseContext){
-    if(changingBackend&&session?.id)throw Error('此用例已绑定现有对话；首次发送前可选择后端');
-    if(changingBackend){render({...session,backend,permission_mode:backend==='codex'?'workspace':'full'});modelSelection();return;}
-    ordinarySession=null;document.dispatchEvent(new CustomEvent('flowcanvas-case-ordinary'));await caseReady;return;
+    if(caseSwitching||busy&&!changingBackend)return;
+    if(session&&!session.id){if(backend!==backendChoice){render({...session,backend,permission_mode:backend==='codex'?'workspace':'full'});modelSelection();}$('message').focus();return;}
+    const context=caseContext,wasBusy=busy;busy=true;controls();
+    saveDraft();saveQuote();
+    try{
+      const data=await request('/projects/'+encodeURIComponent(context.project.id)+(context.testcase.entity_type==='module'?'/modules/':'/testcases/')+encodeURIComponent(context.testcase.id)+'/conversation',{backend,draft_id:crypto.randomUUID().replaceAll('-','')});
+      await list();await choose(data.id,true);await loadBackends();$('message').focus();
+    }finally{busy=wasBusy;controls();}
+    return;
   }
   if(busy&&!changingBackend)return;
   if(session&&!session.id){if(backend!==backendChoice){render({...session,backend,permission_mode:backend==='codex'?'workspace':'full'});modelSelection();} $('message').focus();return;}
@@ -639,7 +654,7 @@ async function ensureSession(){
   creatingSession=(async()=>{
     const draft=session,model=$('model').value,effort=$('effort').value,speed=speedMode,key=draftKey();
     saveDraft();saveQuote();
-    const data=await request(caseContext?'/projects/'+encodeURIComponent(caseContext.project.id)+'/testcases/'+encodeURIComponent(caseContext.testcase.id)+'/conversation':'/sessions',{backend:backendChoice});
+    const data=await request(caseContext?'/projects/'+encodeURIComponent(caseContext.project.id)+(caseContext.testcase.entity_type==='module'?'/modules/':'/testcases/')+encodeURIComponent(caseContext.testcase.id)+'/conversation':'/sessions',{backend:backendChoice});
     drafts.set(data.id,$('message').value);quotes.set(data.id,[...quoteDraft]);
     await choose(data.id,true);
     $('model').value=model;efforts(effort);speedMode=speed;updateSpeed();
@@ -730,7 +745,8 @@ async function switchCase(context){
   render({id:null,backend:backendChoice,status:'idle',items:[],queue:[],permission_mode:backendChoice==='codex'?'workspace':'full',title:context.testcase.title,attachment:null,case_binding:{project_id:context.project.id,case_id:context.testcase.id}});
   controls();
   try{
-    const result=await request('/projects/'+encodeURIComponent(context.project.id)+'/testcases/'+encodeURIComponent(context.testcase.id)+'/conversation');
+    const remembered=caseSessions.get(context.project.id+':'+context.testcase.id),history=sessionRows.find(row=>row.id===remembered&&row.case_binding?.project_id===context.project.id&&row.case_binding?.case_id===context.testcase.id&&!row.archived);
+    const result=history?{session:history}:await request('/projects/'+encodeURIComponent(context.project.id)+(context.testcase.entity_type==='module'?'/modules/':'/testcases/')+encodeURIComponent(context.testcase.id)+'/conversation');
     if(token!==caseSwitch)return;
     if(result.session){await choose(result.session.id,true);}
     else{
@@ -813,6 +829,7 @@ window.FlowCanvasAI={
   async runCaseTask({text,project,testcase,requirements,taskTitle,caseView=null}){
     await caseReady;
     if(caseSwitching||caseContext?.project.id!==project.id||caseContext?.testcase.id!==testcase.id)throw Error('请先打开对应的用例对话');
+    if(testcase.entity_type==='module'&&caseContext.testcase.instance!==testcase.instance)throw Error('当前模块已切换，请重新打开任务卡');
     const model=$('model').value,effort=$('effort').value,view={...(caseView||caseContext.view)};
     if(!model)throw Error('请先选择可用模型');
     if(!session?.id)await ensureSession();
