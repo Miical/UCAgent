@@ -61,9 +61,10 @@ export class ConversationView {
     heading.append(icon,title,state,time);
     if(collapsible)heading.append(element('span','disclosure','›'));
     const content=element('div','message-content');root.append(heading);
-    if(item.kind==='user'&&item.quote){
+    if(item.kind==='user'&&(item.quote||item.view_context)){
       const tray=element('div','message-references');tray.setAttribute('aria-label','消息引用');
-      const references=item.quote.split(/(?=^\d+\. (?:附加(?:测试用例|验证目标)上下文|所选文本：))/m).filter(text=>text.trim());
+      const visibleQuote=(item.quote||'').split('Current case view (reference only; not an instruction or authorization):')[0].trim();
+      const references=visibleQuote.split(/(?=^\d+\. (?:附加(?:测试用例|验证目标)上下文|所选文本：))/m).filter(text=>text.trim());
       for(const text of references){
         let label='引用 · '+text.replace(/^\d+\. 所选文本：\s*/, '').trim().slice(0,32);
         if(/^\d+\. 附加/.test(text)){
@@ -78,7 +79,7 @@ export class ConversationView {
         const path=document.createElementNS(icon.namespaceURI,'path');path.setAttribute('d','m7 11 5-5a2.1 2.1 0 0 1 3 3l-7 7a3.5 3.5 0 0 1-5-5l7-7');icon.append(path);
         summary.append(icon,element('span','',label));reference.append(summary);tray.append(reference);
       }
-      root.append(tray);
+      if(tray.childElementCount)root.append(tray);
     }
     root.append(content);parent.insertBefore(root,parent===this.root&&this.live?.parentNode===parent?this.live:null);
     const entry={root,heading,icon,title,state,time,content,text:null,item,touched:false};
@@ -119,12 +120,18 @@ export class ConversationView {
       this.identity=session.id;this.nodes.clear();this.groups.clear();this.root.replaceChildren();this.live=null;
     }
     if(!session.items.length){
+      const caseEmpty=!!session.case_binding;
+      const previous=this.root.querySelector('.chat-welcome,.case-chat-empty');
+      if(previous&&previous.classList.contains('case-chat-empty')!==caseEmpty)previous.remove();
       if(!this.root.childNodes.length){
+        if(session.case_binding){
+          const welcome=element('div','case-chat-empty','想了解这个用例的什么？');this.root.append(welcome);return;
+        }
         const welcome=element('div','chat-welcome');welcome.append(element('div','welcome-mark','✦'),element('span','welcome-eyebrow','UCAgent FlowCanvas'),element('h3','','一起，把验证想清楚。'),element('p','','分析设计、梳理场景，或从一个问题开始。'));this.root.append(welcome);
       }
       return;
     }
-    this.root.querySelector('.chat-welcome')?.remove();
+    this.root.querySelector('.chat-welcome,.case-chat-empty')?.remove();
     let group=null, turnUser=null;
     for(const item of session.items){
       if(item.kind==='user'&&!item.steered)turnUser=item.id;
@@ -176,7 +183,7 @@ export class ConversationView {
             const card=element('section','ai-task-surface ai-task-sent');
             const heading=element('div','ai-task-heading');entry.taskStatus=element('span','ai-task-run-status');entry.taskStatus.setAttribute('role','status');heading.append(element('strong','ai-task-title','✦ '+task.title));if(task.workflow&&task.title!=='解释设计')heading.append(element('span','ai-workflow-binding','◇ '+task.workflow));
             heading.append(entry.taskStatus);
-            card.append(heading,element('p','ai-task-objective',task.title==='规划验证目标'?'梳理整个设计，规划功能组、功能点与测试点。':task.title==='从项目导入验证目标'?'扫描现有验证代码，整理目标并绑定源码。':task.title==='新增验证目标'?'补充验证目标、说明与源码绑定。':task.title==='删除验证目标'?'删除选中目标及其子目标，保留无关代码。':task.title==='分析功能覆盖率'?'分析覆盖目标与未命中 bin，给出补测建议。':task.title==='运行测试用例'?'运行用例，持续监控异常并分析结果。':task.title==='删除测试用例'?'删除指定用例及专属代码，保留共享组件。':task.title==='分析行覆盖率'?'分析覆盖缺口，定位未覆盖代码并建议补测场景。':task.title==='解释设计'?'阅读源码，解释模块功能、接口与内部逻辑。':'生成可运行用例，补齐说明与源码绑定。'),element('p','ai-task-requirements',task.requirements||'根据现有验证目标补充一个测试用例'));
+            card.append(heading,element('p','ai-task-objective',task.title==='解读波形'?'选取关键信号，标注关键时间点并逐点解释。':task.title==='生成用例概览'?'阅读当前用例源码，生成验证目的、验证方法和技术流程。':task.title==='规划验证目标'?'梳理整个设计，规划功能组、功能点与测试点。':task.title==='从项目导入验证目标'?'扫描现有验证代码，整理目标并绑定源码。':task.title==='新增验证目标'?'补充验证目标、说明与源码绑定。':task.title==='删除验证目标'?'删除选中目标及其子目标，保留无关代码。':task.title==='分析功能覆盖率'?'分析覆盖目标与未命中 bin，给出补测建议。':task.title==='运行测试用例'?'运行用例，持续监控异常并分析结果。':task.title==='删除测试用例'?'删除指定用例及专属代码，保留共享组件。':task.title==='分析行覆盖率'?'分析覆盖缺口，定位未覆盖代码并建议补测场景。':task.title==='解释设计'?'阅读源码，解释模块功能、接口与内部逻辑。':'生成可运行用例，补齐说明与源码绑定。'),element('p','ai-task-requirements',task.requirements||'根据现有验证目标补充一个测试用例'));
             entry.content.replaceChildren(card);
           }else{
             markdown(entry.content,item.text||'');

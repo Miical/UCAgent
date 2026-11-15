@@ -31,14 +31,17 @@ for(const group of document.querySelectorAll('[role="tablist"]')){
   for(const tab of tabs){tab.onclick=()=>select(tab);tab.onkeydown=event=>{const i=tabs.indexOf(tab);let next;if(event.key==='ArrowRight')next=tabs[(i+1)%tabs.length];if(event.key==='ArrowLeft')next=tabs[(i+tabs.length-1)%tabs.length];if(event.key==='Home')next=tabs[0];if(event.key==='End')next=tabs.at(-1);if(next){event.preventDefault();select(next);next.focus();}};}
 }
 const workspace=document.querySelector('.workspace');
-let widths=[25,45,30];
+let widths=[25,45,30],caseTabActive=false,mainDetailCollapsed=true;
+// Keep the project width independent of the other panes' expanded/collapsed proportions.
+try{const saved=Number(localStorage.getItem('flowcanvas.projectWidth'));if(Number.isFinite(saved)&&saved>=345)workspace.style.setProperty('--project-track',saved+'px');}catch{}
+
 try{const stored=JSON.parse(localStorage.getItem('flowcanvas.layout'));if(Array.isArray(stored)&&stored.length===3&&stored.every(v=>Number.isFinite(v)&&v>0)){const total=stored.reduce((a,b)=>a+b,0);if(Number.isFinite(total))widths=stored.map(v=>v/total*100);}}catch(_){}
 function paint(){['project','chat','detail'].forEach((name,i)=>workspace.style.setProperty('--'+name,widths[i]+'fr'));document.querySelectorAll('.splitter').forEach((el,i)=>el.setAttribute('aria-valuenow',String(Math.round(i?widths[0]+widths[1]:widths[0]))));}
 const collapsedKeys=['--collapsed-project','--collapsed-chat','--left-hidden-chat','--left-hidden-detail'];
 try{const saved=JSON.parse(localStorage.getItem('flowcanvas.collapsedWidths')||'{}');for(const key of collapsedKeys){const value=saved[key];if(typeof value==='number'&&Number.isFinite(value)&&value>0)workspace.style.setProperty(key,value+'fr');}}catch{}
 /** Persist expanded and collapsed layouts independently so either view survives reload. */
-function save(){try{localStorage.setItem('flowcanvas.layout',JSON.stringify(widths));const values={};for(const key of collapsedKeys){const value=parseFloat(workspace.style.getPropertyValue(key));if(Number.isFinite(value)&&value>0)values[key]=value;}localStorage.setItem('flowcanvas.collapsedWidths',JSON.stringify(values));}catch(_){}}
-function move(index,change,initial){if(workspace.classList.contains('project-collapsed')){if(index!==1)return;const available=workspace.clientWidth-7;const total=initial[1]+initial[2];const value=Math.max(500/available*100,Math.min(total-190/available*100,initial[1]+change));workspace.style.setProperty('--left-hidden-chat',value+'fr');workspace.style.setProperty('--left-hidden-detail',(total-value)+'fr');return;}if(workspace.classList.contains('detail-collapsed')){const total=initial[0]+initial[1];const available=workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14);const value=Math.max(345/available*100,Math.min(total-500/available*100,initial[0]+change));workspace.style.setProperty('--project-track',(value/100*available)+'px');workspace.style.setProperty('--collapsed-project',value+'fr');workspace.style.setProperty('--collapsed-chat',(total-value)+'fr');return;}const available=workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14);const minimum=[345,500,190].map(value=>value/available*100);const sum=initial[index]+initial[index+1];const value=Math.max(minimum[index],Math.min(sum-minimum[index+1],initial[index]+change));widths=[...initial];widths[index]=value;widths[index+1]=sum-value;workspace.style.setProperty('--project-track',(widths[0]/100*available)+'px');paint();}
+function save(){try{const projectWidth=parseFloat(workspace.style.getPropertyValue('--project-track'));if(Number.isFinite(projectWidth)&&projectWidth>=345)localStorage.setItem('flowcanvas.projectWidth',String(projectWidth));else localStorage.removeItem('flowcanvas.projectWidth');localStorage.setItem('flowcanvas.layout',JSON.stringify(widths));const values={};for(const key of collapsedKeys){const value=parseFloat(workspace.style.getPropertyValue(key));if(Number.isFinite(value)&&value>0)values[key]=value;}localStorage.setItem('flowcanvas.collapsedWidths',JSON.stringify(values));}catch(_){}}
+function move(index,change,initial){if(workspace.classList.contains('project-collapsed')){if(index!==1)return;const available=workspace.clientWidth-7;const total=initial[1]+initial[2];const value=Math.max(500/available*100,Math.min(total-190/available*100,initial[1]+change));workspace.style.setProperty('--left-hidden-chat',value+'fr');workspace.style.setProperty('--left-hidden-detail',(total-value)+'fr');return;}if(workspace.classList.contains('detail-collapsed')){const total=initial[0]+initial[1];const available=workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14);const value=Math.max(345/available*100,Math.min(total-500/available*100,initial[0]+change));workspace.style.setProperty('--project-track',Math.round(value/100*available)+'px');workspace.style.setProperty('--collapsed-project',value+'fr');workspace.style.setProperty('--collapsed-chat',(total-value)+'fr');return;}const available=workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14);const minimum=[345,500,190].map(value=>value/available*100);const sum=initial[index]+initial[index+1];const value=Math.max(minimum[index],Math.min(sum-minimum[index+1],initial[index]+change));widths=[...initial];widths[index]=value;widths[index+1]=sum-value;workspace.style.setProperty('--project-track',Math.round(widths[0]/100*available)+'px');paint();}
 for(const splitter of document.querySelectorAll('.splitter')){
   const index=Number(splitter.dataset.split);
   splitter.onpointerdown=event=>{if(event.button!==0)return;event.preventDefault();splitter.setPointerCapture(event.pointerId);const available=workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14);const initial=[...workspace.querySelectorAll(':scope > .pane')].map(pane=>pane.getBoundingClientRect().width/available*100),x=event.clientX;document.body.classList.add('resizing');splitter.onpointermove=e=>move(index,(e.clientX-x)/(workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14))*100,initial);const finish=()=>{splitter.onpointermove=null;document.body.classList.remove('resizing');save();};splitter.onpointerup=finish;splitter.onpointercancel=finish;splitter.onlostpointercapture=finish;};
@@ -48,18 +51,20 @@ for(const splitter of document.querySelectorAll('.splitter')){
 paint();
 
 /** Toggle the detail pane while preserving the expanded column proportions. */
-function toggleDetails(collapsed){
-  // Preserve the project pane when only the detail pane is changing.
-  if(!workspace.classList.contains('project-collapsed')){
+function toggleDetails(collapsed,preserveProject=true,persist=true){
+  mainDetailCollapsed=collapsed;
+  const hidden=collapsed||caseTabActive;
+  // Keep an explicit saved width; never replace it with an intermediate animation measurement.
+  if(preserveProject&&!workspace.classList.contains('project-collapsed')&&!workspace.style.getPropertyValue('--project-track')&&!workspace.classList.contains('project-motion')){
     const width=document.querySelector('.project-pane').getBoundingClientRect().width;
-    workspace.style.setProperty('--project-track',width+'px');
+    workspace.style.setProperty('--project-track',Math.max(345,Math.round(width))+'px');
   }
-  workspace.classList.toggle('detail-collapsed',collapsed);
-  document.querySelector('.detail-pane').inert=collapsed;
-  document.querySelector('.splitter[data-split="1"]').tabIndex=collapsed?-1:0;
+  workspace.classList.toggle('detail-collapsed',hidden);
+  document.querySelector('.detail-pane').inert=hidden;
+  document.querySelector('.splitter[data-split="1"]').tabIndex=hidden?-1:0;
   const button=document.getElementById('detail-toggle');
-  button.setAttribute('aria-expanded',String(!collapsed));button.title=button.ariaLabel=collapsed?'展开右侧栏':'收起右侧栏';
-  try{localStorage.setItem('flowcanvas.detailCollapsed',String(collapsed));}catch{}
+  button.setAttribute('aria-expanded',String(!hidden));button.title=button.ariaLabel=hidden?'展开右侧栏':'收起右侧栏';
+  if(persist)try{localStorage.setItem('flowcanvas.detailCollapsed',String(collapsed));}catch{}
 }
 let detailMotionTimer;
 document.getElementById('detail-toggle').onclick=()=>{
@@ -70,7 +75,7 @@ document.getElementById('detail-toggle').onclick=()=>{
 // First visits keep the conversation focused; restore an explicit saved preference.
 let initialDetailCollapsed=true;
 try{initialDetailCollapsed=localStorage.getItem('flowcanvas.detailCollapsed')!=='false';}catch{}
-toggleDetails(initialDetailCollapsed);
+toggleDetails(initialDetailCollapsed,false);
 
 /** Collapse the project column from its active navigation icon, keeping navigation visible. */
 let projectMotionTimer;
@@ -101,6 +106,7 @@ document.querySelector('.brand-home').onclick=event=>{
 
 // Workflow navigation opens details without toggling an already visible pane.
 document.addEventListener('flowcanvas-open-workflow',()=>{
+  if(caseTabActive)return;
   if(workspace.classList.contains('detail-collapsed')){
     clearTimeout(detailMotionTimer);workspace.classList.add('detail-motion');toggleDetails(false);
     detailMotionTimer=setTimeout(()=>workspace.classList.remove('detail-motion'),500);
@@ -128,3 +134,14 @@ try{
     document.dispatchEvent(new CustomEvent('flowcanvas-view',{detail:saved}));
   }
 }catch{}
+
+/** Main-conversation details are hidden in case tabs without changing their saved preference. */
+function caseSidebarScope(event){
+  const active=event.type==='flowcanvas-case-context';
+  if(caseTabActive===active)return;
+  caseTabActive=active;
+  if(active){clearTimeout(detailMotionTimer);workspace.classList.remove('detail-motion');}
+  toggleDetails(mainDetailCollapsed,false,false);
+}
+document.addEventListener('flowcanvas-case-context',caseSidebarScope);
+document.addEventListener('flowcanvas-case-close',caseSidebarScope);

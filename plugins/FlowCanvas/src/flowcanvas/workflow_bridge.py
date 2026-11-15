@@ -102,6 +102,24 @@ class WorkflowBridge:
                 action=action,files=files or [],binding_id=binding_id),owner=session['id'])
 
         @self.mcp.tool()
+        async def case_waveform(operation: str = 'inspect', run_id: str = '', waveform: str = 'waveforms/waves.vcd',
+                                query: str = '**', signals: list[str] | None = None, start: str | None = None,
+                                end: str | None = None, offset: int = 0, limit: int = 100,
+                                analysis: dict | None = None, expected_revision: int = 0) -> dict:
+            """Inspect and annotate this conversation's case waveform without running tests. inspect returns actual signal names, native-tick bounds and the analysis schema; query supports ** and wildcards, offset/limit pages signals. values returns bounded four-state transitions for exact signals and an inclusive native-tick start/end window; offset/limit pages events. read returns saved annotations and revision. save requires analysis={signals:[exact names],points:[{time:decimal string,title,explanation,confidence:observed|inferred,signals:[selected exact names]}]}, and current expected_revision. Explain each point from values and relevant source, distinguish observation from inference, never use cycle counts as native timestamps. Saves verify signals/time/state against the exact waveform; explanations are AI interpretations, not test certification. Each point's signals must be the minimal group needed for its explanation; analysis.signals is their unique union. Each point may include start/end decimal strings for a tight native-tick window containing time. Clicking a point replaces the previous signal group, zooms into its window and moves the cursor; the UI marks every point. Never edit the managed JSON directly."""
+            from .waveform_analysis import WaveAnalysisStore
+            binding=session.get('case_binding') or {}
+            if not binding.get('case_id') or not session.get('project_root'):
+                raise ValueError('Open the selected case conversation before waveform analysis')
+            if operation=='save' and session.get('permission_mode') not in {'workspace','full'}:
+                raise ValueError('Workspace access is required to save annotations')
+            def execute():
+                """Keep waveform decoding off the server event loop."""
+                store=WaveAnalysisStore(session['project_root'],binding['case_id'],run_id,waveform)
+                return store.execute(operation,query,signals,start,end,offset,limit,analysis,expected_revision)
+            return await asyncio.to_thread(execute)
+
+        @self.mcp.tool()
         async def test_case_runs(operation: str = 'list', case_id: str = '', run_id: str = '',
                                  offset: int = 0, wait_seconds: int = 10,
                                  settings: dict | None = None, expected_revision: int = 0,

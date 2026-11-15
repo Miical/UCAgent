@@ -144,12 +144,12 @@ def update_cards(store, data, request):
     by_id = {t.id: t for t in data.targets}
     original, inserts, pending = {}, {}, []
     for patch in request.cards:
-        if set(patch) - ({'id', 'kind', 'name', 'description', 'parent', 'bindings'} | ({'title','runner'} if 'case' in store.prefixes else set())):
+        if set(patch) - ({'id', 'kind', 'name', 'description', 'parent', 'bindings'} | ({'title','timeline','overview','runner'} if 'case' in store.prefixes else set())):
             raise ValueError('Unsupported card information field')
         row = by_id[patch['id']]
         if 'kind' in patch and row.kind is not None and row.kind != patch['kind']:
             raise ValueError('An assigned card kind cannot change')
-        metadata={key:patch[key] for key in ('kind','name','title','description','parent','runner') if key in patch}
+        metadata={key:patch[key] for key in ('kind','name','title','description','parent','timeline','overview','runner') if key in patch}
         validated=store.target_model.model_validate({**row.model_dump(),**metadata})
         for key in metadata:
             setattr(row,key,getattr(validated,key))

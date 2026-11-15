@@ -40,7 +40,8 @@ def render(command,context):
 def context(row):
     """Resolve service-owned database paths and unique names for command templates."""
     return dict(project=row['cwd'],run_dir=row['run_dir'],case=row['entry'],
-                coverage_db=row['coverage_db'],coverage_name=row['id'])
+                coverage_db=row['coverage_db'],coverage_name=row['id'],
+                wave_dir=str(Path(row['run_dir'])/'waveforms'))
 
 
 async def collect(runner,row,log):

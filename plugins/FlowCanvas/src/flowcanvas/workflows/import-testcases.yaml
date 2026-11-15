@@ -18,6 +18,12 @@ mission:
       Use test_cases inspect/apply/begin_modify/update/end_modify. Reuse existing IDs; each card needs
       name, title, description, its own runner={command,description}, and definition line bindings.
       Keep project build flow and required dependencies. Place each run's outputs under {run_dir}.
+      Configure one waveform directly at {wave_dir}/waves.vcd; the platform precreates {wave_dir}
+      as {run_dir}/waveforms for each execution. Forward that path to the real simulator/fixture,
+      enable VCD dumping and prepare required compile/debug options. Creating a directory or passing
+      an unused option is insufficient. Do not add intermediate VPD files or conversion steps.
+      The waveform page opens the primary file automatically. Preserve simulation exit status and
+      report missing output; never reuse an earlier run's waveform or fabricate one.
       Do not rewrite DUT or test behavior to make startup pass. Correct entry commands or configuration
       only when evidence supports it. Use source bindings for implementation and relevant configuration.
       Create one dedicated short smoke case using an imported case's existing build, runner, fixtures
@@ -62,6 +68,7 @@ stage:
         task:
           - "Configure each imported card's runner={command,description} from actual project scripts and dependencies. Continue its existing modification or begin_modify if necessary; then end_modify after configuring a real runnable entry."
           - "The runner expands {case} once and shell-quotes it; do not prepend another directory. Keep outputs under {run_dir}. Pass {coverage_db} and {coverage_name} through the project runner for shared coverage; complete native coverage setup in the next child stage."
+          - "Include {wave_dir} in every imported runner and connect it to real waveform generation. Inspect existing compile/debug requirements and runtime dump controls. Output only the primary {wave_dir}/waves.vcd directly, without VPD or conversion steps. Record actual format, tool and any unverified prerequisites in runner.description; do not claim generation was verified without an authorized run."
         checker:
           - name: runnable_cards
             clss: flowcanvas.case_import_workflow.CaseImportChecker

@@ -10,10 +10,13 @@ const active=new Set(['starting','running','stopping']);
 let session=null, models=[], unsubscribe=null, busy=false, selected=null, switchNumber=0;
 let sessionRows=[],showArchived=false,backendCatalogs=[],backendWorkspace=null,catalogNumber=0;
 let backendChoice=localStorage.getItem('flowcanvas.backend')||'codex';
+let caseContext=null,caseSwitch=0,caseSwitching=false,ordinarySession=null,caseReady=Promise.resolve();
+/** Unsaved case drafts must never share the ordinary new-conversation slot. */
+function draftKey(){return selected||(caseContext?'case:'+caseContext.project.id+':'+caseContext.testcase.id:'__new__');}
 const drafts=new Map();
 try{for(const [key,value]of Object.entries(JSON.parse(localStorage.getItem('flowcanvas.drafts')||'{}')))if(typeof value==='string')drafts.set(key,value);}catch{}
 /** Keep drafts scoped to conversations and survive a page reload. */
-function saveDraft(){if(!session)return;const key=selected||'__new__';if($('message').value)drafts.set(key,$('message').value);else drafts.delete(key);try{localStorage.setItem('flowcanvas.drafts',JSON.stringify(Object.fromEntries(drafts)));}catch{}}
+function saveDraft(){if(!session)return;const key=draftKey();if($('message').value)drafts.set(key,$('message').value);else drafts.delete(key);try{localStorage.setItem('flowcanvas.drafts',JSON.stringify(Object.fromEntries(drafts)));}catch{}}
 /** Resize restored drafts as well as text entered by the user. */
 function resizeDraft(){$('message').style.height='auto';$('message').style.height=Math.min($('message').scrollHeight,180)+'px';}
 let speedMode='standard';
@@ -94,7 +97,7 @@ function paintQuote(){
   });
 }
 /** Persist structured annotations per conversation without inserting them into the prompt. */
-function saveQuote(){if(!session)return;const key=selected||'__new__';if(quoteDraft.length)quotes.set(key,quoteDraft);else quotes.delete(key);try{localStorage.setItem('flowcanvas.annotations',JSON.stringify(Object.fromEntries(quotes)));}catch{}}
+function saveQuote(){if(!session)return;const key=draftKey();if(quoteDraft.length)quotes.set(key,quoteDraft);else quotes.delete(key);try{localStorage.setItem('flowcanvas.annotations',JSON.stringify(Object.fromEntries(quotes)));}catch{}}
 /** Serialize attachments only at the backend boundary. */
 function quoteText(){return quoteDraft.map((item,index)=>(index+1)+(['testcase','target'].includes(item.type)?'. 附加'+(item.type==='target'?'验证目标':'测试用例')+'上下文（仅供参考，不表示授权运行或修改）：\n':'. 所选文本：\n')+item.text+(item.comment?'\n评论：'+item.comment:'')).join('\n\n');}
 /** Reflect server-owned authorization as one removable attachment card. */
@@ -368,6 +371,7 @@ function paintWorkflowRun(){
 
 /** Attach or launch from the common menu without workflow-specific parameter dialogs. */
 async function configureWorkflow(item,direct){
+  try{await globalConversation();}catch(exc){error(exc.message);return;}
   const owner=selected;closePicker();
   if(!direct&&!owner){render({...session,attachment:{workflow_id:item.id,name:item.name},attachment_sent:false});return;}
   try{const payload={workflow_id:item.id};const data=await request(direct?'/workflows/direct':'/sessions/'+owner+'/attachment',direct?{...payload,backend:backendChoice,model:$('model').value,effort:$('effort').value}:payload);if(direct){await list();await choose(data.id);}else if(selected===owner)render(data);}
@@ -377,10 +381,11 @@ async function configureWorkflow(item,direct){
 function error(message){$('chat-error').textContent=message||'';$('chat-error').hidden=!message;}
 /** Keep send/stop state tied to the real backend turn. */
 function controls(){
+  document.querySelector('.workspace').classList.toggle('case-send-pending',busy);
   const running=active.has(session?.status)||session?.children_running>0;
   $('send').textContent=running&&!$('message').value.trim()?'■':'↑';$('send').classList.toggle('is-stop',running);$('send').ariaLabel=running?($('message').value.trim()?(active.has(session?.status)?'加入队列':'发送消息'):session?.children_running>0?'停止任务':'停止回复'):'发送消息';$('send').title=$('send').ariaLabel;
   $('new-chat').disabled=busy;
-  $('send').disabled=busy||session?.status==='stopping'||(!running&&(!models.length||!$('message').value.trim()));
+  $('send').disabled=busy||caseSwitching||session?.status==='stopping'||(!running&&(!models.length||!$('message').value.trim()));
   $('model').disabled=$('effort').disabled=$('model-toggle').disabled=running||!models.length;
   $('backend-toggle').disabled=running||busy;
   paintBackends();
@@ -592,7 +597,14 @@ async function updateSession(row,changes){
   try{const data=await request('/sessions/'+row.id+'/settings',{title:row.title||'新对话',pinned:!!row.pinned,archived:!!row.archived,...changes});if(selected===row.id)render(data);await list();return true;}catch(exc){error(exc.message);return false;}
 }
 /** Detach the old SSE view, preserve its draft, then restore the new session. */
-async function choose(id){
+async function choose(id,internal=false){
+  if(!internal){
+    const target=await request('/sessions/'+id);
+    if(target.case_binding){
+      document.dispatchEvent(new CustomEvent('flowcanvas-case-restore',{detail:target.case_binding}));return;
+    }
+    if(caseContext){ordinarySession=id;document.dispatchEvent(new CustomEvent('flowcanvas-case-ordinary'));await caseReady;return;}
+  }
   const number=++switchNumber;
   saveDraft();saveQuote();
   document.dispatchEvent(new CustomEvent('flowcanvas-session',{detail:{id}}));
@@ -606,6 +618,11 @@ async function choose(id){
 }
 /** Open a local draft; repeated clicks never publish an empty conversation. */
 async function create(backend=backendChoice,changingBackend=false){
+  if(caseContext){
+    if(changingBackend&&session?.id)throw Error('此用例已绑定现有对话；首次发送前可选择后端');
+    if(changingBackend){render({...session,backend,permission_mode:backend==='codex'?'workspace':'full'});modelSelection();return;}
+    ordinarySession=null;document.dispatchEvent(new CustomEvent('flowcanvas-case-ordinary'));await caseReady;return;
+  }
   if(busy&&!changingBackend)return;
   if(session&&!session.id){if(backend!==backendChoice){render({...session,backend,permission_mode:backend==='codex'?'workspace':'full'});modelSelection();} $('message').focus();return;}
   saveDraft();saveQuote();++switchNumber;unsubscribe?.();unsubscribe=null;selected=null;
@@ -620,23 +637,23 @@ async function ensureSession(){
   if(session?.id)return session;
   if(creatingSession)return creatingSession;
   creatingSession=(async()=>{
-    const draft=session,model=$('model').value,effort=$('effort').value,speed=speedMode;
+    const draft=session,model=$('model').value,effort=$('effort').value,speed=speedMode,key=draftKey();
     saveDraft();saveQuote();
-    const data=await request('/sessions',{backend:backendChoice});
+    const data=await request(caseContext?'/projects/'+encodeURIComponent(caseContext.project.id)+'/testcases/'+encodeURIComponent(caseContext.testcase.id)+'/conversation':'/sessions',{backend:backendChoice});
     drafts.set(data.id,$('message').value);quotes.set(data.id,[...quoteDraft]);
-    await choose(data.id);
+    await choose(data.id,true);
     $('model').value=model;efforts(effort);speedMode=speed;updateSpeed();
     // Once an ID exists, retries reuse it even if applying settings or sending fails.
     if(draft?.permission_mode&&draft.permission_mode!==data.permission_mode)render(await request('/sessions/'+data.id+'/permissions',{mode:draft.permission_mode}));
     if(draft?.attachment)render(await request('/sessions/'+data.id+'/attachment',{workflow_id:draft.attachment.workflow_id}));
-    drafts.delete('__new__');quotes.delete('__new__');saveDraft();saveQuote();
+    drafts.delete(key);quotes.delete(key);saveDraft();saveQuote();
     return session;
   })();
   try{return await creatingSession;}finally{creatingSession=null;}
 }
 /** Submit or interrupt exactly one turn; keep a draft when submission is rejected. */
 async function send(){
-  if(busy)return;busy=true;controls();error('');
+  if(busy||caseSwitching)return;const viewAtSend=caseContext?{...caseContext.view}:null;busy=true;controls();error('');
   try{
     if((active.has(session?.status)||session?.children_running>0)&&!$('message').value.trim()){render(await request('/sessions/'+session.id+'/stop',{}));}
     else{
@@ -644,7 +661,7 @@ async function send(){
       if(!session?.id)await ensureSession();
       const id=session.id;
       rememberModel();
-      const data=await request('/sessions/'+id+'/messages',{text,quote:quoteText(),model:$('model').value,effort:$('effort').value,speed:speedMode});
+      const data=await request('/sessions/'+id+'/messages',{text,quote:quoteText(),...(viewAtSend?{case_view:viewAtSend}:{}),model:$('model').value,effort:$('effort').value,speed:speedMode});
       drafts.delete(id);quotes.delete(id);
       if(selected===id){$('message').value='';quoteDraft=[];paintQuote();saveQuote();$('message').style.height='';saveDraft();render(data);}
       await list();
@@ -701,11 +718,43 @@ async function loadWorkflowMenu(){
     if(!workflows.length){const empty=document.createElement('p');empty.className='session-empty';empty.textContent='暂无可用工作流';host.append(empty);}
   }catch{const notice=document.createElement('p');notice.className='session-empty';notice.textContent='工作流列表加载失败，请重新打开菜单重试。';host.append(notice);}
 }
+/** Switch only the UI subscription; a previous case turn continues in its own session. */
+async function switchCase(context){
+  const same=caseContext?.project.id===context.project.id&&caseContext?.testcase.id===context.testcase.id;
+  if(same){caseContext=context;return;}
+  if(busy){error('消息正在提交，请稍后切换用例');return;}
+  const token=++caseSwitch;caseSwitching=true;
+  saveDraft();saveQuote();if(!caseContext)ordinarySession=selected;
+  ++switchNumber;unsubscribe?.();unsubscribe=null;selected=null;caseContext=context;
+  $('message').value=drafts.get(draftKey())||'';quoteDraft=quotes.get(draftKey())||[];paintQuote();resizeDraft();
+  render({id:null,backend:backendChoice,status:'idle',items:[],queue:[],permission_mode:backendChoice==='codex'?'workspace':'full',title:context.testcase.title,attachment:null,case_binding:{project_id:context.project.id,case_id:context.testcase.id}});
+  controls();
+  try{
+    const result=await request('/projects/'+encodeURIComponent(context.project.id)+'/testcases/'+encodeURIComponent(context.testcase.id)+'/conversation');
+    if(token!==caseSwitch)return;
+    if(result.session){await choose(result.session.id,true);}
+    else{
+      ++switchNumber;unsubscribe?.();unsubscribe=null;selected=null;
+      $('message').value=drafts.get(draftKey())||'';quoteDraft=quotes.get(draftKey())||[];paintQuote();resizeDraft();
+      render({id:null,backend:backendChoice,status:'idle',items:[],queue:[],permission_mode:backendChoice==='codex'?'workspace':'full',title:context.testcase.title,attachment:null,case_binding:{project_id:context.project.id,case_id:context.testcase.id}});
+      await loadBackends();
+    }
+  }catch(exc){if(token===caseSwitch)error(exc.message);}
+  finally{if(token===caseSwitch){caseSwitching=false;controls();}}
+}
+document.addEventListener('flowcanvas-case-context',event=>{caseReady=switchCase(event.detail);});
+document.addEventListener('flowcanvas-case-close',()=>{
+  if(!caseContext)return;
+  const token=++caseSwitch;saveDraft();saveQuote();caseContext=null;caseSwitching=true;
+  const restore=ordinarySession;ordinarySession=null;
+  caseReady=(async()=>{try{if(restore)await choose(restore,true);else{session=null;await create();}}catch(exc){error(exc.message);}finally{if(token===caseSwitch){caseSwitching=false;controls();}}})();
+});
+
 /** Load sessions independently of backend readiness so offline history remains readable. */
 async function init(){
   try{
     const rows=await list();const saved=localStorage.getItem('flowcanvas.session');
-    const visible=rows.filter(row=>!row.archived);if(saved==='__new__')await create();else if(visible.length)await choose(visible.some(r=>r.id===saved)?saved:visible[0].id);else await create();
+    const visible=rows.filter(row=>!row.archived&&!row.case_binding);if(saved==='__new__')await create();else if(visible.length)await choose(visible.some(r=>r.id===saved)?saved:visible[0].id);else await create();
   }catch(exc){error(exc.message);$('connection').textContent='连接失败 · 刷新页面重试';}
 }
 /** Append selected context without discarding an unfinished draft. */
@@ -751,10 +800,30 @@ document.addEventListener('flowcanvas-home',async()=>{
   }catch(exc){error(exc.message);}
 });
 
+/** Route attachments and task cards to ordinary chat, preserving the case discussion draft. */
+async function globalConversation(){
+  if(caseContext){document.dispatchEvent(new CustomEvent('flowcanvas-case-ordinary'));await caseReady;}
+  if(caseContext||caseSwitching||session?.case_binding)throw Error('全局对话尚未就绪，请稍后重试');
+}
+
 /** Page actions reuse the normal conversation execution and permission endpoints. */
 window.FlowCanvasAI={
   open:async id=>{await list();await choose(id);},
+  /** Send a scoped AI task to the selected case conversation, creating it lazily. */
+  async runCaseTask({text,project,testcase,requirements,taskTitle,caseView=null}){
+    await caseReady;
+    if(caseSwitching||caseContext?.project.id!==project.id||caseContext?.testcase.id!==testcase.id)throw Error('请先打开对应的用例对话');
+    const model=$('model').value,effort=$('effort').value,view={...(caseView||caseContext.view)};
+    if(!model)throw Error('请先选择可用模型');
+    if(!session?.id)await ensureSession();
+    if(session.case_binding?.project_id!==project.id||session.case_binding?.case_id!==testcase.id)throw Error('用例对话已切换，请重试');
+    const id=session.id;
+    const result=await request('/sessions/'+id+'/messages',{text,case_view:view,model,effort,speed:speedMode,task_card:{title:taskTitle,workflow:'',project:project.name,requirements:(testcase.title||testcase.name)+(requirements?'\n'+requirements:'')}});
+    if(selected===id)render(result);
+    await list();return result;
+  },
   async startCase({text,current=true,project,requirements,design=null}){
+    await globalConversation();
     const model=$('model').value,effort=$('effort').value;
     const taskTitle=design?.kind==='import-testcases'?'从项目导入测试用例':design?.kind==='plan-goals'?'规划验证目标':design?.kind==='import-goals'?'从项目导入验证目标':design?.kind==='add-goal'?'新增验证目标':design?.kind==='delete-goal'?'删除验证目标':design?.kind==='functional-coverage'?'分析功能覆盖率':design?.kind==='run-testcase'?'运行测试用例':design?.kind==='delete-testcase'?'删除测试用例':design?.kind==='line-coverage'?'分析'+(({line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率'})[design.metric]||'行覆盖率'):design?'解释设计':'新增测试用例';
     if(!model)throw Error('请先选择可用模型');
@@ -777,8 +846,9 @@ window.FlowCanvasAI={
 };
 
 /** Attach source-backed case context to this conversation's next message without sending it. */
-document.addEventListener('flowcanvas-attach-testcase',event=>{
+document.addEventListener('flowcanvas-attach-testcase',async event=>{
   const {project,testcase}=event.detail||{};if(!project?.id||!testcase?.id)return;
+  try{await globalConversation();}catch(exc){error(exc.message);return;}
   const key=project.id+':'+testcase.id;
   const item={type:'testcase',key,title:testcase.title||testcase.name,text:JSON.stringify({project,testcase},null,2),comment:''};
   const index=quoteDraft.findIndex(entry=>entry.type==='testcase'&&entry.key===key);
@@ -787,8 +857,9 @@ document.addEventListener('flowcanvas-attach-testcase',event=>{
 });
 
 /** Keep target references in the selected conversation draft without starting an action. */
-document.addEventListener('flowcanvas-attach-target',event=>{
+document.addEventListener('flowcanvas-attach-target',async event=>{
   const {project,target}=event.detail||{};if(!project?.id||!target?.id)return;
+  try{await globalConversation();}catch(exc){error(exc.message);return;}
   const key=project.id+':'+target.id;
   const item={type:'target',key,title:target.name,text:JSON.stringify({project,target},null,2),comment:''};
   const index=quoteDraft.findIndex(entry=>entry.type==='target'&&entry.key===key);

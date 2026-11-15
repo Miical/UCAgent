@@ -1718,3 +1718,287 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .functional-metric-details table{border-collapse:collapse;width:100%;text-align:left}
 .functional-metric-details th,.functional-metric-details td{padding:6px 9px;border-bottom:1px solid var(--border);white-space:nowrap}
 .functional-metric-details th{position:sticky;top:0;background:var(--project-background,var(--surface))}
+
+/* The project column stays a simple case selector; the inspector lives above chat. */
+.testcase-workbench{display:flex!important;flex-direction:column;padding:0!important;overflow:hidden!important;min-height:0;flex:1}
+.testcase-workbench[hidden]{display:none!important}
+.testcase-list-pane{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;padding:10px 8px;overflow:hidden}
+.testcase-list-pane>.targets-tree{flex:1;min-height:0;overflow:auto}
+.testcase-workbench .target-header>.target-title-sources,.testcase-workbench .target-chevron{display:none}
+.testcase-workbench .target-header{flex-wrap:nowrap;min-height:30px}
+.testcase-workbench .target-header>.target-card-head{max-width:none;flex:1 1 0;min-width:0;padding:5px 6px}
+.testcase-workbench .target-header>.target-header-actions{flex:0 0 auto;margin:0 3px 0 auto;gap:1px}
+.testcase-workbench .targets-tree>.target-case:has(>.target-header.is-selected){background:color-mix(in srgb,var(--accent) 6%,var(--surface));box-shadow:inset 0 0 0 1px var(--border);border-radius:6px}
+.testcase-detail-pane{display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--surface)}
+.case-detail-title{display:flex;flex-direction:column;gap:5px;padding:16px 18px 12px;flex:none;overflow-wrap:anywhere}
+.case-detail-title strong{font-size:15px}.case-detail-title code{font-size:11px;color:var(--text-dim)}
+.case-detail-tabs{display:flex;gap:20px;padding:0 18px;border-bottom:1px solid var(--border);flex:none}
+.case-detail-tabs button{border:0;border-bottom:2px solid transparent;background:none;font-size:12px;padding:9px 0;color:var(--text-dim)}
+.case-detail-tabs button[aria-selected="true"]{border-bottom-color:var(--accent);color:var(--text)}
+.case-detail-body{flex:1;min-height:0;overflow:auto;padding:16px 18px;font-size:12px}
+.case-detail-field{margin:0 0 18px}.case-detail-field h4{font-size:11px;color:var(--text-dim);font-weight:500;margin:0 0 7px}
+.case-detail-field p{margin:0;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere}
+.case-detail-field pre,.case-run-command pre{font:11px/1.65 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.case-detail-select{display:block;width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:11px;margin-bottom:14px}
+.case-detail-note,.case-detail-empty{color:var(--text-dim);font-size:11px;line-height:1.7}
+.case-detail-source{position:relative;max-height:65vh;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:8px 0;font:11px/1.7 ui-monospace,monospace}
+.case-detail-source>div{display:flex;min-width:max-content}.case-detail-source>div.is-bound{background:color-mix(in srgb,var(--accent) 9%,transparent)}
+.case-detail-source>div>span{flex:none;width:48px;text-align:right;padding-right:12px;color:var(--text-dim);user-select:none}.case-detail-source code{white-space:pre;padding-right:12px}
+.case-detail-log{min-height:160px;max-height:55vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:12px;font:11px/1.65 ui-monospace,monospace}
+.case-overview-section{margin:0 0 20px;padding:0 0 14px;border-bottom:1px solid var(--border)}.case-overview-section h4{margin:0 0 6px;font-size:11px;color:var(--text-dim);font-weight:600}.case-overview-section p{margin:0;font-size:13px;line-height:1.8;color:var(--text)}
+.case-timeline-title{margin:0 0 10px;font-size:11px;color:var(--text-dim);font-weight:600}
+.case-story{position:relative;margin:0 0 8px;padding:0 0 0 28px}.case-story::before{content:"";position:absolute;left:9px;top:8px;bottom:8px;width:1px;background:var(--border)}
+.case-story-row{position:relative;margin:0;padding:0 0 18px}.case-story-row:last-child{padding-bottom:2px}.case-story-row::before{content:"";position:absolute;left:-23px;top:4px;width:7px;height:7px;border:2px solid var(--surface);border-radius:50%;background:var(--accent);box-shadow:0 0 0 1px var(--border)}
+.case-story-head{display:flex;align-items:center;gap:8px;min-height:20px}.case-story-number{display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:18px;padding:0 5px;border-radius:9px;background:var(--surface2);color:var(--text-dim);font:10px ui-monospace,monospace}.case-story-head strong{font-size:12px;font-weight:600}.case-story-description{margin:5px 0 0;font-size:11px;line-height:1.7;color:var(--text)}.case-story-line{margin:4px 0 0;font-size:11px;line-height:1.65;color:var(--text-dim)}.case-story-line b{color:var(--text);font-weight:600}.case-story-assignments{margin:8px 0 2px;padding-left:10px;border-left:2px solid var(--border)}.case-story-label{margin-bottom:4px;color:var(--text-dim);font-size:10px;font-weight:600}.case-story-assignment{display:flex;align-items:baseline;gap:8px;margin:3px 0;line-height:1.55}.case-story-assignment code{color:var(--text);font:10px ui-monospace,monospace;white-space:pre-wrap}.case-story-assignment span{color:var(--text-dim);font-size:10px}.case-story-row[data-depth="1"]{padding-left:20px}.case-story-row[data-depth="1"]::before{left:-23px;width:5px;height:5px;background:var(--text-dim)}
+.case-run-command{margin:12px 0}.case-run-command summary{cursor:pointer;color:var(--text-dim);margin-bottom:7px}
+.case-wave-file{display:flex;gap:12px;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}.case-wave-file a{color:var(--accent);overflow-wrap:anywhere}.case-wave-file small{flex:none;color:var(--text-dim)}
+
+/* Case selectors stay one row tall; the inspector owns all expanded content. */
+.testcase-workbench .targets-tree>.target-case{margin:0 0 1px;border-radius:4px}
+.testcase-workbench .target-header .target-title{display:block;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;line-height:20px}
+.testcase-workbench .target-actions .target-icon-action{width:20px;height:20px}
+
+/* Fill the workbench viewport instead of leaving an intrinsic-height grid above empty space. */
+#project-content.has-case-workbench{display:flex;flex-direction:column;min-height:0;overflow:hidden;padding:0}
+.testcase-workbench{grid-template-rows:minmax(0,1fr)}
+.case-detail-body[data-tab="source"]{display:flex;flex-direction:column;overflow:hidden}
+.case-detail-body[data-tab="source"]>.case-detail-select,.case-detail-body[data-tab="source"]>.case-detail-note{flex:none}
+.case-detail-body[data-tab="source"]>.case-detail-source{flex:1;min-height:0;max-height:none;margin-bottom:0}
+
+/* A single conversation surface switches between ordinary and case-scoped work. */
+.case-chat-bottom{display:flex;flex:1;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
+.case-chat-bottom>.conversation-header{flex:none;border-bottom-color:transparent;padding:0 22px}
+.case-chat-bottom>#conversation{flex:1;min-height:0;overflow:auto}
+.case-view-area[hidden],.case-horizontal-divider[hidden],.case-view-context[hidden]{display:none}
+.case-view-area{display:flex;flex-direction:column;position:relative;min-height:0;flex:none;overflow:hidden;border-bottom:1px solid var(--border);height:var(--case-view-height,55%)}
+.case-view-area>.testcase-detail-pane{flex:1;overflow:hidden}
+.case-workspace-close{position:absolute;z-index:1;right:14px;top:10px;border:0;border-radius:5px;background:var(--surface2);color:var(--text-dim);font-size:11px;padding:5px 8px}
+.case-view-area .case-detail-title{padding-right:120px;padding-top:10px;padding-bottom:8px}
+.case-view-area .case-detail-title strong{font-size:13px}
+.case-view-area .case-detail-body{padding-top:10px}
+.case-horizontal-divider{height:7px;flex:none;cursor:row-resize;touch-action:none;background:var(--surface2);border-block:2px solid var(--surface)}
+.case-horizontal-divider:hover,.case-horizontal-divider:focus-visible{background:var(--text-dim);outline:none}
+.case-workspace-open>.case-chat-bottom{flex:1;min-height:0}
+.case-workspace-open .composer{margin-top:4px;margin-bottom:10px}
+.case-view-context{font-size:10px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0 0 6px}
+.case-resizing{cursor:row-resize;user-select:none}
+.case-send-pending .testcase-list-pane .target-card-head,.case-send-pending .case-workspace-close{pointer-events:none}
+.case-workspace-open .case-detail-source,.case-workspace-open .case-detail-log{max-height:none}
+
+/* Keep the case conversation focused while retaining its context and workflow state. */
+.case-workspace-open .case-view-context,
+.case-workspace-open .workflow-run,
+.case-workspace-open #workflow-capsules-toggle{display:none!important}
+.case-workspace-open .workflow-run+#conversation{padding-top:16px;scroll-padding-top:16px}
+.case-workspace-open #detail-toggle{display:none}
+
+/* Case conversations begin quietly, without the ordinary home-page welcome. */
+.case-chat-empty{display:flex;align-items:center;justify-content:center;min-height:100%;padding:18px;color:var(--text-dim);font-size:12px;font-weight:400}
+/* Case details and their conversation share one embedded horizontal workspace. */
+.case-workspace-open{display:flex;flex-direction:row;padding:10px;gap:0;background:var(--project-background,var(--surface2))}
+.case-workspace-open>.case-view-area{height:auto;width:var(--case-view-width,60%);min-width:240px;border:1px solid var(--border);border-radius:10px 0 0 10px;background:var(--surface)}
+.case-workspace-open>.case-horizontal-divider{height:auto;width:7px;flex:0 0 7px;cursor:col-resize;border:0;border-inline:2px solid var(--surface);background:var(--border)}
+.case-workspace-open>.case-chat-bottom{position:relative;flex:1;min-width:260px;border:1px solid var(--border);border-radius:0 10px 10px 0;background:var(--surface)}
+.case-conversation-identity{display:none}
+.case-workspace-open .case-conversation-identity{display:flex;flex-direction:column;gap:4px;padding:14px 16px 10px;border-bottom:1px solid var(--border);background:var(--surface2);flex:none}
+.case-conversation-identity strong{font-size:12px;font-weight:600}
+.case-conversation-identity span{font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.case-workspace-open .case-chat-bottom>.conversation-header{min-height:34px;padding:0 14px;border:0}
+.case-workspace-open .session-trigger{font-size:11px;font-weight:400;padding:4px 6px;margin:0}
+.case-workspace-open #new-chat{display:none}
+.case-workspace-open .case-chat-bottom>.composer{width:calc(100% - 24px);align-self:center;margin:6px 12px 12px;padding:10px 12px 8px;border-radius:14px;box-shadow:none}
+.case-workspace-open .composer>#message{min-height:36px;font-size:13px;line-height:1.5}
+.case-workspace-open .composer-footer{margin-top:5px;gap:4px}
+.case-workspace-open .conversation{padding:14px 16px}
+.case-workspace-open .composer-left{flex-basis:auto;min-width:0}
+.case-workspace-open .composer-right{min-width:0}
+.case-resizing{cursor:col-resize}
+/* The case view is the page; only its dedicated conversation is inset. */
+.case-workspace-open{padding:0;background:var(--surface)}
+.case-workspace-open>.case-view-area{border:0;border-radius:0;background:var(--surface)}
+.case-workspace-open>.case-horizontal-divider{background:transparent;border:0}
+.case-workspace-open>.case-horizontal-divider:hover,.case-workspace-open>.case-horizontal-divider:focus-visible{background:var(--border)}
+.case-workspace-open>.case-chat-bottom{margin:12px 12px 12px 0;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:0 2px 10px #00000005}
+.case-workspace-open .case-conversation-identity{background:var(--surface2)}
+
+/* Evidence stays in the continuous timeline, alongside the claim it supports. */
+.case-story-head{flex-wrap:wrap}
+.case-story-evidence{margin:7px 0 0;color:var(--text-dim);font-size:10px;line-height:1.6}
+.case-story-citation{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 8px;margin-top:3px}
+.case-story-source{padding:0;border:0;background:none;color:var(--accent);font:10px/1.6 ui-monospace,monospace;text-align:left;overflow-wrap:anywhere;cursor:pointer}
+.case-story-source:hover{text-decoration:underline}
+.case-story-source:focus-visible{outline:1px solid var(--accent);outline-offset:2px}
+.case-story-citation code{font-size:10px;overflow-wrap:anywhere}
+.case-story-assignment{flex-wrap:wrap}
+.case-story-assignment>.case-story-source{flex-basis:100%}
+
+/* Shared flat sections across every case-detail tab. */
+.case-section{margin:0 0 22px;padding:0;min-width:0}
+.case-section-title{margin:0 0 12px;padding:0 0 9px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;line-height:1.5;color:var(--text)}
+.case-section>p{margin:0;font-size:12px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere}
+.case-section>pre{margin:0;font:11px/1.8 ui-monospace,monospace}
+.case-section-code{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text)}
+.case-section>.case-detail-log{padding:0;border:0;border-radius:0;background:transparent;min-height:220px}
+.case-section>.case-story{margin-top:2px}
+.case-detail-body[data-tab="source"]>.case-section-source{display:flex;flex:1;flex-direction:column;min-height:0;margin:0}
+.case-section-source>.case-section-title{flex:none}
+.case-section-source>.case-detail-source{flex:1;min-height:0;max-height:none;border:0;border-radius:0;margin:0;padding:0}
+
+
+.case-section-title:has(>.case-overview-actions){display:flex;align-items:center;justify-content:space-between;min-height:28px;padding-bottom:6px}
+.case-overview-actions{display:flex;align-items:center;margin:0 0 0 12px;flex:none}
+
+.case-overview-actions .ai-case-add{width:28px;height:28px;display:grid;place-items:center;padding:6px;border:0;border-radius:5px;background:transparent;color:var(--text-dim);cursor:pointer}
+.case-overview-actions .ai-case-add:hover{color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--surface))}
+
+/* The bundled waveform viewer fills the remaining case pane. */
+.case-detail-body[data-tab="wave"]{display:flex;flex-direction:column;overflow:auto}
+.case-detail-body[data-tab="wave"]>.case-detail-select,.case-detail-body[data-tab="wave"]>.case-section:not(.case-section-wave){flex:none}
+.case-section-wave{display:flex;flex:none;flex-direction:column;height:clamp(520px,70vh,960px);min-height:520px;margin-bottom:22px}
+.case-section-wave>.case-section-title{flex:none}
+.case-wave-viewer{display:block;flex:1;width:100%;min-height:0;border:0;background:var(--surface)}
+.case-wave-download{font-size:11px;color:var(--accent)}
+
+.case-wave-explanation{flex:none}
+.case-wave-point{padding:12px 0;border-bottom:1px solid var(--border)}
+.case-wave-point:first-of-type{padding-top:0}.case-wave-point:last-child{border-bottom:0}
+.case-wave-point-title{display:inline;padding:0;border:0;background:none;color:var(--text);font-size:12px;font-weight:600;text-align:left;cursor:pointer}
+.case-wave-point-title:hover{color:var(--accent)}
+.case-wave-point-time{display:block;margin-top:4px;color:var(--text-dim);font:10px ui-monospace,monospace}
+.case-wave-point p{margin:8px 0 0;font-size:12px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere}
+.case-wave-point .case-wave-point-values{font-size:10px;color:var(--text-dim)}
+
+.case-overview-actions .ai-case-add:disabled{opacity:.35;cursor:default;background:none;color:var(--text-dim)}
+.case-overview-actions .ai-case-add:disabled .ai-colored-spark{transform:none}
+
+/* Match the main sidebar: persistent content-header toggle, full collapse and width easing. */
+.case-workspace-open{display:grid;grid-template-columns:minmax(0,var(--case-view-track,60fr)) 7px minmax(0,var(--case-chat-track,40fr));grid-template-rows:minmax(0,1fr)}
+.case-workspace-open>.case-view-area{width:auto;min-width:0}
+.case-workspace-open>.case-chat-bottom{min-width:0}
+.case-workspace-open .case-detail-title{padding-right:170px}
+.case-chat-toggle{position:absolute;right:120px;top:8px;width:28px;height:28px}
+.case-workspace-open.case-chat-collapsed{grid-template-columns:minmax(0,100fr) 0px minmax(0,0fr)}
+.case-workspace-open.case-chat-collapsed>.case-chat-bottom{opacity:0;pointer-events:none;margin:12px 0;border-width:0}
+.case-workspace-open.case-chat-collapsed>.case-horizontal-divider{width:0;pointer-events:none}
+.case-workspace-open.case-chat-motion{transition:grid-template-columns 480ms cubic-bezier(.22,1,.36,1)}
+.case-chat-motion>.case-chat-bottom{transition:opacity 260ms ease,margin 480ms cubic-bezier(.22,1,.36,1),border-width 480ms cubic-bezier(.22,1,.36,1)}
+.case-chat-motion>.case-horizontal-divider{transition:width 480ms cubic-bezier(.22,1,.36,1)}
+@media(prefers-reduced-motion:reduce){.case-workspace-open.case-chat-motion,.case-chat-motion>.case-chat-bottom,.case-chat-motion>.case-horizontal-divider{transition:none}}
+
+.case-wave-explanation>.case-section-title{justify-content:flex-start;gap:6px}
+.case-wave-explanation>.case-section-title>.case-overview-actions{margin:0}
+
+/* Editor-style tabs: one italic preview, explicit kept tabs and a pinned main tab. */
+.case-workspace-tabs{display:flex;flex:none;align-items:stretch;min-width:0;height:36px;border-bottom:1px solid var(--border);background:var(--surface2)}
+.case-workspace-tab-scroll{display:flex;flex:1;min-width:0;overflow-x:auto;scrollbar-width:thin}
+.case-workspace-tab-item{position:relative;display:flex;flex:none;align-items:center;min-width:120px;max-width:240px;border-right:1px solid var(--border);background:transparent}
+.case-workspace-tab{display:flex;align-items:center;gap:7px;height:35px;min-width:0;padding:0 9px 0 12px;border:0;background:transparent;color:var(--text-dim);font-size:11px;font-weight:400;text-align:left;white-space:nowrap;cursor:pointer}
+.case-workspace-tab-item>.case-workspace-tab{flex:1;overflow:hidden}
+.case-workspace-tab-label{overflow:hidden;text-overflow:ellipsis}
+.case-workspace-tab-icon{display:flex;flex:none;color:var(--text-dim)}
+.case-workspace-tab-icon svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
+.case-workspace-tab-item.is-active{background:var(--surface);box-shadow:inset 0 1px var(--accent)}
+.case-workspace-tab[aria-selected="true"]{color:var(--text)}
+.case-workspace-tab-item.is-preview .case-workspace-tab-label{font-style:italic}
+.case-main-tab{position:sticky;left:0;z-index:1;flex:none;justify-content:center;min-width:96px;padding:0 18px;border-right:1px solid var(--border);background:var(--surface2);font-weight:500}
+.case-main-tab[aria-selected="true"]{background:var(--surface);box-shadow:inset 0 1px var(--accent)}
+.case-workspace-tab-item:hover:not(.is-active){background:color-mix(in srgb,var(--text) 3%,var(--surface2))}
+.case-workspace-tab-close{flex:none;margin:0 7px 0 0;width:20px;height:20px;padding:0;border:0;border-radius:4px;background:transparent;color:var(--text-dim);font-size:15px;line-height:20px;opacity:0;cursor:pointer}
+.case-workspace-tab-item:hover .case-workspace-tab-close,.case-workspace-tab-item.is-active .case-workspace-tab-close,.case-workspace-tab-item:focus-within .case-workspace-tab-close{opacity:1}
+.case-workspace-tab-close:hover{background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text)}
+.case-workspace-tab:focus-visible,.case-workspace-tab-close:focus-visible{outline:1px solid var(--accent);outline-offset:-3px}
+.case-workspace-open{grid-template-rows:auto minmax(0,1fr)}
+.case-workspace-open>.case-workspace-tabs{grid-column:1/-1;grid-row:1}
+.case-workspace-open>.case-view-area,.case-workspace-open>.case-horizontal-divider,.case-workspace-open>.case-chat-bottom{grid-row:2}
+.case-workspace-open .case-detail-title{padding-right:56px}
+.case-chat-toggle{right:14px}
+
+.testcase-detail-pane[hidden]{display:none}
+.case-send-pending .case-workspace-tabs button{pointer-events:none}
+
+/* Final case-workbench rhythm: quiet selection, readable content and consistent controls. */
+.testcase-list-pane{padding:12px 10px}
+.testcase-workbench .targets-toolbar{flex-wrap:nowrap;gap:6px;margin:0 0 10px}
+.testcase-workbench .targets-search{height:32px;padding:6px 9px;border-radius:5px;font-size:12px;box-sizing:border-box}
+.testcase-workbench .targets-search:focus-visible{outline:1px solid var(--accent);outline-offset:0}
+.testcase-workbench .targets-summary{gap:10px;margin:0 0 8px;padding:2px 2px 10px;border-bottom:1px solid var(--border)}
+.testcase-workbench .targets-tree>.target-case{margin:0 0 2px;border:0;border-radius:4px;box-shadow:none;background:transparent}
+.testcase-workbench .targets-tree>.target-case:has(>.target-header.is-selected){box-shadow:none;border-radius:4px;background:transparent}
+.testcase-workbench .target-header{min-height:34px;border-radius:4px;outline:0}
+.testcase-workbench .target-header:hover{background:color-mix(in srgb,var(--text) 4%,var(--surface))}
+.testcase-workbench .targets-tree .target-header.is-selected{outline:0;box-shadow:inset 2px 0 var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--surface))}
+.testcase-workbench .target-header>.target-card-head{padding:7px 9px}
+.testcase-workbench .target-header .target-title{font-size:12px;line-height:20px}
+.testcase-workbench .target-header.is-selected .target-title{color:var(--text);font-weight:500}
+.testcase-workbench .target-header>.target-header-actions{margin-right:5px;gap:2px}
+.testcase-workbench .target-actions .target-icon-action{width:24px;height:24px;border-radius:4px}
+.testcase-workbench .target-card-head:focus-visible{outline:1px solid var(--accent);outline-offset:-2px;border-radius:4px}
+
+.case-workspace-tabs{height:36px}
+.case-workspace-tab-close{transition:opacity .12s ease,background .12s ease}
+.case-workspace-open .case-detail-title{gap:3px;padding:17px 56px 12px 22px}
+.case-workspace-open .case-detail-title strong{font-size:14px;font-weight:600;line-height:1.5}
+.case-detail-title code{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:11px/1.6 ui-monospace,monospace}
+.case-detail-tabs{gap:22px;padding:0 22px}
+.case-detail-tabs button{padding:10px 0 9px;font-size:12px;line-height:1.5;cursor:pointer}
+.case-detail-tabs button:hover{color:var(--text)}
+.case-detail-tabs button:focus-visible{outline:1px solid var(--accent);outline-offset:3px}
+.case-workspace-open .case-detail-body{padding:18px 22px 24px;font-size:13px;line-height:1.8}
+.case-section{margin-bottom:26px}
+.case-section:last-child{margin-bottom:0}
+.case-section-title{display:flex;align-items:center;min-height:28px;margin:0 0 13px;padding:0 0 8px;font-size:12px;font-weight:600;line-height:1.6;letter-spacing:0}
+.case-section>p{max-width:92ch;font-size:13px;line-height:1.9}
+.case-section>.case-detail-empty{color:var(--text-dim);font-size:12px}
+.case-detail-empty{margin:0;font-size:12px;line-height:1.8}
+.case-overview-actions .ai-case-add{width:26px;height:26px;padding:4px}
+.case-detail-select{box-sizing:border-box;min-height:34px;padding:7px 10px;margin-bottom:18px;font-size:12px;border-radius:5px;line-height:1.5}
+.case-detail-select:focus-visible{outline:1px solid var(--accent);outline-offset:1px}
+
+.case-story{max-width:110ch;padding-left:28px}
+.case-story-row{padding-bottom:23px}
+.case-story-head{gap:8px;line-height:1.7}
+.case-story-head strong{font-size:13px;line-height:1.7}
+.case-story-number{height:auto;min-width:24px;padding:0;background:transparent;border-radius:0;font:11px/1.7 ui-monospace,monospace;color:var(--text-dim)}
+.case-story-description{margin-top:6px;font-size:12px;line-height:1.85}
+.case-story-line{margin-top:6px;font-size:12px;line-height:1.8;color:var(--text)}
+.case-story-line b{font-weight:500;color:var(--text-dim)}
+.case-story-assignments{margin:10px 0 4px;padding-left:12px;border-left-width:1px}
+.case-story-label{margin-bottom:6px;font-size:11px;font-weight:500}
+.case-story-assignment{display:grid;grid-template-columns:minmax(0,1fr);gap:3px;margin:8px 0;line-height:1.7}
+.case-story-assignment code{font:11px/1.8 ui-monospace,monospace;overflow-wrap:anywhere}
+.case-story-assignment span{font-size:12px;line-height:1.8}
+.case-story-evidence{margin-top:9px;font-size:11px;line-height:1.7}
+.case-story-source,.case-story-citation code{font-size:11px;line-height:1.7}
+
+.case-section>pre{font-size:12px;line-height:1.8}
+.case-section-code{tab-size:4;overflow-x:auto}
+.case-detail-source{font-size:12px;line-height:1.8}
+.case-detail-source>div>span{width:44px;padding-right:14px;font-variant-numeric:tabular-nums}
+.case-detail-source>div.is-bound{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.case-section-source>.case-detail-source{padding:4px 0}
+.case-section>.case-detail-log{padding:2px 0 10px;font-size:12px;line-height:1.8}
+.case-section-wave{margin-bottom:26px}
+.case-wave-viewer{box-sizing:border-box;border:1px solid var(--border);border-radius:4px}
+.case-wave-point{padding:15px 0}
+.case-wave-point-title{font-size:13px;line-height:1.7}
+.case-wave-point-title[aria-pressed="true"]{color:var(--accent)}
+.case-wave-point-title:focus-visible{outline:1px solid var(--accent);outline-offset:3px}
+.case-wave-point-time{margin-top:5px;font-size:11px;line-height:1.6;font-variant-numeric:tabular-nums}
+.case-wave-point p{max-width:100ch;font-size:13px;line-height:1.85}
+.case-wave-point .case-wave-point-values{margin-top:10px;font-size:11px;line-height:1.75}
+
+.case-workspace-open>.case-chat-bottom{margin:12px 12px 12px 0;border-radius:8px;box-shadow:none}
+.case-workspace-open .case-conversation-identity{gap:4px;padding:13px 16px 12px;background:var(--surface);border-bottom:1px solid var(--border)}
+.case-workspace-open .case-conversation-identity strong{font-size:11px;color:var(--text-dim);font-weight:500}
+.case-workspace-open .case-conversation-identity span{font-size:12px;line-height:1.6;color:var(--text)}
+.case-workspace-open .case-chat-bottom>.conversation-header{min-height:36px;padding:0 12px}
+.case-workspace-open .conversation{padding:16px}
+.case-workspace-open .case-chat-bottom>.composer{margin:8px 12px 12px;border-radius:10px}
+.case-detail-body,.case-detail-source,.case-detail-log,.testcase-list-pane>.targets-tree,.case-workspace-tab-scroll{scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+@media(max-width:1100px){
+  .case-workspace-open .case-detail-title{padding-left:16px}
+  .case-detail-tabs{padding-inline:16px;gap:18px}
+  .case-workspace-open .case-detail-body{padding:16px}
+  .case-workspace-open .conversation{padding:12px}
+}
+@media(prefers-reduced-motion:reduce){.case-workspace-tab-close{transition:none}}

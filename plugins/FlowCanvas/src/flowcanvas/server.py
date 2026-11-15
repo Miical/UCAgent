@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from .chat import ChatService, routes
 from .catalog import workflow_menu
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from . import __version__
 
@@ -59,6 +59,9 @@ def create_app(state_dir=None) -> FastAPI:
         response = await call_next(request)
         if request.url.path.startswith(('/assets/', '/api/chat', '/rtl-viewer/')):
             response.headers['Cache-Control'] = 'no-store'
+        if request.url.path == '/' or request.url.path.startswith('/surfer/'):
+            response.headers['Cross-Origin-Embedder-Policy'] = 'require-corp'
+            response.headers['Cross-Origin-Opener-Policy'] = 'same-origin'
         return response
 
     @app.get('/api/chat/workflows')
@@ -83,8 +86,21 @@ def create_app(state_dir=None) -> FastAPI:
     bundle = web / 'rtl-viewer'
     if (bundle / 'index.html').is_file():
         app.mount('/rtl-viewer', StaticFiles(directory=bundle, html=True), name='rtl-viewer')
+    from .case_conversations import routes as case_conversation_routes
+    app.include_router(case_conversation_routes(service))
     app.include_router(routes(service))
     started = time.time()
+    # Reuse the installed viewer and its FST fallback without duplicating bundled assets.
+    surfer = Path(package.origin).parent / 'server/static/surfer'
+    if (surfer / 'index.html').is_file():
+        @app.get('/surfer/', response_class=HTMLResponse)
+        def waveform_viewer():
+            """Reuse Surfer's bootstrap and attach run-scoped annotations after loading."""
+            page=(surfer/'index.html').read_text()
+            page=page.replace('<script src="deep-link.js"></script>', '<script src="deep-link.js"></script><script src="/assets/wave-viewer.js"></script>')
+            page=page.replace('/*SURFER_SETUP_HOOKS*/', 'await window.FlowCanvasWaveViewer(surfer);')
+            return HTMLResponse(page,headers={'Cache-Control':'no-store'})
+        app.mount('/surfer', StaticFiles(directory=surfer, html=True), name='flowcanvas-surfer')
     app.mount("/assets", StaticFiles(directory=web), name="flowcanvas-assets")
 
     @app.get("/")

@@ -38,7 +38,7 @@ flowcanvas_panel:
     Delete obsolete records through the tool lifecycle.
     Set each test card runner with standalone "{case}" (an absolute pytest entry), the published
     tests directory as cwd, and its parent on PYTHONPATH for DUT imports. Keep reports under
-    {run_dir}. Configure real coverage extraction using the shared FlowCanvas report format,
+    {run_dir}. Save actual simulator waveforms under {wave_dir} (the precreated {run_dir}/waveforms directory); enable direct dumping to one primary {wave_dir}/waves.vcd without VPD or conversion steps, and do not fabricate or reuse historical files. Configure real coverage extraction using the shared FlowCanvas report format,
     through test_case_runs configure, following test_cases inspect instructions. Configuration alone does not prove successful collection.
     Final acceptance requires every card ready and bound, exactly one card per native test,
     and published Python sources identical to the native checked implementation.

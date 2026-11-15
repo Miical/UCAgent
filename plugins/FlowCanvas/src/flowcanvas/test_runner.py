@@ -94,6 +94,7 @@ class TestRuns:
             # Values are shell-quoted once by this entry point, never interpolated by the model.
             run_id=uuid.uuid4().hex; folder=self.folder(root)
             run_dir=folder/run_id;run_dir.mkdir()
+            wave_dir=run_dir/'waveforms';wave_dir.mkdir()
             from .coverage_runtime import render
             database=(run_dir/'coverage.vdb' if mode in {'startup_smoke','coverage_smoke'} else
                       store.root/'.flowcanvas/coverage/database/coverage.vdb')
@@ -101,11 +102,12 @@ class TestRuns:
                 if not all(token in template.command for token in ('{coverage_db}','{coverage_name}')):
                     raise ValueError('Shared coverage runner requires {coverage_db} and {coverage_name}')
             command=render(template.command,dict(project=store.root,run_dir=run_dir,case=entry,
-                                                coverage_db=database,coverage_name=run_id))
+                                                coverage_db=database,coverage_name=run_id,wave_dir=wave_dir))
             row=dict(id=run_id,case_id=case_id,name=case.title or case.name,entry=entry,command=command,
                      cwd=str(store.root),description=template.description,status='starting',started=time.time(),
                      ended=None,exit_code=None,source_fingerprint=node['fingerprint'])
             row['run_dir']=str(run_dir)
+            row['wave_dir']=str(wave_dir)
             row['coverage_db']=str(database)
             if mode in {'startup_smoke','coverage_smoke'}:
                 from .smoke_runs import case_identity
@@ -276,11 +278,77 @@ def routes(projects,runner):
                 raise HTTPException(409,'Cannot clear accumulated coverage while a test is active')
             return reset(project)
     @router.get('/{identity}/test-runs')
-    def runs(identity:str):return [run for run in runner.list(root(identity)) if run.get('mode') not in {'startup_smoke','coverage_smoke'}]
+    def runs(identity:str,case_id:str|None=None,include_smoke:bool=False):
+        """Return execution records, optionally scoped to a case including its isolated smoke runs."""
+        return [run for run in runner.list(root(identity))
+                if (not case_id or run.get('case_id')==case_id)
+                and (include_smoke or run.get('mode') not in {'startup_smoke','coverage_smoke'})]
     @router.post('/{identity}/test-runs')
     async def start(identity:str,request:RunRequest):
         try:return await runner.start(root(identity),request.case_id)
         except (ValueError,OSError,SyntaxError) as exc:raise HTTPException(422,str(exc)) from None
+    def waveform_directory(identity, run_id):
+        """Resolve an existing execution directory without accepting user-supplied roots."""
+        project=Path(root(identity)).resolve()
+        if not re.fullmatch('[0-9a-f]{32}',run_id):raise HTTPException(400,'Invalid run ID')
+        folder=(project/'.flowcanvas/test-runs').resolve()
+        if not folder.is_relative_to(project):raise HTTPException(403,'Run storage escapes project')
+        metadata=folder/(run_id+'.json')
+        if not metadata.is_file():raise HTTPException(404,'Run not found')
+        path=(folder/run_id).resolve()
+        if not path.is_relative_to(folder.resolve()):raise HTTPException(403,'Run directory escapes managed storage')
+        return path
+
+    @router.get('/{identity}/test-runs/{run_id}/waveforms')
+    def waveforms(identity:str,run_id:str):
+        """List waveform artifacts from one managed run, never traversing symbolic directories."""
+        import os
+        directory=waveform_directory(identity,run_id);files=[];visited=0
+        extensions={'.vcd','.fst','.fsdb','.vpd','.wlf'}
+        for parent,dirs,names in os.walk(directory,followlinks=False):
+            dirs[:]=[name for name in dirs if not (Path(parent)/name).is_symlink()]
+            for name in names:
+                visited+=1
+                if visited>20000:raise HTTPException(422,'Run artifact inventory exceeds limit')
+                path=Path(parent)/name
+                if path.suffix.lower() in extensions and not path.is_symlink() and path.is_file():
+                    files.append(dict(path=str(path.relative_to(directory)),size=path.stat().st_size))
+        return dict(files=sorted(files,key=lambda entry:entry['path']))
+
+    def waveform_file(identity,run_id,path):
+        """Resolve an actual artifact within the exact managed execution directory."""
+        directory=waveform_directory(identity,run_id);candidate=(directory/path).resolve()
+        if not candidate.is_relative_to(directory) or candidate==directory:
+            raise HTTPException(403,'Waveform escapes run directory')
+        if candidate.suffix.lower() not in {'.vcd','.fst','.fsdb','.vpd','.wlf'} or not candidate.is_file():
+            raise HTTPException(404,'Waveform not found')
+        return candidate
+
+    @router.get('/{identity}/test-runs/{run_id}/waveform')
+    def waveform(identity:str,run_id:str,path:str):
+        """Download a waveform confined to its managed run."""
+        from fastapi.responses import FileResponse
+        candidate=waveform_file(identity,run_id,path)
+        return FileResponse(candidate,media_type='application/octet-stream',filename=candidate.name)
+
+    @router.get('/{identity}/test-runs/{run_id}/waveform-view/{path:path}')
+    def waveform_view(identity:str,run_id:str,path:str):
+        """Stream a supported artifact to Surfer without attachment disposition."""
+        from fastapi.responses import FileResponse
+        candidate=waveform_file(identity,run_id,path)
+        if candidate.suffix.lower() not in {'.vcd','.fst'}:
+            raise HTTPException(415,'Inline viewing supports VCD and FST')
+        return FileResponse(candidate,media_type='application/octet-stream',headers={'Cache-Control':'no-store'})
+
+    @router.get('/{identity}/test-runs/{run_id}/waveform-analysis')
+    def waveform_analysis(identity:str,run_id:str,case_id:str,waveform:str='waveforms/waves.vcd'):
+        """Read annotations only for the selected case, run and exact waveform bytes."""
+        from .waveform_analysis import WaveAnalysisStore
+        try:
+            return WaveAnalysisStore(root(identity),case_id,run_id,waveform).read()
+        except (ValueError,OSError,KeyError) as exc:
+            raise HTTPException(422,str(exc)) from None
+
     @router.get('/{identity}/test-runs/{run_id}/output')
     def output(identity:str,run_id:str,offset:int=0):
         try: return runner.output(root(identity), run_id, offset)

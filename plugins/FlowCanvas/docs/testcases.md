@@ -92,3 +92,55 @@ DUT 范围、实际构建输入和功能卡片映射放在固定的 `coverage/co
 验证行数据与功能卡片映射，不污染正式累计；其余导入用例不逐个运行。
 清空累计删除运行数据库，保留编译元数据、配置和映射。旧命令式提供方仍可继续使用，
 但不享受 VCS 原生数据库自动监测；重新导入可切换到平台内置方式。
+
+## Case workbench
+
+The test-case page initially shows only the case list beside ordinary chat.
+The workspace has a pinned, non-closeable main-conversation tab followed by open case tabs.
+Single-clicking a case reuses one italic preview tab; double-clicking the case or its tab
+keeps it open. Double-click no longer renames a case. Kept tabs remain open while the
+preview slot is reused. Each tab contains its workbench: Overview,
+Source, Runs and Waveform tabs on the left, and its embedded dedicated conversation
+on the right. A horizontal resize preference controls the split. Selecting the main tab restores its previous conversation. Each case keeps its own mounted
+inspector, source/overview position, waveform viewer, conversation history and draft while
+its tab is open. Closing a tab releases its inspector without deleting the case or its
+conversation; closing the active tab selects a neighbor or returns to the main tab.
+
+Opening a case performs a read-only binding lookup. The first send lazily creates
+one conversation, stored with `case_binding={project_id,case_id}` in its server
+session metadata. Concurrent creation requests reuse the existing binding,
+including archived conversations. The binding survives reloads and service
+restarts. Explicitly deleting the conversation removes that history and permits
+a new binding on the next send. Deleting a card does not erase its conversation.
+
+Messages capture the viewed tab, source binding/line selection, selected run and
+selected waveform file at send time. The server resolves the case and validates
+that source bindings and runs belong to it before freezing the context in the
+message. Queueing preserves that snapshot. This reference context grants no
+permission to execute tests or modify sources. Current source is distinguished
+from historical execution metadata; it is not presented as a historical snapshot.
+
+Runs are filtered by case ID, including labeled isolated smoke executions.
+Selecting a run selects its log and waveform artifacts together. Exit status
+does not certify assertions or scoreboard checks. Waveforms are inventoried only
+within the selected managed execution directory. Supported artifact extensions
+are VCD, FST, FSDB, VPD and WLF. The primary VCD/FST artifact opens automatically in the embedded UCAgent Surfer viewer; its bundled
+FST fallback and loading progress are reused. Other formats retain the artifact download API.
+Viewing a waveform does not certify correctness. Files elsewhere are not attributed
+to the run; configure its runner to keep artifacts under `{run_dir}`.
+
+
+## 每次运行的波形目录
+
+运行模板使用 `{wave_dir}`，由平台创建并展开为本次 `{run_dir}/waveforms` 的绝对路径，与覆盖率数据库路径一样只由平台进行一次 shell 转义。生成、导入用例的工作流须将它接到实际仿真器或 fixture 的波形输出，核对编译调试选项及运行时开关，不能只创建目录。
+
+波形页读取所选运行的产物，自动打开 `{wave_dir}/waves.vcd`，不显示波形文件选择框。工作流配置仿真器直接生成这一份 VCD，不生成中间 VPD 或增加转换步骤。保留仿真失败状态，报告缺失输出，不搬用历史文件，不把波形存在当作测试通过。更新命令只影响后续运行，不补写旧运行产物。
+
+
+## 波形 AI 解读
+
+波形栏的 AI 按钮沿用任务卡的悬停预览和点击固定交互，任务发送到当前用例专属对话，携带选定的运行 ID 和波形路径，不启动测试。无波形时显示禁用按钮。
+
+模型通过 `case_waveform` 的 `inspect` 获取真实信号目录、原生时间边界与保存格式，通过 `values` 分页读取四态信号变化，再用 `save` 保存选取的信号及逐点解释。保存要求匹配 `expected_revision`，核对信号存在、点位范围及点位信号状态；时间使用原生刻度十进制字符串，不使用日志周期号代替。最多选择 32 条信号、16 个点，每个点填写标题、解释、观察或推断标记及相关信号。
+
+记录位于本次运行的 `waveform-analysis.json`，绑定实际波形的 SHA-256。波形变化后旧解读不再应用；更新通过工具完成，不直接编辑管理文件。每条解读的 `points[i].signals` 是该点所需的最小信号组，`analysis.signals` 保存各组的去重并集。Surfer 默认选取第一条的信号，不添加会占据信号行的原生 Marker；点位编号和解释保留在下方解读栏，“AI 解读”作为独立栏目逐点显示说明及实际信号值，点击点位时替换上一条的信号组，缩放到该点的 `start/end` 时间窗口，再移动游标到该点。未指定窗口时根据相邻点间距自动选择局部范围，并限制在实际波形时间边界内。点位状态来自波形，文字解释仍是模型解读，不构成测试通过证明。

@@ -30,6 +30,55 @@ class RunTemplate(BaseModel):
         return self
 
 
+class TimelineEvidence(BaseModel):
+    """A source or runtime artifact that supports one explanation step."""
+    model_config = ConfigDict(extra='forbid')
+    kind: Literal['source', 'log', 'waveform', 'assertion', 'coverage']
+    label: str = Field(min_length=1, max_length=200)
+    path: str = Field(default='', max_length=4000)
+    line: int | None = Field(default=None, ge=1)
+    end_line: int | None = Field(default=None, ge=1)
+
+
+class TimelineAssignment(BaseModel):
+    """One important code assignment or call explained in plain language."""
+    model_config = ConfigDict(extra='forbid')
+    expression: str = Field(min_length=1, max_length=500)
+    meaning: str = Field(min_length=1, max_length=1000)
+    file: str = Field(default='', max_length=4000)
+    line: int | None = Field(default=None, ge=1)
+
+
+class TimelineStep(BaseModel):
+    """One human-readable action in a test case explanation timeline."""
+    model_config = ConfigDict(extra='forbid')
+    id: str = Field(pattern=r'^[A-Za-z][A-Za-z0-9_-]{0,63}$')
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1, max_length=2000)
+    expected: str = Field(default='', max_length=1000)
+    status: Literal['planned', 'observed', 'passed', 'failed', 'skipped', 'unknown'] = 'planned'
+    confidence: Literal['source', 'observed', 'inferred'] = 'inferred'
+    evidence: list[TimelineEvidence] = Field(default_factory=list, max_length=20)
+    why: str = Field(default='', max_length=1000)
+    how: str = Field(default='', max_length=2000)
+    actors: list[str] = Field(default_factory=list, max_length=20)
+    children: list['TimelineStep'] = Field(default_factory=list, max_length=20)
+    assignments: list[TimelineAssignment] = Field(default_factory=list, max_length=20)
+
+
+TimelineStep.model_rebuild()
+
+
+class CaseOverview(BaseModel):
+    """Fixed technical sections used by the case overview renderer."""
+    model_config = ConfigDict(extra='forbid')
+    purpose: str = Field(default='', max_length=2000)
+    method: str = Field(default='', max_length=2000)
+    context: str = Field(default='', max_length=2000)
+    mechanism: str = Field(default='', max_length=3000)
+    oracle: str = Field(default='', max_length=2000)
+
+
 class TestCase(BaseModel):
     model_config = ConfigDict(extra='forbid')
     id: str = Field(pattern=r'^tc_[0-9a-f]{32}$')
@@ -38,6 +87,8 @@ class TestCase(BaseModel):
     name: str = Field(min_length=1, max_length=200, description='代码中的测试类名或函数名，不作为可读标题')
     title: str = Field(default='', max_length=200, description='用例的可读标题；新建和导入必须填写，概括测试场景')
     description: str = ''
+    timeline: list[TimelineStep] = Field(default_factory=list, max_length=100)
+    overview: CaseOverview | None = None
     runner: RunTemplate | None = None
     lifecycle: Literal['draft', 'ready', 'creating', 'updating', 'deleting'] = 'ready'
     operation_status: Literal['running', 'paused'] = 'paused'
@@ -137,8 +188,24 @@ text, otherwise derive it from actual stimuli and checks. Never infer passing re
 Each case runner is {command,description} and is set via update. Shared coverage settings use
 test_case_runs(operation=configure,settings={coverage}); inspect returns the existing settings. Each runner command requires standalone {case}, expanded and
 shell-quoted once by the server; Python entries include the absolute file path. Reports use {run_dir}.
+Waveforms use {wave_dir}, an existing per-run directory at {run_dir}/waveforms. Forward it to the
+actual simulator/fixture and enable dumping through the real project flow; mkdir or an unused option
+does not enable dumping. Generate one primary waveform directly at {wave_dir}/waves.vcd, using the
+simulator's VCD controls and required compile options. Do not add intermediate VPD files or conversion
+steps. The waveform page opens it automatically. Preserve simulation exit status and report missing
+output; do not copy old waves into a new run or fabricate a waveform.
+Configure waveform generation statically; do not run tests unless the current task authorizes it.
 Coverage settings declare real extract/merge/build identity commands with isolated run artifacts;
 do not fabricate results. Test execution uses test_case_runs start/read/stop/list.
+When explaining a case, fill overview.purpose and overview.method first; context/mechanism/oracle
+retain supporting context and are not expanded by default. Write timeline as ordered technical phases,
+with id/title/description and why/how/actors where useful. Use children only to explain a phase more
+concretely; all phases remain visible in one continuous timeline. Avoid repeating the overview or the
+same prose across fields. Include real source evidence (path/line/end_line), and assignments with
+expression/meaning/file/line for important calls or assignments. Source links open current files, not
+historical snapshots. Mark source facts as source and interpretations as inferred; mixed claims should
+be split or marked inferred. Only use observed/passed/failed when runtime artifacts support them.
+An explanation, clean exit or coverage hit does not prove correct behavior or that this test ran.
 """
 
     def check_idle(self, ids):
