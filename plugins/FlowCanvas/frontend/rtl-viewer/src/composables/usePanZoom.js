@@ -16,7 +16,7 @@
 // rtl-buddy-sch#163.
 
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { FIT_SCALE_MAX } from '../layout/constants.js'
+import { FIT_SCALE_MAX, FIT_PADDING_PX } from '../layout/constants.js'
 import { createViewportFitter } from '../layout/canvasViewport.js'
 
 const MIN_SCALE = 0.1
@@ -123,9 +123,10 @@ export function usePanZoom({ hostEl, getRoot, getContentBox }) {
       apply()
       return
     }
+    const padding = Math.min(FIT_PADDING_PX, rect.width / 4, rect.height / 4)
     const scale = Math.min(
-      rect.width / bb.width,
-      rect.height / bb.height,
+      (rect.width - padding * 2) / bb.width,
+      (rect.height - padding * 2) / bb.height,
       FIT_SCALE_MAX,
     )
     transform.value = {

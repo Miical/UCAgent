@@ -38,3 +38,6 @@ export const STATUS_STRIP_HEIGHT_PX = 24
  * by this number.
  */
 export const FIT_SCALE_MAX = 1.5
+
+/** Minimum visual breathing room around automatically fitted graphs, in screen pixels. */
+export const FIT_PADDING_PX = 24

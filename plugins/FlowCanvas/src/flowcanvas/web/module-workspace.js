@@ -1,7 +1,7 @@
 /** Open module source tabs with independent source positions and scoped conversations. */
 (()=>{
   const inspectors=new Map();let project=null,generation=0,lastInstance='';
-  fetch('/api/chat/projects').then(response=>response.json()).then(state=>{project=state.current;if(project&&document.getElementById('project-heading').textContent==='设计总览')open({id:'module_design'});});
+  fetch('/api/chat/projects').then(response=>response.json()).then(state=>{project=state.current;if(project)window.FlowCanvasCaseWorkspace.ready(project,'module');});
   const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
   /** Resolve the selected instance through the server before showing source or chat. */
   async function open(selection,pin=false,refresh=false){
@@ -58,7 +58,6 @@
   setInterval(()=>{const inspector=inspectors.get('module_design');if(!document.hidden&&inspector&&!inspector.host.closest('[hidden]')&&lastInstance)open({instance:lastInstance},false,true);},2500);
   window.addEventListener('message',event=>{const frame=document.querySelector('.rtl-view-panel iframe');if(event.origin===location.origin&&event.source===frame?.contentWindow&&event.data?.type==='flowcanvas-open-module'&&typeof event.data.instance==='string')open({instance:event.data.instance},!!event.data.pin);});
   window.addEventListener('message',event=>{const frame=[...document.querySelectorAll('.target-line-pane iframe,.rtl-view-panel iframe')].find(frame=>frame.contentWindow===event.source);if(event.origin!==location.origin||!frame||event.data?.type!=='flowcanvas-open-coverage-source')return;const value=event.data;if(typeof value.instance==='string'&&value.data&&Array.isArray(value.files))open({instance:value.instance,coverage:value},true);});
-  document.addEventListener('flowcanvas-case-restore',event=>{if(event.detail.project_id===project?.id&&event.detail.case_id.startsWith('module_'))open(lastInstance?{instance:lastInstance}:{id:event.detail.case_id});});
-  document.addEventListener('flowcanvas-view',event=>{if(event.detail==='设计总览')open(lastInstance?{instance:lastInstance}:{id:'module_design'});});
+  document.addEventListener('flowcanvas-case-restore',event=>{if(event.detail.project_id===project?.id&&event.detail.case_id.startsWith('module_'))open(lastInstance||event.detail.module_instance?{instance:lastInstance||event.detail.module_instance}:{id:event.detail.case_id});});
   document.addEventListener('flowcanvas-case-tab-closed',event=>{const inspector=inspectors.get(event.detail.case_id);if(inspector){inspector.coverage?.dispose();inspector.host.remove();inspectors.delete(event.detail.case_id);}});
 })();

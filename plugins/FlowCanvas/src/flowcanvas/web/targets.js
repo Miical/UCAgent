@@ -808,6 +808,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       if(d.action==='pin')open();else designPreviewTimer=setTimeout(open,220);
     });
     host.append(panel);show(document.getElementById('project-heading').textContent);
+    window.FlowCanvasCaseWorkspace.ready(project,caseMode?'case':bugMode?'bug':'target');
   }).catch(()=>{});
 }
 mountDefinitionPanel({view:'验证目标',endpoint:'targets'});

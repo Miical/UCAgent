@@ -10,11 +10,58 @@
   const identity=document.createElement('div');identity.className='case-conversation-identity';
   const label=document.createElement('strong');label.textContent='用例专属对话';const name=document.createElement('span');identity.append(label,name);bottom.prepend(identity);
   const toggle=document.getElementById('detail-toggle').cloneNode(true);toggle.id='case-chat-toggle';toggle.classList.add('case-chat-toggle');
-  bottom.id='case-dedicated-chat';toggle.setAttribute('aria-controls',bottom.id);top.append(toggle);
+  bottom.id='case-dedicated-chat';toggle.setAttribute('aria-controls',bottom.id);
   let current=null,view={},ratio=.6,chatCollapsed=false,motionTimer;
   const opened=new Map();
+  let savedProject=null,restoreKey=null;
+  /** Persist identities and tab order per project; source and detail data are always reloaded. */
+  function saveTabs(){
+    if(!savedProject)return;
+    try{localStorage.setItem('flowcanvas.workspaceTabs:'+savedProject,JSON.stringify({
+      active:restoreKey||(current?current.project.id+':'+current.testcase.id:null),
+      tabs:[...opened.values()].filter(item=>item.project.id===savedProject).map(item=>({id:item.testcase.id,title:item.testcase.title||item.testcase.name,entity_type:item.testcase.entity_type||'case',instance:item.testcase.instance,preview:item.preview}))
+    }));}catch{}
+  }
+  /** Hydrate once, then activate the saved page only after its detail handler is ready. */
+  function ready(project,entity){
+    if(savedProject!==project.id){
+      savedProject=project.id;
+      try{
+        const saved=JSON.parse(localStorage.getItem('flowcanvas.workspaceTabs:'+project.id)||'null');
+        for(const item of Array.isArray(saved?.tabs)?saved.tabs:[]){
+          if(typeof item?.id!=='string'||!['case','module','target','bug'].includes(item.entity_type))continue;
+          opened.set(project.id+':'+item.id,{project,testcase:{id:item.id,title:String(item.title||item.id),entity_type:item.entity_type,instance:item.instance},preview:!!item.preview});
+        }
+        restoreKey=typeof saved?.active==='string'&&opened.has(saved.active)?saved.active:null;
+      }catch{}
+      paintTabs();
+    }
+    const pending=opened.get(restoreKey);
+    if(pending&&(pending.testcase.entity_type||'case')===entity){
+      document.dispatchEvent(new CustomEvent('flowcanvas-case-restore',{detail:{project_id:project.id,case_id:pending.testcase.id,module_instance:pending.testcase.instance}}));
+    }
+  }
   const tabs=document.createElement('nav');tabs.className='case-workspace-tabs';tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','工作区标签页');
-  pane.closest('.workspace').prepend(tabs);
+  const tabActions=document.createElement('div');tabActions.className='workspace-tab-actions';tabActions.setAttribute('role','group');tabActions.setAttribute('aria-label','侧边栏控制');
+  const sidebarNav=document.querySelector('.detail-page-tabs'),sidebarHeader=sidebarNav.closest('header');
+  const projectSwitch=document.createElement('div');projectSwitch.className='workspace-project-switch';projectSwitch.append(document.getElementById('project-open'));
+  tabActions.append(sidebarNav,document.getElementById('detail-toggle'),toggle);sidebarHeader.remove();tabs.append(tabActions);
+  const tabBoundary=document.createElement('span');tabBoundary.className='workspace-tab-boundary';tabBoundary.setAttribute('aria-hidden','true');tabs.append(tabBoundary);
+  document.body.prepend(tabs);
+  /** Align the first tab with the content boundary as the project pane resizes or collapses. */
+  function alignTabStart(){
+    const dividerRect=document.querySelector('.splitter[data-split="0"]').getBoundingClientRect();
+    // The selected tab's outer shoulder extends 8px left of its button edge.
+    const offset=dividerRect.left+dividerRect.width/2-tabs.getBoundingClientRect().left+8;
+    tabs.style.setProperty('--workspace-tabs-start',Math.max(54,offset)+'px');
+    const brand=tabs.querySelector('.workspace-brand');if(brand)tabs.style.setProperty('--workspace-tab-boundary-left',(brand.getBoundingClientRect().right-tabs.getBoundingClientRect().left-8.5)+'px');
+    tabs.style.setProperty('--workspace-sidebar-width',document.querySelector('.detail-pane').getBoundingClientRect().width+'px');
+  }
+  if(window.ResizeObserver){
+    const observer=new ResizeObserver(alignTabStart);
+    observer.observe(document.querySelector('.project-pane'));observer.observe(pane);observer.observe(document.querySelector('.detail-pane'));
+  }else window.addEventListener('resize',alignTabStart);
+  alignTabStart();
   try{chatCollapsed=localStorage.getItem('flowcanvas.caseChatCollapsed')==='true';}catch{}
   /** Collapse the dedicated conversation without changing its session or saved split width. */
   function collapseChat(value,persist=false){
@@ -35,13 +82,18 @@
   /** Publish a small selection snapshot; the server supplies authoritative source and run metadata. */
   function publish(){if(!current)return;const label=({overview:'概览',source:'源码',runs:'运行记录',wave:'波形',coverage:'覆盖率'})[view.tab]||'概览';context.textContent='正在查看：'+(current.testcase.title||current.testcase.name)+' › '+label+(view.run_id?' › '+view.run_id.slice(0,8):'');document.dispatchEvent(new CustomEvent('flowcanvas-case-context',{detail:{...current,view:{...view}}}));}
   /** Restore the ordinary chat without interrupting any running case conversation. */
-  function leave(){if(!current){paintTabs();return;}current=null;view={};pane.classList.remove('case-workspace-open','case-chat-collapsed','case-chat-motion');bottom.inert=false;top.hidden=divider.hidden=context.hidden=true;document.dispatchEvent(new CustomEvent('flowcanvas-case-close'));paintTabs();}
+  function leave(){restoreKey=null;if(!current){paintTabs();return;}current=null;view={};pane.classList.remove('case-workspace-open','case-chat-collapsed','case-chat-motion');bottom.inert=false;top.hidden=divider.hidden=context.hidden=true;document.dispatchEvent(new CustomEvent('flowcanvas-case-close'));paintTabs();}
   /** Update keyed editor tabs without replacing click targets during a double click. */
   function paintTabs(){
     let main=tabs.querySelector('.case-main-tab'),list=tabs.querySelector('.case-workspace-tab-scroll');
     if(!main){
-      main=document.createElement('button');main.type='button';main.className='case-workspace-tab case-main-tab';main.textContent='主对话';main.setAttribute('role','tab');main.onclick=leave;
-      list=document.createElement('div');list.className='case-workspace-tab-scroll';tabs.append(main,list);
+      main=document.createElement('button');main.type='button';main.className='case-workspace-tab case-main-tab';main.innerHTML='<span class="case-workspace-tab-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3 3h10v8H7l-4 3zM5.5 6h5M5.5 8h3"/></svg></span>';main.title='主对话 · 固定标签页';main.setAttribute('aria-label','主对话（固定）');main.setAttribute('role','tab');main.onclick=leave;
+      list=document.createElement('div');list.className='case-workspace-tab-scroll';const brand=document.createElement('span');brand.className='workspace-brand';brand.setAttribute('aria-label','UCAgent FlowCanvas');brand.innerHTML='<span class="workspace-brand-name">UC<span class="brand-accent">Agent</span></span><span class="workspace-brand-product">FlowCanvas</span>';brand.prepend(document.querySelector('.brand-home'));
+      const projectToggle=document.createElement('button');projectToggle.type='button';projectToggle.id='project-sidebar-toggle';projectToggle.className='project-sidebar-toggle detail-toggle';projectToggle.setAttribute('aria-controls','project-content');
+      projectToggle.innerHTML=document.getElementById('detail-toggle').innerHTML;
+      const projectCollapsed=pane.closest('.workspace').classList.contains('project-collapsed');projectToggle.setAttribute('aria-expanded',String(!projectCollapsed));projectToggle.title=projectToggle.ariaLabel=projectCollapsed?'展开左侧栏':'收起左侧栏';
+      projectToggle.onclick=()=>toggleProject(!pane.closest('.workspace').classList.contains('project-collapsed'));
+      brand.append(projectToggle,projectSwitch);tabs.prepend(brand,main,list);
     }
     main.setAttribute('aria-selected',String(!current));main.tabIndex=current?-1:0;
     for(const wrapper of [...list.children])if(!opened.has(wrapper.dataset.key))wrapper.remove();
@@ -52,22 +104,24 @@
         wrapper=document.createElement('div');wrapper.className='case-workspace-tab-item';wrapper.dataset.key=key;
         const icon=document.createElement('span');icon.className='case-workspace-tab-icon';icon.setAttribute('aria-hidden','true');icon.innerHTML='<svg viewBox="0 0 16 16"><path d="M4 2h5l3 3v9H4zM9 2v4h3M6 9h4M6 11h3"/></svg>';
         const tab=document.createElement('button');tab.type='button';tab.className='case-workspace-tab';tab.setAttribute('role','tab');
-        tab.onclick=()=>{if(current?.project.id!==item.project.id||current?.testcase.id!==item.testcase.id)document.dispatchEvent(new CustomEvent('flowcanvas-case-restore',{detail:{project_id:item.project.id,case_id:item.testcase.id}}));};
+        tab.onclick=()=>{if(current?.project.id!==item.project.id||current?.testcase.id!==item.testcase.id)document.dispatchEvent(new CustomEvent('flowcanvas-case-restore',{detail:{project_id:item.project.id,case_id:item.testcase.id,module_instance:opened.get(key)?.testcase.instance}}));};
         tab.ondblclick=event=>{event.preventDefault();pinTab(key);};
-        const close=document.createElement('button');close.type='button';close.className='case-workspace-tab-close';close.textContent='×';
+        const close=document.createElement('button');close.type='button';close.className='case-workspace-tab-close';close.innerHTML='<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
         close.onclick=()=>{
           const keys=[...opened.keys()],index=keys.indexOf(key),isCurrent=current?.project.id===item.project.id&&current?.testcase.id===item.testcase.id;opened.delete(key);
-          if(isCurrent){const next=opened.get(keys[index+1])||opened.get(keys[index-1]);if(next)document.dispatchEvent(new CustomEvent('flowcanvas-case-restore',{detail:{project_id:next.project.id,case_id:next.testcase.id}}));else leave();}
+          if(isCurrent){const next=opened.get(keys[index+1])||opened.get(keys[index-1]);if(next)document.dispatchEvent(new CustomEvent('flowcanvas-case-restore',{detail:{project_id:next.project.id,case_id:next.testcase.id,module_instance:next.testcase.instance}}));else leave();}
           document.dispatchEvent(new CustomEvent('flowcanvas-case-tab-closed',{detail:{project_id:item.project.id,case_id:item.testcase.id}}));paintTabs();
         };
         const label=document.createElement('span');label.className='case-workspace-tab-label';tab.append(icon,label);wrapper.append(tab,close);list.append(wrapper);
       }
       wrapper.classList.toggle('is-active',active);wrapper.classList.toggle('is-preview',!!item.preview);
+      const iconPath=({module:'M2 2h4v4H2zM10 10h4v4h-4zM2 10h4v4H2zM4 6v4M4 8h8v2',target:'M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M12 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0M8 6v4M6 8h4',bug:'M5 5h6v6a3 3 0 0 1-6 0zM6 5V4a2 2 0 0 1 4 0v1M2 6l3 1M11 7l3-1M2 10h3M11 10h3M3 14l2-2M11 12l2 2'})[item.testcase.entity_type]||'M4 2h5l3 3v9H4zM9 2v4h3M6 9h4M6 11h3';
+      wrapper.querySelector('.case-workspace-tab-icon path').setAttribute('d',iconPath);
       const tab=wrapper.querySelector('[role="tab"]'),text=item.testcase.title||item.testcase.name;
       tab.querySelector('.case-workspace-tab-label').textContent=text;tab.title=text+(item.preview?' · 预览，双击固定':'');tab.setAttribute('aria-selected',String(active));tab.tabIndex=active?0:-1;
       wrapper.querySelector('.case-workspace-tab-close').setAttribute('aria-label','关闭 '+text);
     }
-    list.querySelector('[aria-selected="true"]')?.scrollIntoView({block:'nearest',inline:'nearest'});
+    alignTabStart();list.querySelector('[aria-selected="true"]')?.scrollIntoView({block:'nearest',inline:'nearest'});saveTabs();
   }
   /** Keep an existing preview tab open; only explicit double clicks fix a case tab. */
   function pinTab(key){const item=opened.get(key);if(item?.preview){item.preview=false;paintTabs();}}
@@ -82,13 +136,14 @@
   document.addEventListener('flowcanvas-case-ordinary',leave);
   document.addEventListener('flowcanvas-case-view',event=>{if(current?.testcase.id!==event.detail.case_id)return;view=event.detail.view;publish();});
   window.FlowCanvasCaseWorkspace={
+    ready,
     mount(detail){top.append(detail);},
     reconcile(project,cases,entity='case'){
       let changed=false;
       for(const [key,item] of opened){
         if(item.project.id!==project.id||(item.testcase.entity_type||'case')!==entity)continue;
         const node=cases.find(node=>node.id===item.testcase.id);
-        if(!node){opened.delete(key);changed=true;document.dispatchEvent(new CustomEvent('flowcanvas-case-tab-closed',{detail:{project_id:project.id,case_id:item.testcase.id}}));}
+        if(!node){opened.delete(key);if(restoreKey===key)restoreKey=null;changed=true;document.dispatchEvent(new CustomEvent('flowcanvas-case-tab-closed',{detail:{project_id:project.id,case_id:item.testcase.id}}));}
         else if(node.title!==item.testcase.title||node.name!==item.testcase.name){opened.set(key,{...item,project,testcase:node});changed=true;}
       }
       if(changed)paintTabs();
@@ -103,7 +158,7 @@
         }
       }
       const changed=current?.testcase.id!==testcase.id||current?.project.id!==project.id;
-      current={project,testcase};opened.set(key,{project,testcase,preview:existing?existing.preview:true});
+      restoreKey=null;current={project,testcase};opened.set(key,{project,testcase,preview:existing?existing.preview:true});
       name.textContent=testcase.title||testcase.name;label.textContent=testcase.entity_type==='module'?'设计专属对话':testcase.entity_type==='target'?'验证目标专属对话':testcase.entity_type==='bug'?'Bug 专属对话':'用例专属对话';for(const detail of top.querySelectorAll('.testcase-detail-pane'))detail.hidden=detail.dataset.entityId!==testcase.id;pane.classList.add('case-workspace-open');collapseChat(chatCollapsed);top.hidden=divider.hidden=context.hidden=false;
       if(changed||testcase.entity_type==='module')view=initialView||{tab:'overview'};publish();paintTabs();
     },

@@ -91,13 +91,12 @@
   api('').then(state=>{
     const pane=document.querySelector('.project-pane');
     if(state.current){
-      const name=document.createElement('button');name.type='button';name.className='project-identity';name.title=state.current.path;name.setAttribute('aria-label','切换项目：'+state.current.name);
+      const name=$('project-open');name.type='button';name.className='project-identity';name.title=state.current.path;name.setAttribute('aria-label','切换项目：'+state.current.name);
       const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');
       const shape=document.createElementNS('http://www.w3.org/2000/svg','path');shape.setAttribute('d','M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z');icon.append(shape);
       const label=document.createElement('span');label.textContent=state.current.name;
       const chevron=document.createElement('span');chevron.className='project-identity-chevron';chevron.setAttribute('aria-hidden','true');
-      name.append(icon,label,chevron);name.onclick=()=>$('project-open').click();
-      const heading=$('project-heading'),header=document.querySelector('.project-header');heading.classList.remove('project-section-heading');header.append(heading,name);
+      name.replaceChildren(icon,label,chevron);
       $('project-open').title='项目：'+state.current.name+'\n'+state.current.path;
       $('project-open').setAttribute('aria-label','切换项目：'+state.current.name);
     }else{

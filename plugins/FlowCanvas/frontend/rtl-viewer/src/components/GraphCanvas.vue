@@ -99,7 +99,7 @@ import {
 import { applyOverlays } from '../overlays/index.js'
 import { coverageLiveOverlay } from '../overlays/coverage_live.js'
 import { registerSvgProvider, unregisterSvgProvider } from '../capture.js'
-import { FIT_SCALE_MAX } from '../layout/constants.js'
+import { FIT_SCALE_MAX, FIT_PADDING_PX } from '../layout/constants.js'
 import { token, themeVersion } from '../theme.js'
 import NodeBadge from './NodeBadge.vue'
 
@@ -1035,9 +1035,10 @@ function fitToWindow() {
   }
   // Capped: see FIT_SCALE_MAX. An uncapped aspect-fit turns a two-node
   // scope into a billboard the moment the user descends.
+  const padding = Math.min(FIT_PADDING_PX, rect.width / 4, rect.height / 4)
   const scale = Math.min(
-    rect.width / bb.width,
-    rect.height / bb.height,
+    (rect.width - padding * 2) / bb.width,
+    (rect.height - padding * 2) / bb.height,
     FIT_SCALE_MAX,
   )
   transform.value = {

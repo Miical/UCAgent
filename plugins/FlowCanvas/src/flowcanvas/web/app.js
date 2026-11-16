@@ -84,6 +84,7 @@ function toggleProject(collapsed,animate=true){
   workspace.classList.toggle('project-collapsed',collapsed);
   document.querySelector('.project-pane').inert=collapsed;
   document.querySelector('.splitter[data-split="0"]').tabIndex=collapsed?-1:0;
+  const projectToggle=document.getElementById('project-sidebar-toggle');if(projectToggle){projectToggle.setAttribute('aria-expanded',String(!collapsed));projectToggle.title=projectToggle.ariaLabel=collapsed?'展开左侧栏':'收起左侧栏';}
   for(const button of document.querySelectorAll('[data-view]')){button.setAttribute('aria-expanded',String(!collapsed&&button.dataset.view===document.getElementById('project-heading').textContent));button.setAttribute('aria-controls','project-content');}
   try{localStorage.setItem('flowcanvas.projectCollapsed',String(collapsed));}catch{}
 }
