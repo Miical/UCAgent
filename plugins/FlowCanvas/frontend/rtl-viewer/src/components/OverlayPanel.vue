@@ -8,14 +8,12 @@
       </div>
       <div v-if="coverageRows.length" class="line-coverage-list tree-scroll">
         <div class="line-coverage-columns"><span>模块实例</span><span>含子模块</span><span>自身</span></div>
-        <div v-for="row in visibleCoverageRows" :key="row.path" class="tree-row coverage-tree-row" :data-instance="row.path" :style="{ paddingLeft: (10 + row.depth * 14) + 'px' }" :class="{ 'is-selected': row.path === store.selectedNode?.id, 'has-children': row.hasChildren, 'is-root': row.depth === 0 }" :role="row.hasChildren ? 'button' : undefined" :tabindex="row.hasChildren ? 0 : undefined" :aria-expanded="row.hasChildren ? !collapsedCoverage.has(row.path) : undefined" @mouseenter="loadSource(row).catch(()=>{})" @focusin="loadSource(row).catch(()=>{})" @click="scheduleToggle(row)" @dblclick.stop="openSource(row)" @keydown.enter.prevent="toggleCoverageRow(row)" @keydown.space.prevent="toggleCoverageRow(row)">
+        <div v-for="row in visibleCoverageRows" :key="row.path" class="tree-row coverage-tree-row" :data-instance="row.path" :style="{ paddingLeft: (10 + row.depth * 14) + 'px' }" :class="{ 'is-selected': row.path === store.selection, 'has-children': row.hasChildren, 'is-root': row.depth === 0 }" role="button" tabindex="0" :aria-pressed="row.path === store.selection" :aria-expanded="row.hasChildren ? !collapsedCoverage.has(row.path) : undefined" @click="openSource(row)" @dblclick.stop="openSource(row,undefined,true)" @keydown.enter.self.prevent="openSource(row)" @keydown.space.self.prevent="openSource(row)">
           <button v-if="row.hasChildren" type="button" class="tree-caret" :aria-label="(collapsedCoverage.has(row.path) ? '展开 ' : '折叠 ') + row.path" @click.stop="toggleCoverageRow(row)" @dblclick.stop><svg viewBox="0 0 16 16" aria-hidden="true" :class="{expanded: !collapsedCoverage.has(row.path)}"><path d="m5 3 6 5-6 5Z"/></svg></button>
           <span v-else class="tree-caret tree-caret-leaf" aria-hidden="true"></span>
           <span class="coverage-row-name">
             <span class="tree-inst" :title="row.path">{{ row.path.split('.').at(-1) }}</span>
-            <button type="button" class="coverage-source-link" :title="'查看 ' + row.module + ' 源码'" :aria-label="'查看 ' + row.module + ' 源码'" @click.stop="openSource(row)" @dblclick.stop @keydown.enter.stop @keydown.space.stop>{{ sourceLocations[row.path] || row.files?.[0]?.path?.split('/').at(-1) || row.module }}</button>
           </span>
-          <button class="tree-ai-explain" type="button" :aria-label="'AI 分析'+metricLabel+' '+row.module" :title="'AI 分析'+metricLabel" @mouseenter="analyzeCoverage(row,$event,'preview')" @mouseleave="analyzeCoverage(row,$event,'leave')" @click.stop="analyzeCoverage(row,$event,'pin')" @dblclick.stop @keydown.stop><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6M7 9h4M7 13h8M7 17h5"/><path class="design-ai-spark" d="m18 1 1.4 4.6L24 7l-4.6 1.4L18 13l-1.4-4.6L12 7l4.6-1.4Z"/></svg></button>
           <span class="coverage-tree-values">
             <span v-for="(metric,index) in [row.subtree,row]" :key="index" class="line-coverage-score" :title="(index ? '自身' : '含子模块') + '：' + metric.covered + '/' + metric.total + ' 覆盖点'">
               <span class="line-coverage-percent">{{ percentage(metric) }}</span><small>{{ metric.covered }}/{{ metric.total }}</small>
@@ -52,17 +50,6 @@ import { useViewerStore } from '../store.js'
 import { coverageMetricRows, coverageMetricDetails } from '../coverageMetricRows.js'
 const store = useViewerStore()
 const metric = new URLSearchParams(location.search).get('metric') || 'line'
-const metricLabel = ({line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率',assert:'断言'})[metric] || '覆盖率'
-/** Send cloneable coverage context to the shared host task card. */
-function analyzeCoverage(row,event,action){
-  const rect=event.currentTarget.getBoundingClientRect()
-  const node=store.nodesById.get(row.path)
-  const context={type:'flowcanvas-explain-design',kind:'line-coverage',action,instance:row.path,module:row.module,
-    metric,source:node?.source||null,coverage:{self:{covered:row.covered,total:row.total},subtree:row.subtree,
-      instances:coverageRows.value.filter(item=>item.path===row.path||item.path.startsWith(row.path+'.')),
-      report:'.flowcanvas/coverage'},rect:{left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}}
-  window.parent.postMessage(JSON.parse(JSON.stringify(context)),location.origin)
-}
 const projectCoverage = computed(()=>store.projectCoverageState)
 const coverageError = computed(()=>store.projectCoverageError)
 const coverageUrl = (() => {
@@ -119,10 +106,10 @@ function toggleCoverageRow(row) {
 }
 const sourceDialog=ref(null), sourcePre=ref(null), sourceLines=ref([]), sourceStart=ref(0),sourceEnd=ref(0),sourceError=ref(''),sourceTitle=ref('')
 const sourceMisses=ref(new Set()), sourcePartial=ref(new Set()), sourceHits=ref(new Set())
-const sourceLocations=ref({}), sourceCache=new Map()
+const sourceCache=new Map()
 const sourceFiles=ref([]),sourceFile=ref(''),sourceRow=ref(null)
-watch(()=>[projectCoverage.value?.build_id,projectCoverage.value?.updated],()=>{sourceCache.clear();sourceLocations.value={}})
-// Share the exact build-source lookup between hover labels and the source viewer.
+watch(()=>[projectCoverage.value?.build_id,projectCoverage.value?.updated],()=>{sourceCache.clear()})
+// Cache fingerprint-checked sources opened from coverage rows.
 async function loadSource(row,file=row.files?.[0]?.path){
   const key=(projectCoverage.value?.build_id||'')+':'+row.path+':'+metric+':'+file
   if(!sourceCache.has(key))sourceCache.set(key,(async()=>{
@@ -130,20 +117,20 @@ async function loadSource(row,file=row.files?.[0]?.path){
     if(!response.ok)throw Error(data.detail||'读取失败')
     return data
   })())
-  try{const data=await sourceCache.get(key);if(key===(projectCoverage.value?.build_id||'')+':'+row.path+':'+metric+':'+file)sourceLocations.value[row.path]=data.file.split('/').at(-1)+':'+data.line;return data}
+  try{return await sourceCache.get(key)}
   catch(error){sourceCache.delete(key);throw error}
 }
-let toggleTimer=null,sourceRequest=0
-function scheduleToggle(row){clearTimeout(toggleTimer);toggleTimer=setTimeout(()=>toggleCoverageRow(row),220)}
+let sourceRequest=0
 function closeOnBackdrop(event){if(event.target===sourceDialog.value)sourceDialog.value.close()}
-async function openSource(row,file=row.files?.[0]?.path){
+async function openSource(row,file=row.files?.[0]?.path,pin=false){
+  store.select(row.path)
   if(window.parent!==window){
-    clearTimeout(toggleTimer);const request=++sourceRequest
-    try{const data=await loadSource(row,file);if(request!==sourceRequest)return;window.parent.postMessage(JSON.parse(JSON.stringify({type:'flowcanvas-open-coverage-source',instance:row.path,metric,files:row.files||[],data})),location.origin)}catch(error){store.projectCoverageError=error.message}
+    const request=++sourceRequest
+    try{const data=await loadSource(row,file);if(request!==sourceRequest)return;window.parent.postMessage(JSON.parse(JSON.stringify({type:'flowcanvas-open-coverage-source',instance:row.path,metric,files:row.files||[],data,pin})),location.origin)}catch(error){store.projectCoverageError=error.message}
     return
   }
   sourceRow.value=row;sourceFiles.value=row.files||[];sourceFile.value=file
-  clearTimeout(toggleTimer);const request=++sourceRequest
+  const request=++sourceRequest
   sourceTitle.value=row.module+' · 构建源码';sourceError.value='正在读取…';sourceLines.value=[]
   if(!sourceDialog.value.open)sourceDialog.value.showModal()
   try{
@@ -155,7 +142,7 @@ async function openSource(row,file=row.files?.[0]?.path){
     await nextTick();const selected=sourcePre.value?.querySelector('.selected');if(selected)sourcePre.value.scrollTop=selected.offsetTop-sourcePre.value.offsetTop-40
   }catch(error){if(request===sourceRequest)sourceError.value=error.message}
 }
-onBeforeUnmount(() => { clearTimeout(toggleTimer); sourceRequest++ })
+onBeforeUnmount(() => { sourceRequest++ })
 
 </script>
 <style scoped>
@@ -200,12 +187,9 @@ onBeforeUnmount(() => { clearTimeout(toggleTimer); sourceRequest++ })
 .coverage-tree-row{box-sizing:border-box;min-height:32px;margin:0;border-radius:4px;gap:6px;padding-top:5px;padding-bottom:5px;outline:1px solid transparent;outline-offset:-1px}
 .coverage-tree-row:hover{background:color-mix(in srgb,var(--accent) 4%,var(--panel))}
 .coverage-tree-row.is-selected{background:color-mix(in srgb,var(--accent) 7%,var(--panel));outline:0}
+.coverage-tree-row.is-selected .tree-inst{color:var(--fg)}
 .coverage-row-name{display:flex;align-items:center;gap:8px;flex:1;min-width:0;overflow:hidden}
 .coverage-tree-row .tree-inst{font:500 12px/1.5 system-ui,sans-serif;flex:0 1 auto;min-width:0;max-width:none}
-.coverage-source-link{flex-shrink:0;border:0;background:none;padding:2px 0;color:var(--fg-muted);font:9px/1.5 system-ui,sans-serif;white-space:nowrap;opacity:0;pointer-events:none;cursor:pointer}
-.coverage-tree-row:hover .coverage-source-link,.coverage-tree-row:focus-within .coverage-source-link{opacity:.75;pointer-events:auto}
-.coverage-source-link:hover{opacity:1!important;color:var(--accent);text-decoration:underline;text-underline-offset:3px}
-@media(hover:none){.coverage-source-link{opacity:.75;pointer-events:auto}}
 .coverage-tree-row.is-root .tree-inst{font-weight:650}
 .coverage-tree-row .tree-module{display:none}
 .coverage-tree-row .tree-caret{width:12px;height:16px;display:grid;place-items:center}
@@ -231,15 +215,6 @@ onBeforeUnmount(() => { clearTimeout(toggleTimer); sourceRequest++ })
 /* Keep actions in their own reserved slot so the two metric columns stay aligned. */
 .coverage-tree-row{padding-right:4px}
 .coverage-row-name .tree-inst{flex:0 1 auto}
-.coverage-source-link{flex:0 1 auto;min-width:0;max-width:45%;overflow:hidden;text-overflow:ellipsis}
-.tree-ai-explain{display:grid;place-items:center;flex:0 0 20px;width:20px;height:20px;margin:0 2px;padding:0;border:0;border-radius:4px;background:transparent;color:var(--fg-muted);opacity:0;cursor:pointer;transition:opacity .15s}
-.tree-ai-explain svg{display:block;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;overflow:visible}
-.tree-ai-explain .design-ai-spark{fill:#9466e8;stroke:#6e83f4;stroke-width:.7;transform-box:fill-box;transform-origin:center;transition:transform .25s}
-.tree-row:hover .tree-ai-explain,.tree-row:focus-within .tree-ai-explain{opacity:1}
-.tree-ai-explain:hover{color:var(--accent)}
-.tree-ai-explain:hover .design-ai-spark{transform:rotate(10deg) scale(1.1)}
-@media(hover:none){.tree-ai-explain{opacity:1}}
-@media(prefers-reduced-motion:reduce){.tree-ai-explain,.tree-ai-explain .design-ai-spark{transition:none}}
 </style>
 
 <style scoped>

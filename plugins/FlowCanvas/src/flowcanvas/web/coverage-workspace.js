@@ -34,3 +34,52 @@ window.FlowCanvasCoverageCode={
     return {activate(){if(!started)refresh();},refresh,select(value){++generation;loading=false;started=true;revision='';render(value);},context(){return {coverage_metric:metric,...(selection?.data?.file?{coverage_file:selection.data.file}:{})};},dispose(){disposed=true;generation++;}};
   }
 };
+
+/** Open build-source tabs while sharing one conversation per coverage metric. */
+(()=>{
+  const inspectors=new Map(),names={line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率',assert:'断言'};
+  let project=null,selection=0;
+  const el=(tag,cls,text)=>{const node=document.createElement(tag);node.className=cls;if(text!==undefined)node.textContent=text;return node;};
+  /** Re-read persisted selections through the build snapshot and fingerprint checks. */
+  async function open(node,value=null,pin=false){
+    if(!project||!names[node.coverage_metric]||!node.instance)return;
+    document.dispatchEvent(new CustomEvent('flowcanvas-coverage-selection',{detail:{project_id:project.id,metric:node.coverage_metric,instance:node.instance}}));
+    const epoch=++selection;let inspector=inspectors.get(node.id);
+    if(!inspector){
+      const host=el('section','testcase-detail-pane coverage-source-detail');host.dataset.entityId=node.id;host.ariaLabel='覆盖率源码';
+      const title=el('header','case-detail-title');title.append(el('strong','',node.title),el('code','',node.instance));
+      const tabs=el('nav','case-detail-tabs');tabs.setAttribute('aria-label','覆盖率详情');const tab=el('button','','源码');tab.type='button';tab.setAttribute('aria-selected','true');tabs.append(tab);
+      const location=el('div','coverage-code-location'),body=el('div','case-detail-body');host.append(title,tabs,location,body);
+      inspector={host,location,body,generation:0};inspectors.set(node.id,inspector);window.FlowCanvasCaseWorkspace.mount(host);
+    }
+    const token=++inspector.generation;inspector.body.replaceChildren(el('p','case-detail-empty','正在读取源码…'));
+    window.FlowCanvasCaseWorkspace.open(project,node,{tab:'source',module_instance:node.instance,coverage_metric:node.coverage_metric,coverage_file:node.coverage_file});if(pin)window.FlowCanvasCaseWorkspace.pin(project.id,node.id);
+    try{
+      if(!value){
+        const query=new URLSearchParams({instance:node.instance,metric:node.coverage_metric,file:node.coverage_file||''});
+        const response=await fetch('/api/chat/projects/'+encodeURIComponent(project.id)+'/coverage/source?'+query),data=await response.json();
+        if(!response.ok)throw Error(data.detail||'无法读取构建源码');value={data};
+        // Coverage colors are refreshed from the current report rather than saved in browser state.
+        const coverageResponse=await fetch('/api/chat/projects/'+encodeURIComponent(project.id)+'/coverage');
+        if(coverageResponse.ok){const state=await coverageResponse.json(),{coverageMetricRows}=await import('/rtl-viewer/overview-structure.js');value.files=coverageMetricRows(state.report,node.coverage_metric,node.instance.split('.')[0]).find(row=>row.path===node.instance)?.files||[];}
+      }
+      if(epoch!==selection||token!==inspector.generation||!inspector.host.isConnected)return;
+      const source=value.data,record=value.files?.find(file=>file.path===source.file),hits=new Set(record?.covered_lines||[]),misses=new Set(record?.uncovered_lines||[]),partial=new Set(record?.partial_lines||[]);
+      inspector.location.textContent=source.file+' · 构建源码';
+      const pre=el('pre','case-detail-source coverage-code-source');pre.tabIndex=0;pre.ariaLabel='构建源码';
+      source.content.split('\n').forEach((text,index)=>{const number=index+1,state=partial.has(number)?'partial':misses.has(number)?'missed':hits.has(number)?'covered':'';const row=el('div',state);row.dataset.line=number;row.append(el('span','',String(number)),el('code','',text||' '));pre.append(row);});
+      inspector.body.replaceChildren(pre);
+      let scrollTimer;pre.onscroll=()=>{clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>{if(inspector.host.hidden||!pre.isConnected)return;const y=pre.getBoundingClientRect().top,row=[...pre.children].find(item=>item.getBoundingClientRect().bottom>y);if(row)document.dispatchEvent(new CustomEvent('flowcanvas-case-view',{detail:{case_id:node.id,view:{tab:'source',module_instance:node.instance,coverage_metric:node.coverage_metric,coverage_file:node.coverage_file,line:Number(row.dataset.line)}}}));},150);};
+      requestAnimationFrame(()=>{if(pre.isConnected){const row=pre.children[source.line-1];if(row)pre.scrollTop=Math.max(0,row.offsetTop-pre.offsetTop-40);}});
+    }catch(error){if(epoch===selection&&token===inspector.generation&&inspector.host.isConnected)inspector.body.replaceChildren(el('p','targets-error',error.message));}
+  }
+  window.addEventListener('message',event=>{
+    const frame=document.querySelector('.target-line-pane iframe'),value=event.data;
+    if(event.origin!==location.origin||event.source!==frame?.contentWindow||value?.type!=='flowcanvas-open-coverage-source'||!project||!names[value.metric]||typeof value.instance!=='string'||typeof value.data?.content!=='string')return;
+    const file=value.data.file||'',node={id:'cov_'+encodeURIComponent(value.metric+':'+value.instance+':'+file),entity_type:'coverage',title:names[value.metric]+' · '+value.instance.split('.').at(-1),instance:value.instance,coverage_metric:value.metric,coverage_file:file};
+    open(node,value,!!value.pin);
+  });
+  document.addEventListener('flowcanvas-case-restore',event=>{if(event.detail.project_id!==project?.id||! /^(cov_|coverage_)/.test(event.detail.case_id))return;const node=window.FlowCanvasCaseWorkspace.tab(project.id,event.detail.case_id);if(node)open(node);});
+  document.addEventListener('flowcanvas-case-tab-closed',event=>{if(event.detail.project_id!==project?.id)return;const inspector=inspectors.get(event.detail.case_id);if(inspector){inspector.generation++;inspector.host.remove();inspectors.delete(event.detail.case_id);}});
+  fetch('/api/chat/projects').then(response=>response.json()).then(state=>{project=state.current;if(project)window.FlowCanvasCaseWorkspace.ready(project,'coverage');}).catch(()=>{});
+})();

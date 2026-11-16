@@ -19,7 +19,7 @@
     if(!savedProject)return;
     try{localStorage.setItem('flowcanvas.workspaceTabs:'+savedProject,JSON.stringify({
       active:restoreKey||(current?current.project.id+':'+current.testcase.id:null),
-      tabs:[...opened.values()].filter(item=>item.project.id===savedProject).map(item=>({id:item.testcase.id,title:item.testcase.title||item.testcase.name,entity_type:item.testcase.entity_type||'case',instance:item.testcase.instance,preview:item.preview}))
+      tabs:[...opened.values()].filter(item=>item.project.id===savedProject).map(item=>({id:item.testcase.id,title:item.testcase.title||item.testcase.name,entity_type:item.testcase.entity_type||'case',instance:item.testcase.instance,coverage_metric:item.testcase.coverage_metric,coverage_file:item.testcase.coverage_file,preview:item.preview}))
     }));}catch{}
   }
   /** Hydrate once, then activate the saved page only after its detail handler is ready. */
@@ -29,8 +29,8 @@
       try{
         const saved=JSON.parse(localStorage.getItem('flowcanvas.workspaceTabs:'+project.id)||'null');
         for(const item of Array.isArray(saved?.tabs)?saved.tabs:[]){
-          if(typeof item?.id!=='string'||!['case','module','target','bug'].includes(item.entity_type))continue;
-          opened.set(project.id+':'+item.id,{project,testcase:{id:item.id,title:String(item.title||item.id),entity_type:item.entity_type,instance:item.instance},preview:!!item.preview});
+          if(typeof item?.id!=='string'||!['case','module','target','bug','coverage'].includes(item.entity_type))continue;
+          opened.set(project.id+':'+item.id,{project,testcase:{id:item.id,title:String(item.title||item.id),entity_type:item.entity_type,instance:item.instance,coverage_metric:item.coverage_metric,coverage_file:item.coverage_file},preview:!!item.preview});
         }
         restoreKey=typeof saved?.active==='string'&&opened.has(saved.active)?saved.active:null;
       }catch{}
@@ -67,20 +67,20 @@
   function collapseChat(value,persist=false){
     chatCollapsed=value;pane.classList.toggle('case-chat-collapsed',value);
     bottom.inert=value&&!!current;divider.tabIndex=value?-1:0;
-    toggle.title=(value?'展开':'收起')+(current?.testcase.entity_type==='module'?'设计对话':current?.testcase.entity_type==='target'?'目标对话':current?.testcase.entity_type==='bug'?'Bug 对话':'用例对话');toggle.setAttribute('aria-label',toggle.title);toggle.setAttribute('aria-expanded',String(!value));
+    toggle.title=(value?'展开':'收起')+(current?.testcase.entity_type==='module'?'设计对话':current?.testcase.entity_type==='target'?'目标对话':current?.testcase.entity_type==='coverage'?'覆盖率对话':current?.testcase.entity_type==='bug'?'Bug 对话':'用例对话');toggle.setAttribute('aria-label',toggle.title);toggle.setAttribute('aria-expanded',String(!value));
     if(persist)try{localStorage.setItem('flowcanvas.caseChatCollapsed',String(value));}catch{}
   }
   toggle.onclick=()=>{clearTimeout(motionTimer);pane.classList.add('case-chat-motion');collapseChat(!chatCollapsed,true);motionTimer=setTimeout(()=>pane.classList.remove('case-chat-motion'),500);};collapseChat(chatCollapsed);
 
-  try{const saved=Number(localStorage.getItem('flowcanvas.caseHorizontalRatio'));if(saved>=.2&&saved<=.8)ratio=saved;}catch{}
   /** Keep the two regions usable and remember only explicit resize preferences. */
-  function resize(value,persist=false){ratio=Math.max(.2,Math.min(.8,value));pane.style.setProperty('--case-view-width',(ratio*100)+'%');pane.style.setProperty('--case-view-track',(ratio*100)+'fr');pane.style.setProperty('--case-chat-track',((1-ratio)*100)+'fr');divider.setAttribute('aria-valuenow',String(Math.round(ratio*100)));if(persist)try{localStorage.setItem('flowcanvas.caseHorizontalRatio',String(ratio));}catch{}}
-  resize(ratio);divider.setAttribute('aria-valuemin','20');divider.setAttribute('aria-valuemax','80');
+  function resize(value,persist=false){const available=Math.max(1,pane.clientWidth-7),width=window.FlowCanvasSidebarLayout.resize(available*(1-value),persist);ratio=1-width/available;divider.setAttribute('aria-valuenow',String(Math.round(ratio*100)));}
+  divider.setAttribute('aria-valuemin','0');divider.setAttribute('aria-valuemax','100');
+  document.addEventListener('flowcanvas-sidebar-width',event=>{ratio=1-event.detail.width/Math.max(1,pane.clientWidth-7);divider.setAttribute('aria-valuenow',String(Math.round(ratio*100)));});
   divider.onpointerdown=event=>{if(event.button!==0)return;event.preventDefault();divider.setPointerCapture(event.pointerId);const y=event.clientX,start=top.getBoundingClientRect().width,height=pane.clientWidth;document.body.classList.add('case-resizing');divider.onpointermove=move=>resize((start+move.clientX-y)/height);const finish=()=>{divider.onpointermove=null;document.body.classList.remove('case-resizing');resize(ratio,true);};divider.onpointerup=finish;divider.onpointercancel=finish;divider.onlostpointercapture=finish;};
   divider.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();resize(event.key==='Home'?.2:event.key==='End'?.8:ratio+(event.key==='ArrowRight'?.03:-.03),true);};
   divider.ondblclick=()=>resize(.6,true);
   /** Publish a small selection snapshot; the server supplies authoritative source and run metadata. */
-  function publish(){if(!current)return;const label=({overview:'概览',source:'源码',runs:'运行记录',wave:'波形',coverage:'覆盖率'})[view.tab]||'概览';context.textContent='正在查看：'+(current.testcase.title||current.testcase.name)+' › '+label+(view.run_id?' › '+view.run_id.slice(0,8):'');document.dispatchEvent(new CustomEvent('flowcanvas-case-context',{detail:{...current,view:{...view}}}));}
+  function publish(activate=false){if(!current)return;const label=({overview:'概览',source:'源码',runs:'运行记录',wave:'波形',coverage:'覆盖率'})[view.tab]||'概览';context.textContent='正在查看：'+(current.testcase.title||current.testcase.name)+' › '+label+(view.run_id?' › '+view.run_id.slice(0,8):'');document.dispatchEvent(new CustomEvent('flowcanvas-case-context',{detail:{...current,activate,...(current.testcase.entity_type==='coverage'?{testcase:{...current.testcase,id:'coverage_'+current.testcase.coverage_metric,title:current.testcase.title.split(' · ')[0]}}:{}),view:{...view}}}));}
   /** Restore the ordinary chat without interrupting any running case conversation. */
   function leave(){restoreKey=null;if(!current){paintTabs();return;}current=null;view={};pane.classList.remove('case-workspace-open','case-chat-collapsed','case-chat-motion');bottom.inert=false;top.hidden=divider.hidden=context.hidden=true;document.dispatchEvent(new CustomEvent('flowcanvas-case-close'));paintTabs();}
   /** Update keyed editor tabs without replacing click targets during a double click. */
@@ -137,6 +137,8 @@
   document.addEventListener('flowcanvas-case-view',event=>{if(current?.testcase.id!==event.detail.case_id)return;view=event.detail.view;publish();});
   window.FlowCanvasCaseWorkspace={
     ready,
+    /** Read saved tab identity without treating its cached metadata as source evidence. */
+    tab(projectId,id){return opened.get(projectId+':'+id)?.testcase||(id.startsWith('coverage_')?[...opened.values()].find(item=>item.project.id===projectId&&item.testcase.entity_type==='coverage'&&item.testcase.coverage_metric===id.slice(9))?.testcase:undefined);},
     mount(detail){top.append(detail);},
     reconcile(project,cases,entity='case'){
       let changed=false;
@@ -159,8 +161,8 @@
       }
       const changed=current?.testcase.id!==testcase.id||current?.project.id!==project.id;
       restoreKey=null;current={project,testcase};opened.set(key,{project,testcase,preview:existing?existing.preview:true});
-      name.textContent=testcase.title||testcase.name;label.textContent=testcase.entity_type==='module'?'设计专属对话':testcase.entity_type==='target'?'验证目标专属对话':testcase.entity_type==='bug'?'Bug 专属对话':'用例专属对话';for(const detail of top.querySelectorAll('.testcase-detail-pane'))detail.hidden=detail.dataset.entityId!==testcase.id;pane.classList.add('case-workspace-open');collapseChat(chatCollapsed);top.hidden=divider.hidden=context.hidden=false;
-      if(changed||testcase.entity_type==='module')view=initialView||{tab:'overview'};publish();paintTabs();
+      name.textContent=testcase.title||testcase.name;label.textContent=testcase.entity_type==='module'?'设计专属对话':testcase.entity_type==='target'?'验证目标专属对话':testcase.entity_type==='bug'?'Bug 专属对话':testcase.entity_type==='coverage'?'覆盖率专属对话':'用例专属对话';for(const detail of top.querySelectorAll('.testcase-detail-pane'))detail.hidden=detail.dataset.entityId!==testcase.id;pane.classList.add('case-workspace-open');collapseChat(chatCollapsed);top.hidden=divider.hidden=context.hidden=false;
+      if(changed||testcase.entity_type==='module')view=initialView||{tab:'overview'};publish(true);ratio=1-window.FlowCanvasSidebarLayout.width/Math.max(1,pane.clientWidth-7);divider.setAttribute('aria-valuenow',String(Math.round(ratio*100)));paintTabs();
     },
     context(){return current?{...current,view:{...view}}:null;}
   };

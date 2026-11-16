@@ -94,7 +94,7 @@ useProjectCoverage(store)
 const coverageOnly = new URLSearchParams(location.search).get('coverageOnly') === '1'
 let requestedInstance = new URLSearchParams(location.search).get('focus')
 function focusCoverage() {
-  if(coverageOnly && store.graph?.nodes.some(n=>n.id===requestedInstance))store.select(requestedInstance)
+  if(coverageOnly && typeof requestedInstance==='string' && requestedInstance)store.select(requestedInstance)
 }
 function onCoverageMessage(event) {
   if(event.origin!==location.origin || event.source!==window.parent || event.data?.type!=='flowcanvas-coverage-focus')return

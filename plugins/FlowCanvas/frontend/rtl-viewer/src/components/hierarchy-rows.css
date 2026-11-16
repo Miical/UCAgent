@@ -28,7 +28,7 @@
   outline-offset: -1px;
 }
 .tree-row.is-selected {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
 }
 .tree-row.is-dimmed .tree-inst,
 .tree-row.is-dimmed .tree-module {
@@ -57,8 +57,8 @@
   text-overflow: ellipsis;
 }
 .tree-row.is-selected .tree-inst {
-  color: var(--accent);
-  font-weight: 600;
+  color: var(--fg);
+  font-weight: 500;
 }
 .tree-module {
   font-family: var(--font-mono);

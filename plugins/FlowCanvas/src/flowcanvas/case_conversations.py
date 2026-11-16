@@ -36,6 +36,11 @@ def case_record(service, project_id, case_id):
         return project,card
     project=next((p for p in service.projects.state['recent'] if p['id']==project_id),None)
     if not project:raise HTTPException(404,'Project not found')
+    if case_id.startswith('coverage_'):
+        metric=case_id.removeprefix('coverage_')
+        if metric not in {'line','toggle','branch','expr','cond','fsm','assert'}:
+            raise HTTPException(404,'Coverage metric not found')
+        return project,SimpleNamespace(id=case_id,title=metric+' coverage',name=metric,description='Project coverage metric '+metric,entity_type='coverage')
     if case_id.startswith('bug_'):
         from .bugs import Bugs
         bug=next((row for row in Bugs(project['path']).read().targets if row.id==case_id),None)
@@ -63,6 +68,20 @@ def view_snapshot(service, session, view):
         raise HTTPException(409,'Conversation belongs to another project')
     value=dict(project_id=project['id'],project_root=project['path'],case_id=card.id,
                title=card.title,name=card.name,description=card.description,view=view.model_dump(exclude_none=True))
+    if getattr(card,'entity_type','')=='coverage':
+        from .module_details import module_record
+        from .coverage_sources import source_snapshot
+        if view.tab not in {'source','coverage'} or view.coverage_metric!=card.name or not view.module_instance or view.binding_id or view.run_id or view.waveform:
+            raise HTTPException(422,'Coverage context must match the conversation metric and selected module')
+        _,selected,_=module_record(service,project['id'],instance=view.module_instance)
+        source=source_snapshot(project['path'],view.module_instance,card.name,view.coverage_file)
+        lines=source['content'].splitlines()
+        if view.line and view.line>len(lines) or view.end_line and (not view.line or view.end_line<view.line or view.end_line>len(lines)):
+            raise HTTPException(422,'Invalid coverage source selection range')
+        start=view.line or source['line'];end=view.end_line or (min(len(lines),start+120) if view.line else source['end_line'])
+        source['content']='\n'.join(lines[start-1:end])[:12000];source['selection_line']=start;source['selection_end_line']=end
+        value.update(entity_type='coverage',metric=card.name,instance=selected.instance,module=selected.name,source=source)
+        return value
     if getattr(card,'entity_type','')=='module':
         from .module_details import module_record
         if view.tab not in {'overview','source','coverage'} or view.binding_id or view.run_id or view.waveform:
@@ -131,6 +150,7 @@ def routes(service):
         candidates=[s for s in service.sessions.values() if s.get('case_binding')==binding
                     and (s.get('case_draft_id')==draft_id if draft_id else not s.get('archived'))]
         return max(candidates,key=lambda s:s.get('updated',0),default=None)
+    @router.get('/{project_id}/coverage/{case_id}/conversation')
     @router.get('/{project_id}/bugs/{case_id}/conversation')
     @router.get('/{project_id}/targets/{case_id}/conversation')
     @router.get('/{project_id}/modules/{case_id}/conversation')
@@ -139,6 +159,7 @@ def routes(service):
         """Opening a case must never create an empty conversation or launch a backend."""
         case_record(service,project_id,case_id)
         return dict(session=lookup(project_id,case_id))
+    @router.post('/{project_id}/coverage/{case_id}/conversation')
     @router.post('/{project_id}/bugs/{case_id}/conversation')
     @router.post('/{project_id}/targets/{case_id}/conversation')
     @router.post('/{project_id}/modules/{case_id}/conversation')

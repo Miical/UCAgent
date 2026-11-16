@@ -804,8 +804,8 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 .targets-tree .target-header{min-height:26px;border-radius:4px;margin:1px 0;outline:1px solid transparent;outline-offset:-1px}
 .targets-tree .target-header>.target-card-head{padding-top:3px;padding-bottom:3px;gap:6px}
 .targets-tree .target-header:hover{background:color-mix(in srgb,var(--accent) 6%,var(--surface))}
-.targets-tree .target-header.is-selected{background:color-mix(in srgb,var(--accent) 12%,var(--surface));outline:1px dashed color-mix(in srgb,var(--accent) 28%,var(--surface))}
-.targets-tree .target-header.is-selected .target-title{color:var(--accent);font-weight:600}
+.targets-tree .target-header.is-selected{background:color-mix(in srgb,var(--accent) 7%,var(--surface));outline:0;box-shadow:none}
+.targets-tree .target-header.is-selected .target-title{color:var(--text);font-weight:500}
 .targets-tree .target-header:focus-within{outline:1px dashed color-mix(in srgb,var(--accent) 45%,var(--surface))}
 .targets-tree .target-card-head:focus-visible{outline:0}
 .targets-tree .target-title{font-size:12px;line-height:1.5}
@@ -1870,7 +1870,7 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .case-overview-actions .ai-case-add:disabled .ai-colored-spark{transform:none}
 
 /* Match the main sidebar: persistent content-header toggle, full collapse and width easing. */
-.case-workspace-open{display:grid;grid-template-columns:minmax(0,var(--case-view-track,60fr)) 7px minmax(0,var(--case-chat-track,40fr));grid-template-rows:minmax(0,1fr)}
+.case-workspace-open{display:grid;grid-template-columns:minmax(0,1fr) 7px var(--shared-sidebar-width,320px);grid-template-rows:minmax(0,1fr)}
 .case-workspace-open>.case-view-area{width:auto;min-width:0}
 .case-workspace-open>.case-chat-bottom{min-width:0}
 .case-workspace-open .case-detail-title{padding-right:170px}
@@ -1940,7 +1940,7 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .testcase-workbench .target-header{min-height:34px;border-radius:4px;outline:0}
 .testcase-workbench .target-header:hover{background:color-mix(in srgb,var(--text) 4%,var(--surface))}
 .testcase-workbench .targets-tree .target-header.is-selected,
-.target-goal-pane .verification-title-list .verification-item>.target-header.is-selected{outline:0;border-radius:4px;box-shadow:inset 2px 0 var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--surface))}
+.target-goal-pane .verification-title-list .verification-item>.target-header.is-selected{outline:0;border-radius:4px;box-shadow:none;background:color-mix(in srgb,var(--accent) 7%,var(--surface))}
 .testcase-workbench .target-header>.target-card-head{padding:7px 9px}
 .testcase-workbench .target-header .target-title{font-size:12px;line-height:20px}
 .testcase-workbench .target-header.is-selected .target-title,
@@ -2150,13 +2150,13 @@ body:has(.workspace>.case-workspace-open) .workspace-tab-actions>#case-chat-togg
 /* All verification levels use plain rows, with indentation instead of card containers. */
 .target-goal-pane .targets-tree.verification-title-list{padding:6px 8px 16px}
 .verification-title-list .verification-item{margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
-.target-goal-pane .verification-title-list .verification-item>.target-header{display:grid;grid-template-columns:minmax(0,1fr);min-height:34px;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;outline:0;transition:background .15s}
-.target-goal-pane .verification-title-list .goal-row-heading>.target-card-head{flex:1;max-width:none;padding:7px 9px;gap:8px;background:transparent}
-.target-goal-pane .verification-title-list .target-header .target-title{font-size:12px;font-weight:500;line-height:20px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.target-goal-pane .verification-title-list .verification-group>.target-header .target-title{font-weight:600}
+.target-goal-pane .verification-title-list .verification-item>.target-header{display:grid;grid-template-columns:minmax(0,1fr);height:32px;min-height:32px;margin:0;border:0;border-radius:4px;background:transparent;box-shadow:none;outline:0;transition:background .15s}
+.target-goal-pane .verification-title-list .goal-row-heading>.target-card-head{flex:1;max-width:none;height:32px;padding:5px 9px;gap:6px;background:transparent;font:500 12px/18px system-ui,sans-serif}
+.target-goal-pane .verification-title-list .target-header .target-title{font:500 12px/18px system-ui,sans-serif;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.target-goal-pane .verification-title-list .verification-group>.target-header .target-title{font-weight:650}
 .verification-title-list .verification-children{margin:0;padding:0 0 0 18px;border:0;background:transparent}
-.target-goal-pane .verification-title-list .target-chevron{width:12px;height:18px;color:var(--text-dim)}
-.target-goal-pane .verification-title-list .target-chevron svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.5;transition:transform .15s}
+.target-goal-pane .verification-title-list .target-chevron{width:12px;height:16px;color:var(--text-dim)}
+.target-goal-pane .verification-title-list .target-chevron svg{width:10px;height:10px;fill:none;stroke:currentColor;stroke-width:1.5;transition:transform .15s}
 .target-goal-pane .verification-title-list .verification-item>.target-header:hover{background:color-mix(in srgb,var(--text) 4%,var(--surface))}
 @media(prefers-reduced-motion:reduce){.target-goal-pane .verification-title-list .target-header,.target-goal-pane .verification-title-list .target-chevron svg{transition:none}}
 .goal-detail-status{font-size:11px;color:var(--text-dim);margin:0 0 16px}
@@ -2195,10 +2195,29 @@ body:has(.workspace>.case-workspace-open) .workspace-tab-actions>#case-chat-togg
 .bug-list-item{display:flex;align-items:center;gap:2px;margin:0 0 2px;border-radius:4px;min-width:0}
 .bug-list-row{display:flex;flex:1;align-items:center;gap:8px;min-width:0;min-height:34px;padding:7px 9px;border:0;border-radius:4px;background:transparent;color:var(--text);font:500 12px/20px system-ui,sans-serif;text-align:left;cursor:pointer}
 .bug-list-item:hover{background:color-mix(in srgb,var(--text) 4%,var(--surface))}
-.bug-list-item:has([aria-selected="true"]){box-shadow:inset 2px 0 var(--accent);background:color-mix(in srgb,var(--accent) 7%,var(--surface))}
+.bug-list-item:has([aria-selected="true"]){box-shadow:none;background:color-mix(in srgb,var(--accent) 7%,var(--surface))}
 .bug-list-row:focus-visible{outline:1px solid var(--accent);outline-offset:-2px}
 .bug-list-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bug-demo-label{flex:none;padding:0 5px;border:1px dashed var(--border);border-radius:3px;color:var(--text-dim);font-size:9px;font-weight:400;line-height:17px}
 .bug-list-item .bug-row-edit{flex:0 0 24px;width:24px;height:24px;opacity:0;margin-right:5px;border:0;background:transparent}
 .bug-list-item:hover .bug-row-edit,.bug-list-item:focus-within .bug-row-edit{opacity:1}
 @media(hover:none){.bug-list-item .bug-row-edit{opacity:1}}
+
+/* Coverage source tabs use the shared dedicated-conversation sidebar. */
+.coverage-source-detail>.case-detail-body{display:flex;flex:1;flex-direction:column;min-height:0}
+.coverage-source-detail .case-detail-source{flex:1;min-height:0;max-height:none;margin:0}
+.coverage-source-detail .covered{--coverage-color:#239b68}
+.coverage-source-detail .partial{--coverage-color:#c38a13}
+.coverage-source-detail .missed{--coverage-color:#d94c55}
+
+/* Every conversation picker shows the same two ownership groups. */
+.session-history-group+.session-history-group{margin-top:8px;padding-top:6px;border-top:1px solid var(--border)}
+.session-history-heading{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 10px;background:var(--surface);color:var(--text-dim);font-size:10px;line-height:16px;font-weight:500}
+.session-history-heading>span:last-child{font-weight:400;font-variant-numeric:tabular-nums;opacity:.7}
+.session-history-group>.session-empty{margin:0;padding:8px 10px;font-size:11px}
+
+/* Lists share a quiet selected fill; source evidence and coverage marks retain their meaning. */
+.session-option[aria-pressed="true"],.subagent-choice.active{background:color-mix(in srgb,var(--accent) 7%,var(--surface));box-shadow:none;color:var(--text);font-weight:500}
+
+.target-goal-pane .verification-title-list .goal-coverage-percent{font:500 11px/1.4 system-ui,sans-serif}
+.target-goal-pane .verification-title-list .goal-coverage-count{font:400 9px/1.4 system-ui,sans-serif}

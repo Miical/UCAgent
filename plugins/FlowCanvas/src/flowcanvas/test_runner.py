@@ -237,38 +237,9 @@ def routes(projects,runner):
         return public(root(identity))
     @router.get('/{identity}/coverage/source')
     async def coverage_source(identity:str,instance:str,metric:str="line",file:str|None=None):
-        from .coverage_runtime import state
-        import hashlib
-        data=state(root(identity));report=data.get('report') or {}
-        if metric == "line":
-            row=next((n for n in report.get('instances',[]) if n['path']==instance),None)
-            if not row:raise HTTPException(404,'实例没有覆盖率源码')
-            files=row.get('files',[])
-            source=next((entry for entry in files if not file or entry["path"]==file),None)
-        else:
-            if metric not in {"toggle","branch","expr","cond","fsm","assert"}:
-                raise HTTPException(422,"Unknown coverage metric")
-            items=report.get("code_metrics",{}).get(metric,{}).get("dut",{}).get("items",[])
-            entry=next((item for item in items if (not item.get("hierarchy") or item["hierarchy"]==instance) and (not file or item["file"]==file)),None)
-            source={"path":entry["file"],"sha256":entry["sha256"]} if entry else None
-            row={"module":(entry or {}).get("module") or instance.split(".")[-1]}
-        if not source:raise HTTPException(404,'覆盖率报告没有此源码映射')
-        expected=source.get('sha256') or report.get('rtl_sha256','')
-        if not re.fullmatch('[0-9a-f]{64}',expected):raise HTTPException(422,'源码指纹缺失')
-        project=Path(root(identity)).resolve()
-        file=source['path']
-        candidate=(project/file).resolve()
-        if not candidate.is_relative_to(project):raise HTTPException(422,'源码路径不属于项目')
-        cache=project/'.flowcanvas/coverage/sources'/(expected+Path(file).suffix)
-        path=cache if cache.is_file() else candidate
-        if not path.is_file():raise HTTPException(404,'构建源码快照不可用，请配置覆盖率适配器保存源码')
-        raw=path.read_bytes()
-        if hashlib.sha256(raw).hexdigest()!=expected:raise HTTPException(422,'源码已变化，与构建指纹不符')
-        text=raw.decode()
-        match=re.search(r'\bmodule\s+'+re.escape(row['module'])+r'\b[\s\S]*?\bendmodule\b',text)
-        return dict(file=file,module=row['module'],content=text,
-                    line=text.count('\n',0,match.start())+1 if match else 1,
-                    end_line=text.count('\n',0,match.end())+1 if match else len(text.splitlines()))
+        """Serve the same verified build source used by coverage conversation context."""
+        from .coverage_sources import source_snapshot
+        return source_snapshot(root(identity),instance,metric,file)
     @router.post('/{identity}/coverage/reset')
     async def clear_coverage(identity:str):
         from .coverage_runtime import reset

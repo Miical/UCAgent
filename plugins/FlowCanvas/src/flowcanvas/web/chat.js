@@ -15,8 +15,6 @@ const caseSessions=new Map();
 try{for(const [key,value] of Object.entries(JSON.parse(localStorage.getItem('flowcanvas.case.sessions')||'{}')))caseSessions.set(key,value);}catch{}
 /** Keep the selected history local to its owning case or design tab. */
 function rememberCaseSession(binding,id){caseSessions.set(binding.project_id+':'+binding.case_id,id);try{localStorage.setItem('flowcanvas.case.sessions',JSON.stringify(Object.fromEntries(caseSessions)));}catch{}}
-/** Limit the history picker to the active conversation scope. */
-function inConversationScope(row){return caseContext?row.case_binding?.project_id===caseContext.project.id&&row.case_binding?.case_id===caseContext.testcase.id:!row.case_binding;}
 /** Unsaved case drafts must never share the ordinary new-conversation slot. */
 function draftKey(){return selected||(caseContext?'case:'+caseContext.project.id+':'+caseContext.testcase.id:'__new__');}
 const drafts=new Map();
@@ -533,35 +531,41 @@ async function list(){
   paintSessions();
   return rows;
 }
-/** Reuse model-menu rows for conversations, preserving opaque session identities. */
+/** Show the same grouped history list in every tab, preserving opaque session identities. */
 function paintSessions(){
   const query=$('session-search').value.trim().toLocaleLowerCase();
   $('session-options').replaceChildren();
-  const rows=sessionRows.filter(row=>inConversationScope(row)&&Boolean(row.archived)===showArchived&&(row.title||'新对话').toLocaleLowerCase().includes(query)).sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.updated-a.updated);
-  for(const row of rows){
-    const wrap=document.createElement('div');wrap.className='session-row';
-    const button=document.createElement('button');button.type='button';button.className='model-option session-option';
-    button.dataset.session=row.id;button.setAttribute('aria-pressed',String(row.id===selected));
-    const title=document.createElement('span');title.className='session-option-title';title.textContent=(row.pinned?'⌖ ':'')+(active.has(row.status)?'● ':'')+(row.title||'新对话');button.title=row.title||'新对话';
-    button.append(title);button.onclick=()=>{closePicker(true,'session');choose(row.id).catch(exc=>error(exc.message));};wrap.append(button);
-    const icons={delete:'M3 5h14M8 5V3h4v2M5 5l1 12h8l1-12M8 8v6M12 8v6',rename:'M12 4l4 4M4 16l4-1L17 6a2.1 2.1 0 0 0-3-3L5 12Z',pin:'M7 3h6M8 3v5l-3 4v1h10v-1l-3-4V3M10 13v5',archive:'M3 4h14v3H3ZM5 7v10h10V7M8 10h4',restore:'M7 6H3V2M3 6a7 7 0 1 1-1 7'};
-    for(const [label,action]of [['重命名','rename'],[row.pinned?'取消置顶':'置顶','pin'],[row.archived?'恢复对话':'归档对话','archive'],['删除对话','delete']]){
-      const control=document.createElement('button');control.type='button';control.className='session-row-action';control.ariaLabel=label;
-      const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 20 20');svg.setAttribute('aria-hidden','true');
-      const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',icons[action==='archive'&&row.archived?'restore':action]);svg.append(path);control.append(svg);
-      const showTip=()=>{const rect=control.getBoundingClientRect();tooltip.textContent=label;tooltip.hidden=false;tooltip.style.left=Math.max(50,Math.min(window.innerWidth-60,rect.left+rect.width/2))+'px';tooltip.style.top=(rect.bottom+6)+'px';};
-      control.onmouseenter=control.onfocus=showTip;control.onmouseleave=control.onblur=()=>tooltip.hidden=true;
-      control.disabled=(action==='delete'||action==='archive'&&!row.archived)&&active.has(row.status);
-      control.onclick=async()=>{
-        tooltip.hidden=true;
-        if(action==='rename'||action==='delete')await sessionDialog(row,action);
-        else if(action==='archive'&&!row.archived)await sessionDialog(row,'archive');
-        else await updateSession(row,action==='pin'?{pinned:!row.pinned}:{archived:false});
-      };wrap.append(control);
+  const rows=sessionRows.filter(row=>Boolean(row.archived)===showArchived&&(row.title||'新对话').toLocaleLowerCase().includes(query)).sort((a,b)=>Number(b.pinned)-Number(a.pinned)||b.updated-a.updated);
+  for(const [scoped,label] of [[false,'主对话'],[true,'专属对话']]){
+    const group=document.createElement('section');group.className='session-history-group';group.setAttribute('aria-label',label);
+    const items=rows.filter(row=>Boolean(row.case_binding)===scoped),heading=document.createElement('div');heading.className='session-history-heading';
+    const title=document.createElement('span');title.textContent=label;const count=document.createElement('span');count.textContent=String(items.length);heading.append(title,count);group.append(heading);
+    $('session-options').append(group);
+    for(const row of items){
+      const wrap=document.createElement('div');wrap.className='session-row';
+      const button=document.createElement('button');button.type='button';button.className='model-option session-option';
+      button.dataset.session=row.id;button.setAttribute('aria-pressed',String(row.id===selected));
+      const title=document.createElement('span');title.className='session-option-title';title.textContent=(row.pinned?'⌖ ':'')+(active.has(row.status)?'● ':'')+(row.title||'新对话');button.title=row.title||'新对话';
+      button.append(title);button.onclick=()=>{closePicker(true,'session');choose(row.id).catch(exc=>error(exc.message));};wrap.append(button);
+      const icons={delete:'M3 5h14M8 5V3h4v2M5 5l1 12h8l1-12M8 8v6M12 8v6',rename:'M12 4l4 4M4 16l4-1L17 6a2.1 2.1 0 0 0-3-3L5 12Z',pin:'M7 3h6M8 3v5l-3 4v1h10v-1l-3-4V3M10 13v5',archive:'M3 4h14v3H3ZM5 7v10h10V7M8 10h4',restore:'M7 6H3V2M3 6a7 7 0 1 1-1 7'};
+      for(const [label,action]of [['重命名','rename'],[row.pinned?'取消置顶':'置顶','pin'],[row.archived?'恢复对话':'归档对话','archive'],['删除对话','delete']]){
+        const control=document.createElement('button');control.type='button';control.className='session-row-action';control.ariaLabel=label;
+        const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 20 20');svg.setAttribute('aria-hidden','true');
+        const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',icons[action==='archive'&&row.archived?'restore':action]);svg.append(path);control.append(svg);
+        const showTip=()=>{const rect=control.getBoundingClientRect();tooltip.textContent=label;tooltip.hidden=false;tooltip.style.left=Math.max(50,Math.min(window.innerWidth-60,rect.left+rect.width/2))+'px';tooltip.style.top=(rect.bottom+6)+'px';};
+        control.onmouseenter=control.onfocus=showTip;control.onmouseleave=control.onblur=()=>tooltip.hidden=true;
+        control.disabled=(action==='delete'||action==='archive'&&!row.archived)&&active.has(row.status);
+        control.onclick=async()=>{
+          tooltip.hidden=true;
+          if(action==='rename'||action==='delete')await sessionDialog(row,action);
+          else if(action==='archive'&&!row.archived)await sessionDialog(row,'archive');
+          else await updateSession(row,action==='pin'?{pinned:!row.pinned}:{archived:false});
+        };wrap.append(control);
+      }
+      group.append(wrap);
     }
-    $('session-options').append(wrap);
+    if(!items.length){const empty=document.createElement('p');empty.className='session-empty';empty.textContent=query?'没有匹配的对话':scoped?'暂无专属对话':'暂无主对话';group.append(empty);}
   }
-  if(!rows.length){const empty=document.createElement('p');empty.className='session-empty';empty.textContent='没有匹配的对话';$('session-options').append(empty);}
 }
 /** Use a focused modal for renaming and confirmation, with Escape and explicit cancellation. */
 async function sessionDialog(row,action){
@@ -594,7 +598,7 @@ async function deleteSession(row){
     if(selected===row.id){++switchNumber;unsubscribe?.();unsubscribe=null;selected=null;session=null;$('message').value='';localStorage.removeItem('flowcanvas.session');}
     saveDraft();
     const rows=await list();
-    if(!selected){const next=rows.find(item=>!item.archived&&inConversationScope(item));if(next)await choose(next.id);else await create();}
+    if(!selected){const next=rows.find(item=>!item.archived);if(next)await choose(next.id);else await create();}
     return true;
   }catch(exc){error(exc.message);return false;}
 }
@@ -602,17 +606,9 @@ async function deleteSession(row){
 async function updateSession(row,changes){
   try{const data=await request('/sessions/'+row.id+'/settings',{title:row.title||'新对话',pinned:!!row.pinned,archived:!!row.archived,...changes});if(selected===row.id)render(data);await list();return true;}catch(exc){error(exc.message);return false;}
 }
-/** Detach the old SSE view, preserve its draft, then restore the new session. */
+/** Select shared history in the current pane without navigating away from its page tab. */
 async function choose(id,internal=false){
-  if(!internal){
-    const target=await request('/sessions/'+id);
-    if(target.case_binding){
-      rememberCaseSession(target.case_binding,id);
-      if(caseContext?.project.id===target.case_binding.project_id&&caseContext?.testcase.id===target.case_binding.case_id){await choose(id,true);return;}
-      document.dispatchEvent(new CustomEvent('flowcanvas-case-restore',{detail:target.case_binding}));return;
-    }
-    if(caseContext){ordinarySession=id;document.dispatchEvent(new CustomEvent('flowcanvas-case-ordinary'));await caseReady;return;}
-  }
+  if(!internal){++caseSwitch;caseSwitching=false;}
   const number=++switchNumber;
   saveDraft();saveQuote();
   document.dispatchEvent(new CustomEvent('flowcanvas-session',{detail:{id}}));
@@ -633,7 +629,7 @@ async function create(backend=backendChoice,changingBackend=false){
     const context=caseContext,wasBusy=busy;busy=true;controls();
     saveDraft();saveQuote();
     try{
-      const data=await request('/projects/'+encodeURIComponent(context.project.id)+(context.testcase.entity_type==='module'?'/modules/':context.testcase.entity_type==='target'?'/targets/':context.testcase.entity_type==='bug'?'/bugs/':'/testcases/')+encodeURIComponent(context.testcase.id)+'/conversation',{backend,draft_id:crypto.randomUUID().replaceAll('-','')});
+      const data=await request('/projects/'+encodeURIComponent(context.project.id)+(context.testcase.entity_type==='coverage'?'/coverage/':context.testcase.entity_type==='module'?'/modules/':context.testcase.entity_type==='target'?'/targets/':context.testcase.entity_type==='bug'?'/bugs/':'/testcases/')+encodeURIComponent(context.testcase.id)+'/conversation',{backend,draft_id:crypto.randomUUID().replaceAll('-','')});
       await list();await choose(data.id,true);await loadBackends();$('message').focus();
     }finally{busy=wasBusy;controls();}
     return;
@@ -654,7 +650,7 @@ async function ensureSession(){
   creatingSession=(async()=>{
     const draft=session,model=$('model').value,effort=$('effort').value,speed=speedMode,key=draftKey();
     saveDraft();saveQuote();
-    const data=await request(caseContext?'/projects/'+encodeURIComponent(caseContext.project.id)+(caseContext.testcase.entity_type==='module'?'/modules/':caseContext.testcase.entity_type==='target'?'/targets/':caseContext.testcase.entity_type==='bug'?'/bugs/':'/testcases/')+encodeURIComponent(caseContext.testcase.id)+'/conversation':'/sessions',{backend:backendChoice});
+    const data=await request(caseContext?'/projects/'+encodeURIComponent(caseContext.project.id)+(caseContext.testcase.entity_type==='coverage'?'/coverage/':caseContext.testcase.entity_type==='module'?'/modules/':caseContext.testcase.entity_type==='target'?'/targets/':caseContext.testcase.entity_type==='bug'?'/bugs/':'/testcases/')+encodeURIComponent(caseContext.testcase.id)+'/conversation':'/sessions',{backend:backendChoice});
     drafts.set(data.id,$('message').value);quotes.set(data.id,[...quoteDraft]);
     await choose(data.id,true);
     $('model').value=model;efforts(effort);speedMode=speed;updateSpeed();
@@ -668,7 +664,7 @@ async function ensureSession(){
 }
 /** Submit or interrupt exactly one turn; keep a draft when submission is rejected. */
 async function send(){
-  if(busy||caseSwitching)return;const viewAtSend=caseContext?{...caseContext.view}:null;busy=true;controls();error('');
+  if(busy||caseSwitching)return;const viewAtSend=caseContext&&session?.case_binding?.project_id===caseContext.project.id&&session?.case_binding?.case_id===caseContext.testcase.id?{...caseContext.view}:null;busy=true;controls();error('');
   try{
     if((active.has(session?.status)||session?.children_running>0)&&!$('message').value.trim()){render(await request('/sessions/'+session.id+'/stop',{}));}
     else{
@@ -736,7 +732,8 @@ async function loadWorkflowMenu(){
 /** Switch only the UI subscription; a previous case turn continues in its own session. */
 async function switchCase(context){
   const same=caseContext?.project.id===context.project.id&&caseContext?.testcase.id===context.testcase.id;
-  if(same){caseContext=context;return;}
+  const ownsSelected=session?.case_binding?.project_id===context.project.id&&session?.case_binding?.case_id===context.testcase.id;
+  if(same&&(!context.activate||ownsSelected)){caseContext=context;return;}
   if(busy){error('消息正在提交，请稍后切换用例');return;}
   const token=++caseSwitch;caseSwitching=true;
   saveDraft();saveQuote();if(!caseContext)ordinarySession=selected;
@@ -746,7 +743,7 @@ async function switchCase(context){
   controls();
   try{
     const remembered=caseSessions.get(context.project.id+':'+context.testcase.id),history=sessionRows.find(row=>row.id===remembered&&row.case_binding?.project_id===context.project.id&&row.case_binding?.case_id===context.testcase.id&&!row.archived);
-    const result=history?{session:history}:await request('/projects/'+encodeURIComponent(context.project.id)+(context.testcase.entity_type==='module'?'/modules/':context.testcase.entity_type==='target'?'/targets/':context.testcase.entity_type==='bug'?'/bugs/':'/testcases/')+encodeURIComponent(context.testcase.id)+'/conversation');
+    const result=history?{session:history}:await request('/projects/'+encodeURIComponent(context.project.id)+(context.testcase.entity_type==='coverage'?'/coverage/':context.testcase.entity_type==='module'?'/modules/':context.testcase.entity_type==='target'?'/targets/':context.testcase.entity_type==='bug'?'/bugs/':'/testcases/')+encodeURIComponent(context.testcase.id)+'/conversation');
     if(token!==caseSwitch)return;
     if(result.session){await choose(result.session.id,true);}
     else{
@@ -769,8 +766,8 @@ document.addEventListener('flowcanvas-case-close',()=>{
 /** Load sessions independently of backend readiness so offline history remains readable. */
 async function init(){
   try{
-    const rows=await list();const saved=localStorage.getItem('flowcanvas.session');
-    const visible=rows.filter(row=>!row.archived&&!row.case_binding);if(saved==='__new__')await create();else if(visible.length)await choose(visible.some(r=>r.id===saved)?saved:visible[0].id);else await create();
+    const rows=await list();if(caseContext)return;const saved=localStorage.getItem('flowcanvas.session');
+    const visible=rows.filter(row=>!row.archived);if(saved==='__new__')await create();else if(visible.length)await choose((visible.find(row=>row.id===saved)||visible.find(row=>!row.case_binding)||visible[0]).id);else await create();
   }catch(exc){error(exc.message);$('connection').textContent='连接失败 · 刷新页面重试';}
 }
 /** Append selected context without discarding an unfinished draft. */
