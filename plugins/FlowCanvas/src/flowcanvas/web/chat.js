@@ -469,7 +469,7 @@ function render(data){
   }
   seenAITestRuns.set(data.id,aiRun?.run?.id||null);
   const changedBackend=session?.backend!==data.backend;
-  session=data;if(changedBackend)selectBackendModels(data.backend);document.dispatchEvent(new CustomEvent('flowcanvas-session',{detail:{id:data.id}}));view.render(data);controls();error(data.error);paintQueue();paintAttachments();paintWorkflowRun();
+  session=data;if(changedBackend)selectBackendModels(data.backend);document.dispatchEvent(new CustomEvent('flowcanvas-session',{detail:{id:data.id}}));view.render({...data,page_context:caseContext&&data.case_binding?.project_id===caseContext.project.id&&data.case_binding?.case_id===caseContext.testcase.id?caseContext:null});controls();error(data.error);paintQueue();paintAttachments();paintWorkflowRun();
   const option=[...$('sessions').options].find(o=>o.value===data.id);
   if(option)option.textContent=data.title||'新对话';
   $('session-label').textContent=data.title||'新对话';

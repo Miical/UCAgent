@@ -720,7 +720,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         const b=button(label,()=>selectCoverageTab(mode));b.dataset.mode=mode;b.setAttribute('role','tab');tabBar.append(b);
       }
       functionalPane=el('div','target-goal-pane');functionalPane.append(...content);
-      linePane=el('div','target-line-pane');lineFrame=el('iframe');lineFrame.title='行覆盖率明细';lineFrame.onload=()=>{const current=window.FlowCanvasCaseWorkspace.context();if(current?.testcase.entity_type==='coverage'&&current.testcase.coverage_metric===coverageTab)lineFrame.contentWindow.postMessage({type:'flowcanvas-coverage-focus',instance:current.testcase.instance},location.origin);};linePane.append(lineFrame);
+      linePane=el('div','target-line-pane');lineFrame=el('iframe');lineFrame.title='行覆盖率明细';linePane.append(lineFrame);
       functionalPane.setAttribute('role','tabpanel');linePane.setAttribute('role','tabpanel');
       tabBar.addEventListener('keydown',event=>{
         if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
@@ -734,7 +734,6 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       renderCoverageSummary();
       try{coverageTab=localStorage.getItem('fc-target-coverage-tab:'+project.id)||'functional';}catch{}
       selectCoverageTab(coverageTab);
-      document.addEventListener('flowcanvas-coverage-selection',event=>{if(event.detail.project_id===project.id)selectCoverageTab(event.detail.metric,event.detail.instance);});
       window.addEventListener('message',event=>{
         if(event.origin!==location.origin||event.data?.type!=='flowcanvas-open-coverage')return;
         const viewer=document.querySelector('.rtl-view-panel iframe');
@@ -768,7 +767,6 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       });
       document.addEventListener('flowcanvas-case-restore',async event=>{
         if(event.detail.project_id!==project.id||!event.detail.case_id.startsWith('tc_'))return;
-        if(document.getElementById('project-heading').textContent!=='测试用例')document.querySelector('[data-view="测试用例"]').click();
         if(!data)await refresh();
         const node=data?.targets.find(item=>item.id===event.detail.case_id);if(!node)return;
         selectedTarget=node.id;caseDetail.select(node,data.reports[node.id]);

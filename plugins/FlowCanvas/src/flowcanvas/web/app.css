@@ -1779,7 +1779,6 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .case-horizontal-divider{height:7px;flex:none;cursor:row-resize;touch-action:none;background:var(--surface2);border-block:2px solid var(--surface)}
 .case-horizontal-divider:hover,.case-horizontal-divider:focus-visible{background:var(--text-dim);outline:none}
 .case-workspace-open>.case-chat-bottom{flex:1;min-height:0}
-.case-workspace-open .composer{margin-top:4px;margin-bottom:10px}
 .case-view-context{font-size:10px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0 0 6px}
 .case-resizing{cursor:row-resize;user-select:none}
 .case-send-pending .testcase-list-pane .target-card-head,.case-send-pending .case-workspace-close{pointer-events:none}
@@ -1793,19 +1792,25 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .case-workspace-open #detail-toggle{display:none}
 
 /* Case conversations begin quietly, without the ordinary home-page welcome. */
-.case-chat-empty{display:flex;align-items:center;justify-content:center;min-height:100%;padding:18px;color:var(--text-dim);font-size:12px;font-weight:400}
+.case-chat-empty{display:flex;align-items:center;justify-content:center;flex-direction:column;min-height:100%;max-width:320px;margin:auto;padding:28px 14px;text-align:center;color:var(--text);font-size:12px;font-weight:400}
+.case-chat-empty-mark{display:grid;place-items:center;width:38px;height:38px;margin-bottom:16px;border-radius:12px;background:color-mix(in srgb,var(--accent) 6%,var(--surface));color:var(--text-dim)}
+.case-chat-empty-mark svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.case-chat-empty h3{margin:0 0 7px;font-size:15px;line-height:1.5;font-weight:600;letter-spacing:-.2px}
+.case-chat-empty-description{margin:0;color:var(--text-dim);font-size:11px;line-height:1.8}
+.case-chat-empty-prompts{display:flex;flex-wrap:wrap;justify-content:center;gap:7px;margin-top:20px}
+.case-chat-empty-prompts button{padding:6px 9px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text-dim);font-size:10px;line-height:16px;transition:background .15s,color .15s}
+.case-chat-empty-prompts button:hover{background:color-mix(in srgb,var(--accent) 5%,var(--surface));color:var(--text)}
+.case-chat-empty-context{display:flex;align-items:flex-start;justify-content:center;gap:6px;max-width:270px;margin:20px 0 0;padding:6px 9px;border-radius:6px;background:color-mix(in srgb,var(--text) 2%,var(--surface));color:var(--text-dim);font-size:10px;font-style:italic;line-height:1.8;letter-spacing:.25px}
+.case-chat-context-copy strong{font-size:inherit;font-weight:400;color:inherit}
+.case-chat-context-copy>span{font-weight:400}
+.case-chat-empty-context svg{flex:none;width:13px;height:13px;margin-top:2px;fill:none;stroke:currentColor;stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
 /* Case details and their conversation share one embedded horizontal workspace. */
 .case-workspace-open{display:flex;flex-direction:row;padding:10px;gap:0;background:var(--project-background,var(--surface2))}
 .case-workspace-open>.case-view-area{height:auto;width:var(--case-view-width,60%);min-width:240px;border:1px solid var(--border);border-radius:10px 0 0 10px;background:var(--surface)}
 .case-workspace-open>.case-horizontal-divider{height:auto;width:7px;flex:0 0 7px;cursor:col-resize;border:0;border-inline:2px solid var(--surface);background:var(--border)}
 .case-workspace-open>.case-chat-bottom{position:relative;flex:1;min-width:260px;border:1px solid var(--border);border-radius:0 10px 10px 0;background:var(--surface)}
-.case-conversation-identity{display:none}
-.case-workspace-open .case-conversation-identity{display:flex;flex-direction:column;gap:4px;padding:14px 16px 10px;border-bottom:1px solid var(--border);background:var(--surface2);flex:none}
-.case-conversation-identity strong{font-size:12px;font-weight:600}
-.case-conversation-identity span{font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .case-workspace-open .case-chat-bottom>.conversation-header{min-height:34px;padding:0 14px;border:0}
 .case-workspace-open .session-trigger{font-size:11px;font-weight:400;padding:4px 6px;margin:0}
-.case-workspace-open .case-chat-bottom>.composer{width:calc(100% - 24px);align-self:center;margin:6px 12px 12px;padding:10px 12px 8px;border-radius:14px;box-shadow:none}
 .case-workspace-open .composer>#message{min-height:36px;font-size:13px;line-height:1.5}
 .case-workspace-open .composer-footer{margin-top:5px;gap:4px}
 .case-workspace-open .conversation{padding:14px 16px}
@@ -1818,7 +1823,6 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .case-workspace-open>.case-horizontal-divider{background:transparent;border:0}
 .case-workspace-open>.case-horizontal-divider:hover,.case-workspace-open>.case-horizontal-divider:focus-visible{background:var(--border)}
 .case-workspace-open>.case-chat-bottom{margin:12px 12px 12px 0;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:0 2px 10px #00000005}
-.case-workspace-open .case-conversation-identity{background:var(--surface2)}
 
 /* Evidence stays in the continuous timeline, alongside the claim it supports. */
 .case-story-head{flex-wrap:wrap}
@@ -2005,12 +2009,8 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .case-wave-point .case-wave-point-values{margin-top:10px;font-size:11px;line-height:1.75}
 
 .case-workspace-open>.case-chat-bottom{margin:12px 12px 12px 0;border-radius:8px;box-shadow:none}
-.case-workspace-open .case-conversation-identity{gap:4px;padding:13px 16px 12px;background:var(--surface);border-bottom:1px solid var(--border)}
-.case-workspace-open .case-conversation-identity strong{font-size:11px;color:var(--text-dim);font-weight:500}
-.case-workspace-open .case-conversation-identity span{font-size:12px;line-height:1.6;color:var(--text)}
 .case-workspace-open .case-chat-bottom>.conversation-header{min-height:36px;padding:0 12px}
 .case-workspace-open .conversation{padding:16px}
-.case-workspace-open .case-chat-bottom>.composer{margin:8px 12px 12px;border-radius:10px}
 .case-detail-body,.case-detail-source,.case-detail-log,.testcase-list-pane>.targets-tree,.case-workspace-tab-scroll{scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 @media(max-width:1100px){
   .case-workspace-open .case-detail-title{padding-left:16px}
@@ -2054,10 +2054,10 @@ body>.workspace{grid-column:2;grid-row:2;min-height:0;grid-template-rows:minmax(
 .workspace-tab-actions>.detail-toggle{position:static;display:grid;place-items:center;flex:none;width:28px;height:28px;margin:0;color:var(--text-dim)}
 .workspace-tab-actions>.detail-toggle:hover{background:color-mix(in srgb,var(--text) 6%,var(--workspace-rail));color:var(--text)}
 /* Right-sidebar navigation appears in the top rail only while its pane is visible. */
-body:has(.workspace:not(.detail-collapsed)) .workspace-tab-actions{width:max(28px,calc(var(--workspace-sidebar-width,190px) - 8px));justify-content:space-between}
+body:has(.workspace:not(.detail-collapsed)) .workspace-tab-actions,body:has(.workspace>.case-workspace-open:not(.case-chat-collapsed)) .workspace-tab-actions{width:max(28px,calc(var(--workspace-sidebar-width,190px) - 8px));justify-content:space-between}
 .workspace-tab-actions>.detail-page-tabs{display:flex;align-items:center;justify-content:flex-start;flex:1;min-width:0;gap:6px;width:auto;margin:0 8px 0 0;padding:0;border:0}
 /* Center the 1px mark over the middle of the 7px sidebar resize gutter. */
-.workspace-tab-actions>.detail-page-tabs::before{content:"";flex:none;width:1px;height:var(--workspace-separator-height);margin-right:-3px;transform:translateX(-4px);background:var(--workspace-short-divider,var(--border))}
+.workspace-tab-actions>.detail-page-tabs::before,.workspace-dedicated-label::before{content:"";flex:none;width:1px;height:var(--workspace-separator-height);margin-right:-3px;transform:translateX(-4px);background:var(--workspace-short-divider,var(--border))}
 .workspace-tab-actions>.detail-page-tabs>button{height:24px;padding:0 7px;border:0;border-radius:5px;background:transparent;font-size:10px;line-height:24px;color:var(--text-dim)}
 .workspace-tab-actions>.detail-page-tabs>button:hover{background:color-mix(in srgb,var(--text) 5%,var(--workspace-rail));color:var(--text)}
 .workspace-tab-actions>.detail-page-tabs>button.active{background:var(--surface);color:var(--text);font-weight:500}
@@ -2082,9 +2082,6 @@ body:has(.workspace>.case-workspace-open) .workspace-tab-actions>#case-chat-togg
 .case-workspace-open>.case-horizontal-divider{box-sizing:border-box;width:7px;border-inline:3px solid var(--surface);background:var(--border);background-clip:padding-box;overflow:hidden}
 .case-workspace-open>.case-horizontal-divider:hover{background:var(--border)}
 .case-workspace-open>.case-horizontal-divider:focus-visible{background:var(--text-dim)}
-.case-workspace-open .case-conversation-identity{box-sizing:border-box;min-height:49px;gap:3px;padding:12px 18px;background:var(--surface);border-bottom:1px solid var(--border)}
-.case-workspace-open .case-conversation-identity strong{font-size:12px;font-weight:600;color:var(--text)}
-.case-workspace-open .case-conversation-identity span{font-size:11px;color:var(--text-dim)}
 .case-workspace-open .case-chat-bottom>.conversation-header{padding-inline:12px}
 .case-workspace-open.case-chat-collapsed>.case-chat-bottom{margin:0}
 .case-workspace-open.case-chat-collapsed>.case-horizontal-divider{width:0;border-inline-width:0}
@@ -2221,3 +2218,13 @@ body:has(.workspace>.case-workspace-open) .workspace-tab-actions>#case-chat-togg
 
 .target-goal-pane .verification-title-list .goal-coverage-percent{font:500 11px/1.4 system-ui,sans-serif}
 .target-goal-pane .verification-title-list .goal-coverage-count{font:400 9px/1.4 system-ui,sans-serif}
+
+
+/* Dedicated conversations identify their page in the same rail slot as main-sidebar navigation. */
+.workspace-dedicated-label{display:none;align-items:center;flex:1;min-width:0;gap:6px;margin-right:8px}
+body:has(.workspace>.case-workspace-open:not(.case-chat-collapsed)) .workspace-dedicated-label{display:flex}
+.workspace-dedicated-chip{display:flex;align-items:center;gap:5px;flex:0 1 auto;min-width:0;max-width:100%;height:24px;padding:0 7px;border-radius:5px;background:var(--surface);font-size:10px;line-height:16px;color:var(--text)}
+.workspace-dedicated-chip>svg{flex:none;width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;color:var(--text-dim)}
+.workspace-dedicated-title{flex:none;font-weight:500}
+.workspace-dedicated-dot{flex:none;color:var(--text-dim)}
+.workspace-dedicated-name{min-width:0;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-dim)}

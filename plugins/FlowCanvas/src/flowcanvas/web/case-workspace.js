@@ -7,8 +7,6 @@
   divider.setAttribute('role','separator');divider.ariaLabel='调整用例详情与专属对话宽度';divider.setAttribute('aria-orientation','vertical');
   const context=document.createElement('div');context.className='case-view-context';context.hidden=true;context.setAttribute('role','status');
   bottom.querySelector('.composer').prepend(context);pane.append(top,divider,bottom);
-  const identity=document.createElement('div');identity.className='case-conversation-identity';
-  const label=document.createElement('strong');label.textContent='用例专属对话';const name=document.createElement('span');identity.append(label,name);bottom.prepend(identity);
   const toggle=document.getElementById('detail-toggle').cloneNode(true);toggle.id='case-chat-toggle';toggle.classList.add('case-chat-toggle');
   bottom.id='case-dedicated-chat';toggle.setAttribute('aria-controls',bottom.id);
   let current=null,view={},ratio=.6,chatCollapsed=false,motionTimer;
@@ -44,8 +42,11 @@
   const tabs=document.createElement('nav');tabs.className='case-workspace-tabs';tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','工作区标签页');
   const tabActions=document.createElement('div');tabActions.className='workspace-tab-actions';tabActions.setAttribute('role','group');tabActions.setAttribute('aria-label','侧边栏控制');
   const sidebarNav=document.querySelector('.detail-page-tabs'),sidebarHeader=sidebarNav.closest('header');
+  const dedicated=document.createElement('div');dedicated.className='workspace-dedicated-label';dedicated.setAttribute('role','status');
+  const dedicatedChip=document.createElement('span');dedicatedChip.className='workspace-dedicated-chip';dedicatedChip.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="7" cy="6" r="2.5"/><path d="M2.5 16v-1.5a4.5 4.5 0 0 1 9 0V16M12 6h4v4"/><circle cx="16" cy="13" r="2"/></svg><span class="workspace-dedicated-title">专属对话</span><span class="workspace-dedicated-dot" aria-hidden="true">·</span>';
+  const dedicatedName=document.createElement('span');dedicatedName.className='workspace-dedicated-name';dedicatedChip.append(dedicatedName);dedicated.append(dedicatedChip);
   const projectSwitch=document.createElement('div');projectSwitch.className='workspace-project-switch';projectSwitch.append(document.getElementById('project-open'));
-  tabActions.append(sidebarNav,document.getElementById('detail-toggle'),toggle);sidebarHeader.remove();tabs.append(tabActions);
+  tabActions.append(sidebarNav,dedicated,document.getElementById('detail-toggle'),toggle);sidebarHeader.remove();tabs.append(tabActions);
   const tabBoundary=document.createElement('span');tabBoundary.className='workspace-tab-boundary';tabBoundary.setAttribute('aria-hidden','true');tabs.append(tabBoundary);
   document.body.prepend(tabs);
   /** Align the first tab with the content boundary as the project pane resizes or collapses. */
@@ -55,11 +56,11 @@
     const offset=dividerRect.left+dividerRect.width/2-tabs.getBoundingClientRect().left+8;
     tabs.style.setProperty('--workspace-tabs-start',Math.max(54,offset)+'px');
     const brand=tabs.querySelector('.workspace-brand');if(brand)tabs.style.setProperty('--workspace-tab-boundary-left',(brand.getBoundingClientRect().right-tabs.getBoundingClientRect().left-8.5)+'px');
-    tabs.style.setProperty('--workspace-sidebar-width',document.querySelector('.detail-pane').getBoundingClientRect().width+'px');
+    tabs.style.setProperty('--workspace-sidebar-width',(current?bottom:document.querySelector('.detail-pane')).getBoundingClientRect().width+'px');
   }
   if(window.ResizeObserver){
     const observer=new ResizeObserver(alignTabStart);
-    observer.observe(document.querySelector('.project-pane'));observer.observe(pane);observer.observe(document.querySelector('.detail-pane'));
+    observer.observe(document.querySelector('.project-pane'));observer.observe(pane);observer.observe(document.querySelector('.detail-pane'));observer.observe(bottom);
   }else window.addEventListener('resize',alignTabStart);
   alignTabStart();
   try{chatCollapsed=localStorage.getItem('flowcanvas.caseChatCollapsed')==='true';}catch{}
@@ -161,7 +162,7 @@
       }
       const changed=current?.testcase.id!==testcase.id||current?.project.id!==project.id;
       restoreKey=null;current={project,testcase};opened.set(key,{project,testcase,preview:existing?existing.preview:true});
-      name.textContent=testcase.title||testcase.name;label.textContent=testcase.entity_type==='module'?'设计专属对话':testcase.entity_type==='target'?'验证目标专属对话':testcase.entity_type==='bug'?'Bug 专属对话':testcase.entity_type==='coverage'?'覆盖率专属对话':'用例专属对话';for(const detail of top.querySelectorAll('.testcase-detail-pane'))detail.hidden=detail.dataset.entityId!==testcase.id;pane.classList.add('case-workspace-open');collapseChat(chatCollapsed);top.hidden=divider.hidden=context.hidden=false;
+      dedicatedName.textContent=testcase.entity_type==='coverage'?testcase.title.split(' · ')[0]:testcase.title||testcase.name;dedicated.title='专属对话 · '+dedicatedName.textContent;for(const detail of top.querySelectorAll('.testcase-detail-pane'))detail.hidden=detail.dataset.entityId!==testcase.id;pane.classList.add('case-workspace-open');collapseChat(chatCollapsed);top.hidden=divider.hidden=context.hidden=false;
       if(changed||testcase.entity_type==='module')view=initialView||{tab:'overview'};publish(true);ratio=1-window.FlowCanvasSidebarLayout.width/Math.max(1,pane.clientWidth-7);divider.setAttribute('aria-valuenow',String(Math.round(ratio*100)));paintTabs();
     },
     context(){return current?{...current,view:{...view}}:null;}

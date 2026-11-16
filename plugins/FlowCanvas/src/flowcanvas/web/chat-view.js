@@ -121,13 +121,23 @@ export class ConversationView {
     }
     if(!session.items.length){
       const caseEmpty=!!session.case_binding;
-      const previous=this.root.querySelector('.chat-welcome,.case-chat-empty');
-      if(previous&&previous.classList.contains('case-chat-empty')!==caseEmpty)previous.remove();
+      const welcomeKey=JSON.stringify([caseEmpty,session.page_context?.testcase.entity_type||'',!!session.page_context]),previous=this.root.querySelector('.chat-welcome,.case-chat-empty');
+      if(previous&&previous.dataset.welcomeKey!==welcomeKey)previous.remove();
       if(!this.root.childNodes.length){
         if(session.case_binding){
-          const welcome=element('div','case-chat-empty','想了解这个用例的什么？');this.root.append(welcome);return;
+          const welcome=element('div','case-chat-empty');welcome.dataset.welcomeKey=welcomeKey;
+          const kind=session.page_context?.testcase.entity_type||'case',scoped=!!session.page_context;
+          const copy=({case:['一起看懂这个用例','理解验证目的、执行过程与关键检查。','这个用例主要验证什么？','关键检查是如何实现的？'],module:['一起看懂这个模块','从模块职责，深入到结构与源码。','这个模块负责什么？','关键结构之间如何协作？'],coverage:['一起理解覆盖率','结合源码，理解覆盖情况与验证缺口。','这部分覆盖率说明了什么？','哪些场景可能还没有覆盖？'],target:['一起理清验证目标','理解要检查的行为、触发条件与预期结果。','这个目标要检查什么？','如何触发并判断结果？'],bug:['一起分析这个问题','梳理问题现象、触发条件与排查思路。','这个问题的现象是什么？','可以从哪些地方开始排查？']})[kind];
+          const mark=element('div','case-chat-empty-mark');mark.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-8l-6 4V5a1 1 0 0 1 1-1ZM8 8h8M8 12h5"/></svg>';
+          welcome.append(mark,element('h3','',scoped?copy[0]:'从一个问题开始'),element('p','case-chat-empty-description',scoped?copy[1]:'继续这段对话，或提出一个新的问题。'));
+          if(scoped){
+            const prompts=element('div','case-chat-empty-prompts');
+            for(const text of copy.slice(2)){const button=element('button','',text);button.type='button';button.onclick=()=>this.root.dispatchEvent(new CustomEvent('compose-reuse',{detail:text}));prompts.append(button);}welcome.append(prompts);
+            const note=element('p','case-chat-empty-context');note.innerHTML='<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2h5l3 3v9H3V2ZM10 2v4h3M5.5 9h5M5.5 11h3"/></svg>';const noteText=element('span','case-chat-context-copy');noteText.append(element('strong','','当前页面已关联'),element('span','','，提问时无需重复说明。'));note.append(noteText);welcome.append(note);
+          }
+          this.root.append(welcome);return;
         }
-        const welcome=element('div','chat-welcome');welcome.append(element('div','welcome-mark','✦'),element('span','welcome-eyebrow','UCAgent FlowCanvas'),element('h3','','一起，把验证想清楚。'),element('p','','分析设计、梳理场景，或从一个问题开始。'));this.root.append(welcome);
+        const welcome=element('div','chat-welcome');welcome.dataset.welcomeKey=welcomeKey;welcome.append(element('div','welcome-mark','✦'),element('span','welcome-eyebrow','UCAgent FlowCanvas'),element('h3','','一起，把验证想清楚。'),element('p','','分析设计、梳理场景，或从一个问题开始。'));this.root.append(welcome);
       }
       return;
     }

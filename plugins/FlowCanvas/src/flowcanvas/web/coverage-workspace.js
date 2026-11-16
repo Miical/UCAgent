@@ -43,7 +43,6 @@ window.FlowCanvasCoverageCode={
   /** Re-read persisted selections through the build snapshot and fingerprint checks. */
   async function open(node,value=null,pin=false){
     if(!project||!names[node.coverage_metric]||!node.instance)return;
-    document.dispatchEvent(new CustomEvent('flowcanvas-coverage-selection',{detail:{project_id:project.id,metric:node.coverage_metric,instance:node.instance}}));
     const epoch=++selection;let inspector=inspectors.get(node.id);
     if(!inspector){
       const host=el('section','testcase-detail-pane coverage-source-detail');host.dataset.entityId=node.id;host.ariaLabel='覆盖率源码';
