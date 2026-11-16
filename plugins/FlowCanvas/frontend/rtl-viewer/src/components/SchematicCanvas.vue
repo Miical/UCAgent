@@ -661,7 +661,7 @@ async function relayout() {
   if (mine !== _relayoutToken) return
   model.value = toSchematic(laid)
   requestAnimationFrame(() => {
-    panZoom.fit()
+    panZoom.requestFit()
     bringSelectionIntoView(store.selection)
   })
 }

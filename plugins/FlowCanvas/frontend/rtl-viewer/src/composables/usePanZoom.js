@@ -17,6 +17,7 @@
 
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { FIT_SCALE_MAX } from '../layout/constants.js'
+import { createViewportFitter } from '../layout/canvasViewport.js'
 
 const MIN_SCALE = 0.1
 const MAX_SCALE = 10
@@ -35,6 +36,7 @@ const BUTTON_FACTOR = 1.2
 export function usePanZoom({ hostEl, getRoot, getContentBox }) {
   const transform = ref({ x: 0, y: 0, scale: 1 })
   let dragStart = null
+  let viewportFitter = null
 
   function apply() {
     const root = getRoot()
@@ -183,11 +185,24 @@ export function usePanZoom({ hostEl, getRoot, getContentBox }) {
     document.removeEventListener('mouseup', onMouseUp)
   }
 
-  onMounted(attach)
-  onBeforeUnmount(detach)
+  /** React to same-origin host reveals as well as local canvas resizing. */
+  function onFitViewMessage(event) {
+    if (event.origin === location.origin && event.source === window.parent && event.data?.type === 'flowcanvas-fit-view') viewportFitter?.request()
+  }
+  onMounted(() => {
+    attach()
+    if (hostEl.value) viewportFitter = createViewportFitter(hostEl.value, fit)
+    window.addEventListener('message', onFitViewMessage)
+  })
+  onBeforeUnmount(() => {
+    detach()
+    viewportFitter?.disconnect()
+    window.removeEventListener('message', onFitViewMessage)
+  })
 
   return {
     transform,
+    requestFit() { if (viewportFitter) viewportFitter.request(); else fit() },
     apply,
     fit,
     reset,

@@ -84,6 +84,7 @@
 // onto each rendered group so overlays can query them after the
 // layout step and so click handlers can recover the model node.
 import { computed, onMounted, ref, watch, onBeforeUnmount } from 'vue'
+import { createViewportFitter } from '../layout/canvasViewport.js'
 import { useViewerStore } from '../store.js'
 import CoverageToolbar from './CoverageToolbar.vue'
 import { paintProjectCoverage } from '../projectCoverageTint.js'
@@ -284,9 +285,8 @@ async function renderSvg() {
   // Signal to the badge-position computed that the underlying SVG
   // has just been re-rendered — previously cached bboxes are stale.
   svgVersion.value += 1
-  // Defer to next frame so flex layout has settled and the host
-  // rect is its final size before we compute the fit scale.
-  requestAnimationFrame(fitToWindow)
+  // Wait for visible, stable host bounds before computing the fit scale.
+  viewportFitter?.request()
 }
 
 // Draw a dashed boundary + "DUT" label around every SVG group whose
@@ -1020,9 +1020,15 @@ function fitToWindow() {
   // Strip any prior transform so getBBox returns the content's
   // bbox in its own coord system; the new transform we apply below
   // is what positions it.
-  root.removeAttribute('transform')
-  const bb = root.getBBox()
   const rect = svgHostEl.value.getBoundingClientRect()
+  if (rect.width <= 1 || rect.height <= 1) return
+  const previous = root.getAttribute('transform')
+  root.removeAttribute('transform')
+  let bb
+  try { bb = root.getBBox() } catch {
+    if (previous !== null) root.setAttribute('transform', previous)
+    return
+  }
   if (!bb.width || !bb.height || !rect.width || !rect.height) {
     applyTransform()
     return
@@ -1059,14 +1065,14 @@ function onDoubleClick(e) {
 // identity moves; a function dodges that staleness.
 const _captureSvgProvider = () => _svgEl
 
-let fitMessageFrame = null
+let viewportFitter = null
 function onFitViewMessage(event) {
   if (event.origin !== location.origin || event.source !== window.parent || event.data?.type !== 'flowcanvas-fit-view') return
-  if (fitMessageFrame !== null) cancelAnimationFrame(fitMessageFrame)
-  fitMessageFrame = requestAnimationFrame(() => { fitMessageFrame = null; fitToWindow() })
+  viewportFitter?.request()
 }
 
 onMounted(() => {
+  viewportFitter = createViewportFitter(svgHostEl.value, fitToWindow)
   window.addEventListener('message', onFitViewMessage)
   if (svgHostEl.value) {
     svgHostEl.value.addEventListener('click', onClick)
@@ -1084,7 +1090,8 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('message', onFitViewMessage)
-  if (fitMessageFrame !== null) cancelAnimationFrame(fitMessageFrame)
+  viewportFitter?.disconnect()
+  viewportFitter = null
   if (svgHostEl.value) {
     svgHostEl.value.removeEventListener('click', onClick)
     svgHostEl.value.removeEventListener('dblclick', onDoubleClick)
