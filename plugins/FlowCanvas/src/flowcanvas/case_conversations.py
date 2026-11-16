@@ -36,6 +36,13 @@ def case_record(service, project_id, case_id):
         return project,card
     project=next((p for p in service.projects.state['recent'] if p['id']==project_id),None)
     if not project:raise HTTPException(404,'Project not found')
+    if case_id.startswith('bug_'):
+        from .bugs import Bugs
+        bug=next((row for row in Bugs(project['path']).read().targets if row.id==case_id),None)
+        if bug is None:raise HTTPException(404,'Bug not found')
+        return project,SimpleNamespace(id=bug.id,title=bug.name,name=bug.name,description=bug.description,
+                                       entity_type='bug',bindings=bug.bindings,
+                                       details={key:getattr(bug,key) for key in ('status','severity','condition','expected','actual','evidence','case_ids','example')})
     if case_id.startswith(('vt_','fg_','fp_','tp_')):
         from .targets import Targets
         target=next((row for row in Targets(project['path']).read().targets if row.id==case_id),None)
@@ -80,11 +87,18 @@ def view_snapshot(service, session, view):
                      explanation_status=status['reports'][card.id].get('explanation_status','missing'),
                      bindings=status['reports'][card.id]['bindings'],
                      coverage=status.get('coverage',{}).get('targets',{}).get(card.id))
+    bug_view=getattr(card,'entity_type','')=='bug'
+    if bug_view:
+        from .bugs import Bugs
+        if view.tab not in {'overview','source'} or view.run_id or view.waveform or view.module_instance:
+            raise HTTPException(422,'Bug conversations support details and bound source only')
+        store=Bugs(project['path'])
+        value.update(entity_type='bug',bug=card.details)
     if view.tab=='coverage':raise HTTPException(422,'Coverage view belongs to the design tab')
     if view.binding_id:
         source=next((b for b in card.bindings if b.id==view.binding_id),None)
         if not source:raise HTTPException(422,'Source binding does not belong to this case')
-        value['source']=(store if target_view else Cases(project['path'])).source(source.id)
+        value['source']=(store if target_view or bug_view else Cases(project['path'])).source(source.id)
         # Full source can be read through normal tools; freeze only the bound selection here.
         full=value['source'].pop('file_content',None)
         if full is not None and view.line and view.line>len(full.splitlines()):
@@ -117,6 +131,7 @@ def routes(service):
         candidates=[s for s in service.sessions.values() if s.get('case_binding')==binding
                     and (s.get('case_draft_id')==draft_id if draft_id else not s.get('archived'))]
         return max(candidates,key=lambda s:s.get('updated',0),default=None)
+    @router.get('/{project_id}/bugs/{case_id}/conversation')
     @router.get('/{project_id}/targets/{case_id}/conversation')
     @router.get('/{project_id}/modules/{case_id}/conversation')
     @router.get('/{project_id}/testcases/{case_id}/conversation')
@@ -124,6 +139,7 @@ def routes(service):
         """Opening a case must never create an empty conversation or launch a backend."""
         case_record(service,project_id,case_id)
         return dict(session=lookup(project_id,case_id))
+    @router.post('/{project_id}/bugs/{case_id}/conversation')
     @router.post('/{project_id}/targets/{case_id}/conversation')
     @router.post('/{project_id}/modules/{case_id}/conversation')
     @router.post('/{project_id}/testcases/{case_id}/conversation')

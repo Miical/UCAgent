@@ -411,8 +411,36 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     window.FlowCanvasCaseWorkspace.reconcile(project,data.targets.map(node=>({...node,title:node.name,entity_type:'target'})),'target');
     const diagnostics=panel.querySelector('.targets-diagnostics');diagnostics.replaceChildren();for(const [file,error] of Object.entries(data.errors)){const detail=el('details');detail.append(el('summary','',file+' · 无法校验'),el('pre','',error));diagnostics.append(detail);}
   }
+  const bugInspectors=new Map();
+  /** Present a minimal issue record in its own editor tab and keep demo provenance visible. */
+  function bugDetail(node,activate=true){
+    let inspector=bugInspectors.get(node.id);const signature=JSON.stringify([node,data.reports[node.id]]);
+    if(!inspector){const host=el('section','testcase-detail-pane bug-detail-pane');host.dataset.entityId=node.id;host.ariaLabel='Bug 详情';window.FlowCanvasCaseWorkspace.mount(host);inspector={host,signature:''};bugInspectors.set(node.id,inspector);}
+    if(inspector.signature!==signature){
+      inspector.signature=signature;const title=el('header','case-detail-title');title.append(el('strong','',node.name));
+      const body=el('div','case-detail-body'),section=el('section','case-section');let description=node.description||'';
+      if(node.example&&!description.includes('演示'))description='演示记录，未实际复现，不代表真实缺陷。'+(description?'\n\n'+description:'');
+      section.append(el('h4','case-section-title','描述'),el('p',description?'':'case-detail-empty',description||'描述待补充'));body.append(section);
+      inspector.host.replaceChildren(title,body);
+    }
+    if(activate)window.FlowCanvasCaseWorkspace.open(project,{...node,title:node.name,entity_type:'bug'},{tab:'overview'});
+  }
+  /** Reuse testcase-style rows instead of expanding bug cards into the navigation column. */
+  function renderBugs(){
+    const list=panel.querySelector('.targets-tree'),summary=panel.querySelector('.targets-summary');list.replaceChildren();list.classList.add('bug-title-list');list.setAttribute('role','listbox');list.ariaLabel='Bug 列表';const examples=data.targets.filter(node=>node.example).length;
+    summary.replaceChildren(el('span','',(data.targets.length-examples)+' 条真实记录'),el('span','bug-demo-count',examples+' 条演示'));
+    const rows=data.targets.filter(node=>[node.name,node.description,node.condition,node.expected,node.actual,bugStatuses[node.status],severities[node.severity],node.example?'演示':''].join(' ').toLowerCase().includes(query));
+    rows.forEach((node,index)=>{const wrapper=el('div','bug-list-item'),head=button('',()=>{selectedTarget=node.id;bugDetail(node);for(const row of list.querySelectorAll('.bug-list-row'))row.setAttribute('aria-selected',String(row.dataset.bugId===node.id));},'bug-list-row');head.dataset.bugId=node.id;head.setAttribute('role','option');head.setAttribute('aria-selected',String(window.FlowCanvasCaseWorkspace.context()?.testcase.id===node.id));head.title=node.name+' · 单击预览，双击固定';head.append(el('span','bug-list-name',node.name));if(node.example)head.append(el('span','bug-demo-label','演示'));head.ondblclick=()=>window.FlowCanvasCaseWorkspace.pin(project.id,node.id);head.onkeydown=event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();list.querySelectorAll('.bug-list-row')[Math.max(0,Math.min(rows.length-1,index+(event.key==='ArrowDown'?1:-1)))]?.focus();}};
+      const editButton=smallAction('编辑 Bug','M12 4l4 4M4 16l4-1L17 6a2 2 0 0 0-3-3L5 12Z',()=>edit(node));editButton.classList.add('bug-row-edit');wrapper.append(head,editButton);list.append(wrapper);
+    });
+    if(!rows.length){const empty=el('div','targets-empty');empty.append(el('strong','',query?'没有匹配的 Bug':'从 Bug 管理开始'),el('p','targets-muted',query?'试试其他关键词。':'记录问题、复现条件及证据。尚无确认的 Bug。'));if(!query)empty.append(button('创建 Bug',()=>edit(),'targets-primary'));list.append(empty);}
+    for(const [id,inspector] of bugInspectors){const node=data.targets.find(item=>item.id===id);if(node)bugDetail(node,false);else{inspector.host.remove();bugInspectors.delete(id);}}
+    const current=window.FlowCanvasCaseWorkspace.context();if(current?.testcase.entity_type==='bug'&&!data.targets.some(node=>node.id===current.testcase.id))document.dispatchEvent(new CustomEvent('flowcanvas-case-ordinary'));
+    window.FlowCanvasCaseWorkspace.reconcile(project,data.targets.map(node=>({...node,title:node.name,entity_type:'bug'})),'bug');panel.querySelector('.targets-diagnostics').replaceChildren();
+  }
   function render(){
     if(inlineEditing)return;
+    if(bugMode){renderBugs();return;}
     if(!caseMode&&!bugMode){renderCoverageSummary();renderGoals();return;}
     const list=panel.querySelector('.targets-tree'),summary=panel.querySelector('.targets-summary');list.replaceChildren();summary.replaceChildren();
     for(const [kind,[,label]]of Object.entries(kinds))summary.append(el('span','',data.targets.filter(n=>n.kind===kind).length+' '+label));
@@ -667,7 +695,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
   function show(view){
     active=view===panelView;
     if(panel){
-      if(caseMode)host.classList.toggle('has-case-workbench',active);
+      if(caseMode||bugMode)host.classList.toggle('has-case-workbench',view==='测试用例'||view==='Bug 管理');
       panel.hidden=!active;if(active){refresh();refreshRuns();}
     }
   }
@@ -678,9 +706,10 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
   fetch('/api/chat/projects').then(r=>r.json()).then(state=>{
     project=state.current;if(!project)return;panel=el('section','targets-panel'+(caseMode?' testcase-panel':bugMode?' bug-panel':''));panel.hidden=true;
     const toolbar=el('div','targets-toolbar');const search=el('input','targets-search');search.placeholder='筛选'+view+'…  /';search.setAttribute('aria-label','搜索'+view);search.oninput=()=>{query=search.value.trim().toLowerCase();searchExpanded=true;if(data)render();};
-    search.onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();search.value='';query='';if(data)render();}else if(event.key==='ArrowDown'){event.preventDefault();panel.querySelector('.verification-goal-row,.target-card-head')?.focus();}};
+    search.onkeydown=event=>{if(event.key==='Escape'){event.preventDefault();search.value='';query='';if(data)render();}else if(event.key==='ArrowDown'){event.preventDefault();panel.querySelector('.bug-list-row,.verification-goal-row,.target-card-head')?.focus();}};
     document.addEventListener('keydown',event=>{if(active&&event.key==='/'&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.target.closest('input,textarea,select,[contenteditable="true"],dialog')){event.preventDefault();search.focus();}});
     toolbar.append(search);
+    if(bugMode)toolbar.append(smallAction('新增 Bug','M12 5v14M5 12h14',()=>edit()));
     if(!caseMode&&!bugMode)toolbar.append(goalAction(null,'add-goal','AI 新增验证目标','M10 5v14M3 12h14'));
     if(caseMode){const add=button('',()=>newCaseTask(add),'ai-case-add');add.title='AI 新增测试用例';add.setAttribute('aria-label','AI 新增测试用例');add.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="case-ai-spark" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#4285ff"/><stop offset=".55" stop-color="#9164ec"/><stop offset="1" stop-color="#df77ba"/></linearGradient></defs><path d="M13 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M8 14h8m-4-4v8"/><path class="ai-colored-spark" d="M18 2l1.2 3.8L23 7l-3.8 1.2L18 12l-1.2-3.8L13 7l3.8-1.2Z" fill="url(#case-ai-spark)" stroke="url(#case-ai-spark)"/></svg>';let previewTimer;add.onmouseenter=()=>{clearTimeout(previewTimer);previewTimer=setTimeout(()=>{if(add.matches(':hover'))newCaseTask(add,true);},220);};add.onmouseleave=()=>clearTimeout(previewTimer);add.onclick=()=>{clearTimeout(previewTimer);const card=document.querySelector('.ai-action-dialog');if(card)card.pinTask();else newCaseTask(add);};toolbar.append(add);}
 
@@ -738,7 +767,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         inspector.api.dispose();inspectors.delete(event.detail.case_id);if(activeInspector===inspector)activeInspector=null;
       });
       document.addEventListener('flowcanvas-case-restore',async event=>{
-        if(event.detail.project_id!==project.id||event.detail.case_id.startsWith('module_'))return;
+        if(event.detail.project_id!==project.id||!event.detail.case_id.startsWith('tc_'))return;
         if(document.getElementById('project-heading').textContent!=='测试用例')document.querySelector('[data-view="测试用例"]').click();
         if(!data)await refresh();
         const node=data?.targets.find(item=>item.id===event.detail.case_id);if(!node)return;
@@ -748,6 +777,10 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       });
 
       document.addEventListener('flowcanvas-case-close',()=>{selectedTarget=null;if(data)render();});
+    }else if(bugMode){
+      panel.classList.add('bug-workbench');panel.append(...content);
+      document.addEventListener('flowcanvas-case-restore',async event=>{if(event.detail.project_id!==project.id||!event.detail.case_id.startsWith('bug_'))return;if(!data)await refresh();const node=data?.targets.find(item=>item.id===event.detail.case_id);if(node){selectedTarget=node.id;bugDetail(node);renderBugs();}});
+      document.addEventListener('flowcanvas-case-tab-closed',event=>{const inspector=bugInspectors.get(event.detail.case_id);if(inspector){inspector.host.remove();bugInspectors.delete(event.detail.case_id);}});
     }else panel.append(...content);
       document.addEventListener('flowcanvas-case-task',event=>{
         const d=event.detail;if(bugMode||d.project.id!==project.id||(d.testcase.entity_type==='target')!==(!caseMode))return;
