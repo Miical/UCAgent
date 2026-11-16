@@ -20,7 +20,7 @@
   function collapseChat(value,persist=false){
     chatCollapsed=value;pane.classList.toggle('case-chat-collapsed',value);
     bottom.inert=value&&!!current;divider.tabIndex=value?-1:0;
-    toggle.title=(value?'展开':'收起')+(current?.testcase.entity_type==='module'?'设计对话':'用例对话');toggle.setAttribute('aria-label',toggle.title);toggle.setAttribute('aria-expanded',String(!value));
+    toggle.title=(value?'展开':'收起')+(current?.testcase.entity_type==='module'?'设计对话':current?.testcase.entity_type==='target'?'目标对话':'用例对话');toggle.setAttribute('aria-label',toggle.title);toggle.setAttribute('aria-expanded',String(!value));
     if(persist)try{localStorage.setItem('flowcanvas.caseChatCollapsed',String(value));}catch{}
   }
   toggle.onclick=()=>{clearTimeout(motionTimer);pane.classList.add('case-chat-motion');collapseChat(!chatCollapsed,true);motionTimer=setTimeout(()=>pane.classList.remove('case-chat-motion'),500);};collapseChat(chatCollapsed);
@@ -78,15 +78,15 @@
     requestAnimationFrame(()=>{const active=tabs.querySelector('[aria-selected="true"]');active?.focus();});
   };
   paintTabs();
-  document.addEventListener('flowcanvas-view',event=>{if(event.detail!=='测试用例'&&event.detail!=='设计总览')leave();});
+  document.addEventListener('flowcanvas-view',event=>{if(event.detail!=='测试用例'&&event.detail!=='设计总览'&&event.detail!=='验证目标')leave();});
   document.addEventListener('flowcanvas-case-ordinary',leave);
   document.addEventListener('flowcanvas-case-view',event=>{if(current?.testcase.id!==event.detail.case_id)return;view=event.detail.view;publish();});
   window.FlowCanvasCaseWorkspace={
     mount(detail){top.append(detail);},
-    reconcile(project,cases){
+    reconcile(project,cases,entity='case'){
       let changed=false;
       for(const [key,item] of opened){
-        if(item.project.id!==project.id||item.testcase.entity_type==='module')continue;
+        if(item.project.id!==project.id||(item.testcase.entity_type||'case')!==entity)continue;
         const node=cases.find(node=>node.id===item.testcase.id);
         if(!node){opened.delete(key);changed=true;document.dispatchEvent(new CustomEvent('flowcanvas-case-tab-closed',{detail:{project_id:project.id,case_id:item.testcase.id}}));}
         else if(node.title!==item.testcase.title||node.name!==item.testcase.name){opened.set(key,{...item,project,testcase:node});changed=true;}
@@ -104,7 +104,7 @@
       }
       const changed=current?.testcase.id!==testcase.id||current?.project.id!==project.id;
       current={project,testcase};opened.set(key,{project,testcase,preview:existing?existing.preview:true});
-      name.textContent=testcase.title||testcase.name;label.textContent=testcase.entity_type==='module'?'设计专属对话':'用例专属对话';for(const detail of top.querySelectorAll('.testcase-detail-pane'))detail.hidden=detail.dataset.entityId!==testcase.id;pane.classList.add('case-workspace-open');collapseChat(chatCollapsed);top.hidden=divider.hidden=context.hidden=false;
+      name.textContent=testcase.title||testcase.name;label.textContent=testcase.entity_type==='module'?'设计专属对话':testcase.entity_type==='target'?'验证目标专属对话':'用例专属对话';for(const detail of top.querySelectorAll('.testcase-detail-pane'))detail.hidden=detail.dataset.entityId!==testcase.id;pane.classList.add('case-workspace-open');collapseChat(chatCollapsed);top.hidden=divider.hidden=context.hidden=false;
       if(changed||testcase.entity_type==='module')view=initialView||{tab:'overview'};publish();paintTabs();
     },
     context(){return current?{...current,view:{...view}}:null;}

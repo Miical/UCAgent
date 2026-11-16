@@ -154,7 +154,8 @@ def test_ui_task_titles_and_prompts_use_target_contract():
     """Opening the import task must not evaluate its message before inputs exist."""
     from pathlib import Path
     source=(Path(__file__).parents[1]/'src/flowcanvas/web/targets.js').read_text()
-    modal=next(line for line in source.splitlines() if 'const {dialog,content}=modal(importCases?' in line)
+    task=source[source.index('function newCaseTask('):source.index('function paintRunButtons(')]
+    modal=next(line for line in task.splitlines() if 'const {dialog,content}=modal(' in line)
     assert "importGoals?'导入验证目标'" in modal
     assert 'note.value' not in modal
     for legacy in ('verification_targets(begin_create','verification_targets(read)',

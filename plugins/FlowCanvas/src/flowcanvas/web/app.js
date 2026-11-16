@@ -89,19 +89,11 @@ function toggleProject(collapsed,animate=true){
 }
 try{toggleProject(localStorage.getItem('flowcanvas.projectCollapsed')==='true',false);}catch{}
 
-/** Return to the initial workbench view without reloading or interrupting conversations. */
+/** Return to the pinned main conversation without resetting histories or opening a design tab. */
 document.querySelector('.brand-home').onclick=event=>{
   if(event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
   event.preventDefault();closeSettings();
-  document.getElementById('project-heading').textContent='设计总览';
-  document.getElementById('project-content').setAttribute('aria-label','设计总览内容');
-  for(const button of document.querySelectorAll('[data-view]')){
-    const selected=button.dataset.view==='设计总览';button.classList.toggle('active',selected);
-    if(selected)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');
-    button.setAttribute('aria-expanded',String(selected&&!workspace.classList.contains('project-collapsed')));
-  }
-  document.dispatchEvent(new CustomEvent('flowcanvas-home'));
-  document.dispatchEvent(new CustomEvent('flowcanvas-view',{detail:'设计总览'}));
+  document.dispatchEvent(new CustomEvent('flowcanvas-case-ordinary'));
 };
 
 // Workflow navigation opens details without toggling an already visible pane.

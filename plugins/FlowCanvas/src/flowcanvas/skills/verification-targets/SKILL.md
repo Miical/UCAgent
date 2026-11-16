@@ -12,7 +12,7 @@ Calls are atomic per batch. Never directly edit management JSON.
 - apply(count): reserve new IDs without visible cards or shimmer. Keep existing IDs on resume.
 - begin_modify(ids,action=update|delete): start/resume owned work and shimmer. Deleting parents needs
   all descendant IDs or cascade=true. Register before editing or deleting source.
-- update(cards): patch id/kind/name/description/parent/bindings. Kind is assigned once. Omitted fields
+- update(cards): patch id/kind/name/description/parent/bindings/explanation. Kind is assigned once. Omitted fields
   remain unchanged; bindings replaces the complete list and [] explicitly removes bindings.
   New binding: {file,line,line_count,role}; existing binding: {id,file,line_count,role}.
   line is one-based, line_count is positive. Select complete logical code yourself. The tool inserts
@@ -33,3 +33,9 @@ Server checks only marker uniqueness, range bounds, fingerprints and card state;
 syntactic completeness or elaboration. Bound source is never evidence of passing tests.
 On pause, resume with begin_modify using the same IDs and action. Preserve shared code and historical
 artifacts during deletion. Never fabricate coverage counts or acknowledge source without reading it.
+
+For point/testpoint understanding, inspect returns explanation_schema and explanation_guide. Read
+the guide and write explanation through the same owned update transaction. Feature points explain
+function and verification decomposition; testpoints explain triggers, expectations and actual checks.
+Cite exact code and existing case IDs; never infer correctness from coverage hits. Bind source first,
+then inspect final lines before writing explanations. Groups remain organizational containers.

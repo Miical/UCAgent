@@ -16,6 +16,13 @@ mission:
       and test plans; cross-check them against code. Without documents, derive text from real source.
       Report differences between plans and implementation. Never fabricate coverage hits or passing tests.
       Use verification_targets inspect to read instructions, current cards, and raw source.
+      Read inspect's explanation_guide and explanation_schema. For imported points and testpoints,
+      populate explanation with the feature's meaning and verification approach, or the test point's
+      trigger conditions, expected behavior and actual checking mechanism. Cite real source excerpts;
+      mark inference and coverage-only sampling explicitly. Groups remain organizational containers.
+      Save bindings first, inspect their final source lines, then update explanation using the same
+      owned transaction. Only link existing test cases with evidence; do not invent relationships.
+      The server generates source_hashes. Missing evidence stays unknown rather than fabricated.
       New cards use apply(count), then begin_modify(ids,action=update), update(cards) and end_modify(ids).
       Existing cards skip apply. All writes use the latest expected_revision. Preserve original IDs and
       resume interrupted operations; avoid duplicate records. update carries kind/name/description/parent

@@ -633,7 +633,7 @@ async function create(backend=backendChoice,changingBackend=false){
     const context=caseContext,wasBusy=busy;busy=true;controls();
     saveDraft();saveQuote();
     try{
-      const data=await request('/projects/'+encodeURIComponent(context.project.id)+(context.testcase.entity_type==='module'?'/modules/':'/testcases/')+encodeURIComponent(context.testcase.id)+'/conversation',{backend,draft_id:crypto.randomUUID().replaceAll('-','')});
+      const data=await request('/projects/'+encodeURIComponent(context.project.id)+(context.testcase.entity_type==='module'?'/modules/':context.testcase.entity_type==='target'?'/targets/':'/testcases/')+encodeURIComponent(context.testcase.id)+'/conversation',{backend,draft_id:crypto.randomUUID().replaceAll('-','')});
       await list();await choose(data.id,true);await loadBackends();$('message').focus();
     }finally{busy=wasBusy;controls();}
     return;
@@ -654,7 +654,7 @@ async function ensureSession(){
   creatingSession=(async()=>{
     const draft=session,model=$('model').value,effort=$('effort').value,speed=speedMode,key=draftKey();
     saveDraft();saveQuote();
-    const data=await request(caseContext?'/projects/'+encodeURIComponent(caseContext.project.id)+(caseContext.testcase.entity_type==='module'?'/modules/':'/testcases/')+encodeURIComponent(caseContext.testcase.id)+'/conversation':'/sessions',{backend:backendChoice});
+    const data=await request(caseContext?'/projects/'+encodeURIComponent(caseContext.project.id)+(caseContext.testcase.entity_type==='module'?'/modules/':caseContext.testcase.entity_type==='target'?'/targets/':'/testcases/')+encodeURIComponent(caseContext.testcase.id)+'/conversation':'/sessions',{backend:backendChoice});
     drafts.set(data.id,$('message').value);quotes.set(data.id,[...quoteDraft]);
     await choose(data.id,true);
     $('model').value=model;efforts(effort);speedMode=speed;updateSpeed();
@@ -746,7 +746,7 @@ async function switchCase(context){
   controls();
   try{
     const remembered=caseSessions.get(context.project.id+':'+context.testcase.id),history=sessionRows.find(row=>row.id===remembered&&row.case_binding?.project_id===context.project.id&&row.case_binding?.case_id===context.testcase.id&&!row.archived);
-    const result=history?{session:history}:await request('/projects/'+encodeURIComponent(context.project.id)+(context.testcase.entity_type==='module'?'/modules/':'/testcases/')+encodeURIComponent(context.testcase.id)+'/conversation');
+    const result=history?{session:history}:await request('/projects/'+encodeURIComponent(context.project.id)+(context.testcase.entity_type==='module'?'/modules/':context.testcase.entity_type==='target'?'/targets/':'/testcases/')+encodeURIComponent(context.testcase.id)+'/conversation');
     if(token!==caseSwitch)return;
     if(result.session){await choose(result.session.id,true);}
     else{

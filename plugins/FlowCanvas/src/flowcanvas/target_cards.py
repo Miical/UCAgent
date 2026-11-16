@@ -50,6 +50,10 @@ def execute(root, request, owner='manual', store=None):
                 result['source'] = store.source(r.binding_id)
             result['instructions'] = getattr(store,'instructions',None) or SKILL.read_text()
             result['request_schema'] = CardRequest.model_json_schema()
+            if 'case' not in store.prefixes:
+                from .target_explanations import GUIDE,TargetExplanation
+                result['explanation_schema']=TargetExplanation.model_json_schema()
+                result['explanation_guide']=GUIDE.read_text(encoding='utf-8')
             return result
         if data.revision != r.expected_revision:
             raise ValueError('Revision changed; inspect and retry with the current revision')
@@ -144,12 +148,12 @@ def update_cards(store, data, request):
     by_id = {t.id: t for t in data.targets}
     original, inserts, pending = {}, {}, []
     for patch in request.cards:
-        if set(patch) - ({'id', 'kind', 'name', 'description', 'parent', 'bindings'} | ({'title','timeline','overview','runner'} if 'case' in store.prefixes else set())):
+        if set(patch) - ({'id', 'kind', 'name', 'description', 'parent', 'bindings'} | ({'title','timeline','overview','runner'} if 'case' in store.prefixes else {'explanation'})):
             raise ValueError('Unsupported card information field')
         row = by_id[patch['id']]
         if 'kind' in patch and row.kind is not None and row.kind != patch['kind']:
             raise ValueError('An assigned card kind cannot change')
-        metadata={key:patch[key] for key in ('kind','name','title','description','parent','timeline','overview','runner') if key in patch}
+        metadata={key:patch[key] for key in ('kind','name','title','description','parent','timeline','overview','runner','explanation') if key in patch}
         validated=store.target_model.model_validate({**row.model_dump(),**metadata})
         for key in metadata:
             setattr(row,key,getattr(validated,key))
@@ -210,6 +214,10 @@ def update_cards(store, data, request):
                 raise ValueError('Binding marker must be unique')
             _,content=span(text,positions[0]+1,binding.line_count)
             binding.fingerprint=fingerprint(content)
+        if 'case' not in store.prefixes:
+            from .target_explanations import validate_explanation
+            for patch in request.cards:
+                if 'explanation' in patch:validate_explanation(store,by_id[patch['id']])
         saved=store.save(data,request.expected_revision)
     except Exception:
         for path,text in written.items():

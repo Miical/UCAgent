@@ -238,3 +238,21 @@ attempts. An attempted property can still fail. Unresolvable macro-expanded
 assertion source lines remain unavailable rather than pointing at a fabricated
 line. Cover properties and sequences remain functional coverage constructs;
 they do not count as assertion successes.
+
+
+## Verification target navigation
+
+验证目标采用扁平列表，以字重、留白和缩进区分层级，显示标题、展开箭头及各级目标的实际覆盖百分比和进度条，不在列表中展开说明、源码绑定或 bin 明细。箭头控制展开折叠，搜索时自动展示匹配项的祖先。功能点和测试点单击预览详情、双击固定标签；保留功能组、功能点和测试点的关系，在详情中提供子目标入口。
+
+详情包含目标说明、源码依据、覆盖率统计及实际 bin 明细；源码子标签按当前目标的绑定读取并高亮源码。新增子目标、删除和 AI 覆盖率分析位于对应列表行右侧，悬停或键盘聚焦时显示，详情页不重复放置。目标专属对话支持多份历史，消息绑定稳定目标 ID；源码引用必须属于当前目标，不能借用其他目标的绑定或测试运行。
+
+功能组作为分类容器，点击标题或箭头只展开、收起，不打开或固定详情标签。功能点与测试点单击预览、双击固定，列表行沿用测试用例的字号、间距、悬停和选中样式。功能组的新增功能点、删除操作保留在行尾。
+
+
+## 功能点与测试点说明
+
+功能点详情按功能说明、验证思路、测试点分解、实现与检查、关联用例及覆盖情况组织；测试点详情按验证意图、触发条件、预期结果、实现与检查、关联用例及覆盖情况组织。未生成内容显示明确的待补充状态，保留原有 description 作为简介。
+
+简介标题旁的 AI 按钮打开说明生成任务卡，任务发送到当前目标专属对话。模型先通过 verification_targets(inspect) 阅读 [说明规范](../src/flowcanvas/guides/target-explanation-guide.md) 和 JSON Schema，再通过 begin_modify/update/end_modify 保存 explanation，不直接修改管理 JSON 或测试代码。导入工作流也遵循此规范。
+
+关键实现引用使用实际文件与行号，保存时校验代码片段和关联用例 ID；源码变化后显示说明待核对提示。只有覆盖采样时明确标注缺少独立正确性检查，覆盖数字继续使用平台实际采集的数据，不由模型填写。

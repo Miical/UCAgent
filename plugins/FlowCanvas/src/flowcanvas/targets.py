@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing import Literal
 from .testcase_syntax import inventory
+from .target_explanations import TargetExplanation
 
 LOCK = threading.RLock()
 SKILL = Path(__file__).parent / 'skills/verification-targets/SKILL.md'
@@ -32,6 +33,7 @@ class Target(BaseModel):
     parent: str | None = None
     name: str = Field(min_length=1, max_length=200)
     description: str = ''
+    explanation: TargetExplanation | None = None
     lifecycle: Literal['draft', 'ready', 'creating', 'updating', 'deleting'] = 'ready'
     operation_status: Literal['running', 'paused'] = 'paused'
     operation_session: str = ''
@@ -161,6 +163,10 @@ class Targets:
         if self.path.name == 'verification.json':
             from .functional_coverage import project
             extra['coverage'] = project(self.root, definition, parsed, reports)
+            from .target_explanations import explanation_state
+            explanation_cache={}
+            for target in definition.targets:
+                reports[target.id]['explanation_status']=explanation_state(self,target.explanation,explanation_cache)
         return {**definition.model_dump(), **extra, 'reports': reports, 'errors': errors,
                 'summary': dict(Counter(r['status'] for r in reports.values()))}
 

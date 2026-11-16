@@ -1,6 +1,7 @@
 """Durable scoped conversation ownership and validated per-message viewing context."""
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
@@ -35,6 +36,12 @@ def case_record(service, project_id, case_id):
         return project,card
     project=next((p for p in service.projects.state['recent'] if p['id']==project_id),None)
     if not project:raise HTTPException(404,'Project not found')
+    if case_id.startswith(('vt_','fg_','fp_','tp_')):
+        from .targets import Targets
+        target=next((row for row in Targets(project['path']).read().targets if row.id==case_id),None)
+        if target is None:raise HTTPException(404,'Verification target not found')
+        return project,SimpleNamespace(id=target.id,title=target.name,name=target.name,description=target.description,
+                                       entity_type='target',kind=target.kind,parent=target.parent,bindings=target.bindings,explanation=target.explanation)
     card=next((c for c in Cases(project['path']).read().targets if c.id==case_id),None)
     if not card:raise HTTPException(404,'Test case not found')
     return project,card
@@ -63,11 +70,21 @@ def view_snapshot(service, session, view):
             value['current_source']=value.pop('source')
             value['coverage']=dict(metric=view.coverage_metric or 'line',file=view.coverage_file,build_id=state.get('build_id'),report_path='.flowcanvas/coverage')
         return value
+    target_view=getattr(card,'entity_type','')=='target'
+    if target_view:
+        from .targets import Targets
+        if view.tab not in {'overview','source'} or view.run_id or view.waveform or view.module_instance:
+            raise HTTPException(422,'Target conversations support overview and bound source only')
+        store=Targets(project['path']);status=store.status()
+        value.update(entity_type='target',kind=card.kind,parent=card.parent,explanation=card.explanation.model_dump() if card.explanation else None,
+                     explanation_status=status['reports'][card.id].get('explanation_status','missing'),
+                     bindings=status['reports'][card.id]['bindings'],
+                     coverage=status.get('coverage',{}).get('targets',{}).get(card.id))
     if view.tab=='coverage':raise HTTPException(422,'Coverage view belongs to the design tab')
     if view.binding_id:
         source=next((b for b in card.bindings if b.id==view.binding_id),None)
         if not source:raise HTTPException(422,'Source binding does not belong to this case')
-        value['source']=Cases(project['path']).source(source.id)
+        value['source']=(store if target_view else Cases(project['path'])).source(source.id)
         # Full source can be read through normal tools; freeze only the bound selection here.
         full=value['source'].pop('file_content',None)
         if full is not None and view.line and view.line>len(full.splitlines()):
@@ -100,12 +117,14 @@ def routes(service):
         candidates=[s for s in service.sessions.values() if s.get('case_binding')==binding
                     and (s.get('case_draft_id')==draft_id if draft_id else not s.get('archived'))]
         return max(candidates,key=lambda s:s.get('updated',0),default=None)
+    @router.get('/{project_id}/targets/{case_id}/conversation')
     @router.get('/{project_id}/modules/{case_id}/conversation')
     @router.get('/{project_id}/testcases/{case_id}/conversation')
     async def inspect(project_id:str,case_id:str):
         """Opening a case must never create an empty conversation or launch a backend."""
         case_record(service,project_id,case_id)
         return dict(session=lookup(project_id,case_id))
+    @router.post('/{project_id}/targets/{case_id}/conversation')
     @router.post('/{project_id}/modules/{case_id}/conversation')
     @router.post('/{project_id}/testcases/{case_id}/conversation')
     async def materialize(project_id:str,case_id:str,value:CaseBackend):
