@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from .targets import Binding, Definition, LOCK, SKILL, Target, Targets, new_id, re_indent
-from .line_bindings import MARKER, fingerprint, span
+from .line_bindings import MARKER, fingerprint, span, read_source
 
 
 class CardRequest(BaseModel):
@@ -166,7 +166,9 @@ def update_cards(store, data, request):
             if set(spec)-{'id','file','line','line_count','role','fingerprint'}:
                 raise ValueError('Bindings accept id/file/line/line_count/role/fingerprint')
             path=store.file(spec['file'])
-            text=original.setdefault(path,path.read_text(encoding='utf-8'))
+            if path.suffix not in {'.v','.sv','.svh','.py'} and spec.get('role','definition')!='configuration':
+                raise ValueError('Build and environment files require role=configuration')
+            text=original.setdefault(path,read_source(path))
             bid=spec.get('id')
             if bid:
                 matches=[i+1 for i,line in enumerate(text.splitlines())
@@ -176,6 +178,8 @@ def update_cards(store, data, request):
                 start=matches[0]+1
             else:
                 start=spec.get('line')
+            if not bid and start==1 and text.startswith('#!'):
+                raise ValueError('Keep the shebang first; bind configuration from line 2')
             end, content=span(text,start,spec['line_count'])
             if spec.get('fingerprint') and spec['fingerprint']!=fingerprint(content):
                 raise ValueError('Source range changed; inspect and select it again')
@@ -184,7 +188,7 @@ def update_cards(store, data, request):
                 if start in inserts.setdefault(path,{}):
                     raise ValueError('Use distinct marker positions for separate bindings')
                 indent=re_indent(text, sum(len(x) for x in text.splitlines(keepends=True)[:start-1]))
-                inserts[path][start]=indent+('#' if path.suffix=='.py' else '//')+' @flowcanvas id='+bid+'\n'
+                inserts[path][start]=indent+('//' if path.suffix in {'.v','.sv','.svh','.f'} else '#')+' @flowcanvas id='+bid+('\r\n' if '\r\n' in text else '\n')
             binding=Binding(id=bid,file=str(path.relative_to(store.root)),kind='LineRange',
                             role=spec.get('role','definition'),line_count=spec['line_count'],
                             fingerprint=fingerprint(content))
@@ -198,16 +202,16 @@ def update_cards(store, data, request):
     written={}
     try:
         for path,text in original.items():
-            if path.read_text(encoding='utf-8')!=text:
+            if read_source(path)!=text:
                 raise ValueError('Source changed while preparing the batch')
             lines=text.splitlines(keepends=True)
             for line,marker in sorted(inserts.get(path,{}).items(),reverse=True):
                 lines.insert(line-1,marker)
             updated=''.join(lines)
             if updated!=text:
-                path.write_text(updated,encoding='utf-8');written[path]=updated
+                path.write_text(updated,encoding='utf-8',newline='');written[path]=updated
         for binding in pending:
-            text=store.file(binding.file).read_text(encoding='utf-8')
+            text=read_source(store.file(binding.file))
             positions=[i+1 for i,line in enumerate(text.splitlines())
                        if (m := MARKER.fullmatch(line)) and m[1]==binding.id]
             if len(positions)!=1:
@@ -221,7 +225,7 @@ def update_cards(store, data, request):
         saved=store.save(data,request.expected_revision)
     except Exception:
         for path,text in written.items():
-            if path.read_text(encoding='utf-8')==text:
-                path.write_text(original[path],encoding='utf-8')
+            if read_source(path)==text:
+                path.write_text(original[path],encoding='utf-8',newline='')
         raise
     return {'revision':saved.revision,'ids':[p['id'] for p in request.cards]}

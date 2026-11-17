@@ -43,7 +43,7 @@ def lcov_instances(root, filename, module):
             if current not in files:
                 raw = path.read_bytes()
                 sha = hashlib.sha256(raw).hexdigest()
-                cache = root / ".flowcanvas/coverage/sources" / (sha + path.suffix)
+                cache = root / "output/flowcanvas/coverage/sources" / (sha + path.suffix)
                 cache.parent.mkdir(parents=True, exist_ok=True)
                 cache.write_bytes(raw)
                 files[current] = dict(path=current, sha256=sha, line_hits={})
@@ -103,7 +103,7 @@ def native_verilator_metrics(root, directory, module):
             if not file.is_relative_to(root) or not file.is_file():
                 raise ValueError("Native coverage source must exist in the project")
             sha = hashlib.sha256(file.read_bytes()).hexdigest()
-            cache = root / ".flowcanvas/coverage/sources" / (sha + file.suffix)
+            cache = root / "output/flowcanvas/coverage/sources" / (sha + file.suffix)
             if not cache.is_file():
                 cache.parent.mkdir(parents=True,exist_ok=True)
                 cache.write_bytes(file.read_bytes())
@@ -125,7 +125,7 @@ def native_verilator_metrics(root, directory, module):
         if item["kind"] != "line" or item["scope"] != "dut":
             continue
         file = root / item["file"]
-        cache = root / ".flowcanvas/coverage/sources" / (item["sha256"] + file.suffix)
+        cache = root / "output/flowcanvas/coverage/sources" / (item["sha256"] + file.suffix)
         cache.parent.mkdir(parents=True,exist_ok=True)
         cache.write_bytes(file.read_bytes())
         row = line_files.setdefault(item["file"],dict(path=item["file"],sha256=item["sha256"],line_hits={}))

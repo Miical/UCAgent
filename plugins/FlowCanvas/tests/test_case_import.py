@@ -139,6 +139,6 @@ def test_card_stage_does_not_require_runner_but_runner_stage_does(tmp_path):
     assert not runners.do_check()[0]
     with pytest.raises(ValueError,match='runner'):
         call('end_modify',ids=[identity])
-    call('update',cards=[dict(id=identity,runner=dict(command='python -m pytest {case}',description='Real entry'))])
+    call('update',cards=[dict(id=identity,runner=dict(command='FLOWCANVAS_WAVE_DIR={wave_dir} python -m pytest {case}',description='Real entry'))])
     call('end_modify',ids=[identity])
     assert runners.do_check()[0],runners.do_check()

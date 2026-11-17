@@ -17,6 +17,9 @@ from test_shared_coverage import setup_shared
 def prepare_smoke(root):
     """Configure actual source-bound coverage from a deterministic local fixture."""
     smoke=setup_shared(root)
+    vcd='$timescale 1 ns $end\n$scope module tb $end\n$var wire 1 ! clk $end\n$upscope $end\n$enddefinitions $end\n#0\n0!\n#5\n1!\n#10\n0!\n'
+    source=root/'test_start.py'
+    source.write_text(source.read_text()+'\nfrom pathlib import Path\nimport os\n(Path(os.environ["FLOWCANVAS_RUN_DIR"])/"waveforms/waves.vcd").write_text('+repr(vcd)+')\n')
     (root/'coverage.py').write_text('group = 1\n')
     targets=Targets(root)
     row=targets.create('group','Measured group',None,targets.read().revision,description='Fixture')
@@ -30,7 +33,8 @@ def prepare_smoke(root):
     source=root/'reference.py';source.write_text('def test_reference():\n    pass\n')
     register_case(Cases(root),'reference.py','test_reference','Reference','Existing case')
     reference=Cases(root).read().targets[-1].id
-    set_case_runners(Cases(root),Cases(root).read().targets[0].runner.model_dump())
+    template=Cases(root).read().targets[0].runner.model_dump();template['command']='FLOWCANVAS_WAVE_DIR={wave_dir} '+template['command']
+    set_case_runners(Cases(root),template)
     return smoke,reference
 
 
@@ -61,9 +65,22 @@ async def test_complete_smoke_checks_coverage_and_keeps_accumulation(tmp_path):
         assert result['stop_reason']=='natural_exit'
         assert Path(result['coverage_db']).is_relative_to(Path(result['run_dir']))
         assert state(tmp_path)==before
-        assert not (tmp_path/'.flowcanvas/coverage/database').exists()
+        assert not (tmp_path/'output/flowcanvas/coverage/database').exists()
         plan['smoke_run_id']=row['id'];path.write_text(json.dumps(plan))
         assert checker.do_check()[0],checker.do_check()
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from types import SimpleNamespace
+        from flowcanvas.test_runner import routes
+        projects=SimpleNamespace(state={'recent':[{'id':'project','path':str(tmp_path)}]})
+        app=FastAPI();app.include_router(routes(projects,runner))
+        with TestClient(app) as client:
+            response=client.get('/api/chat/projects/project/test-runs/'+row['id']+'/waveform-view/waveforms/waves.vcd')
+            assert response.status_code==200
+            assert response.content==(Path(result['wave_dir'])/'waves.vcd').read_bytes()
+        wave=Path(result['wave_dir'])/'waves.vcd';original=wave.read_bytes();wave.write_bytes(original+b'\n#20\n1!\n')
+        assert not checker.do_check()[0]  # A receipt must not certify different waveform bytes.
+        wave.write_bytes(original)
         config=Cases(tmp_path).read().coverage.model_dump();config['description']='Changed'
         configure(tmp_path,{'coverage':config},Cases(tmp_path).read().revision)
         assert not checker.do_check()[0]
@@ -72,7 +89,7 @@ async def test_complete_smoke_checks_coverage_and_keeps_accumulation(tmp_path):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('failure',['extract','line','functional','mapping','exit','timeout','readiness','errors'])
+@pytest.mark.parametrize('failure',['extract','line','functional','mapping','exit','timeout','readiness','errors','waveform_missing','waveform_invalid'])
 async def test_full_smoke_failure_boundaries(tmp_path,failure):
     """Startup alone, broken extraction and incomplete runs cannot pass import acceptance."""
     smoke,_=prepare_smoke(tmp_path)
@@ -81,6 +98,10 @@ async def test_full_smoke_failure_boundaries(tmp_path,failure):
     elif failure=='line':adapter.write_text(text.replace('covered=min(hits,2),total=2','covered=0,total=0'))
     elif failure=='functional':adapter.write_text(text.replace('name="bin",hits=hits,goal=1','name="bin",hits=hits,goal=1').replace('functional=dict(observations=[','functional=dict(observations=[] if True else ['))
     elif failure=='mapping':adapter.write_text(text.replace('binding_fingerprints={','binding_fingerprints={"unexpected":"hash",'))
+    if failure.startswith('waveform_'):
+        source=tmp_path/'test_start.py'
+        suffix='\n(Path(os.environ["FLOWCANVAS_RUN_DIR"])/"waveforms/waves.vcd").unlink()\n' if failure=='waveform_missing' else '\n(Path(os.environ["FLOWCANVAS_RUN_DIR"])/"waveforms/waves.vcd").write_text("broken waveform")\n'
+        source.write_text(source.read_text()+suffix)
     if failure in {'exit','timeout','errors'}:
         source=tmp_path/'test_start.py'
         suffix='\nraise SystemExit(2)\n' if failure=='exit' else '\nimport time;time.sleep(30)\n' if failure=='timeout' else '\nprint("UVM_ERROR: broken check")\n'

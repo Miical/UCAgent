@@ -52,7 +52,7 @@ def test_exact_merge_and_python_panel_projection(coverage_project):
     assert merged["instances"][0]["covered"]==2
     assert merged["instances"][0]["total"]==2
     assert merged["functional"]["observations"][-1]["bins"][0]["hits"]==2
-    atomic(root/".flowcanvas/coverage/state.json",dict(epoch="one",runs=[{"id":"one"}],report=merged))
+    atomic(root/"output/flowcanvas/coverage/state.json",dict(epoch="one",runs=[{"id":"one"}],report=merged))
     assert all(store.status()["coverage"]["targets"][i]["status"]=="available" for i in ids)
     file=root/"coverage.py"
     file.write_text(file.read_text().replace('"CK-ZERO"','"CK-OTHER"'))
@@ -126,7 +126,7 @@ async def test_generic_source_preview_uses_hashed_snapshot(coverage_project):
     from flowcanvas.test_runner import TestRuns, routes
     root,store,ids,extract=coverage_project
     report=extract("source",1,{1:1,2:0})
-    atomic(root/".flowcanvas/coverage/state.json",dict(epoch="one",runs=[],report=report))
+    atomic(root/"output/flowcanvas/coverage/state.json",dict(epoch="one",runs=[],report=report))
     projects=SimpleNamespace(state={"recent":[{"id":"project","path":str(root)}]})
     app=FastAPI()
     app.include_router(routes(projects,TestRuns()))
@@ -137,7 +137,7 @@ async def test_generic_source_preview_uses_hashed_snapshot(coverage_project):
         (root/"Probe.v").write_text("module changed; endmodule")
         response=await client.get("/api/chat/projects/project/coverage/source",params={"instance":"Probe"})
         assert response.json()["content"]==original
-        for file in (root/".flowcanvas/coverage/sources").iterdir():file.unlink()
+        for file in (root/"output/flowcanvas/coverage/sources").iterdir():file.unlink()
         response=await client.get("/api/chat/projects/project/coverage/source",params={"instance":"Probe"})
         assert response.status_code==422
 
@@ -259,7 +259,7 @@ async def test_metric_source_preview_is_limited_to_reported_files(coverage_proje
     from flowcanvas.test_runner import TestRuns, routes
     root,store,ids,extract=coverage_project
     sha=hashlib.sha256((root/"Probe.v").read_bytes()).hexdigest()
-    atomic(root/".flowcanvas/coverage/state.json",dict(epoch="one",runs=[],
+    atomic(root/"output/flowcanvas/coverage/state.json",dict(epoch="one",runs=[],
         report={"code_metrics":{metric:{"dut":{"items":[{"file":"Probe.v","sha256":sha,"hierarchy":"Probe"}]}}}}))
     app=FastAPI()
     app.include_router(routes(SimpleNamespace(state={"recent":[{"id":"project","path":str(root)}]}),TestRuns()))

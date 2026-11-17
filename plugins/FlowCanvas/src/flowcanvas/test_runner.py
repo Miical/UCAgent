@@ -23,7 +23,7 @@ class TestRuns:
         self.lock = asyncio.Lock()
 
     def folder(self, root):
-        path = Path(root)/'.flowcanvas/test-runs'
+        path = Path(root)/'output/flowcanvas/test-runs'
         path.mkdir(parents=True, exist_ok=True)
         return path
 
@@ -97,7 +97,7 @@ class TestRuns:
             wave_dir=run_dir/'waveforms';wave_dir.mkdir()
             from .coverage_runtime import render
             database=(run_dir/'coverage.vdb' if mode in {'startup_smoke','coverage_smoke'} else
-                      store.root/'.flowcanvas/coverage/database/coverage.vdb')
+                      store.root/'output/flowcanvas/coverage/database/coverage.vdb')
             if data.coverage and data.coverage.mode=='shared':
                 if not all(token in template.command for token in ('{coverage_db}','{coverage_name}')):
                     raise ValueError('Shared coverage runner requires {coverage_db} and {coverage_name}')
@@ -149,7 +149,7 @@ class TestRuns:
                             if current['build_id'] not in (None,row['build_id']):
                                 raise ValueError('Coverage build changed; clear accumulated coverage before running')
                             current.update(build_id=row['build_id'],mode='shared')
-                            atomic(Path(row['cwd'])/'.flowcanvas/coverage/state.json',current)
+                            atomic(Path(row['cwd'])/'output/flowcanvas/coverage/state.json',current)
                             Path(row['coverage_db']).parent.mkdir(parents=True,exist_ok=True)
                 process=await asyncio.create_subprocess_exec('/bin/bash','-lc',row['command'],cwd=row['cwd'],
                     env=dict(os.environ,PYTHONUNBUFFERED='1',TERM='dumb',FLOWCANVAS_RUN_DIR=row['run_dir']),stdout=log,stderr=asyncio.subprocess.STDOUT,start_new_session=True)
@@ -198,6 +198,14 @@ class TestRuns:
         finally:
             if row['status']=='running':
                 row['status']='completed' if row['exit_code']==0 else 'failed'
+            if row['status']=='completed':
+                from .run_waveform import validate_run_waveform
+                try:
+                    row['waveform_receipt']=await asyncio.to_thread(validate_run_waveform,row['cwd'],row)
+                    row['waveform_status']='validated'
+                except Exception as exc:
+                    row.update(waveform_status='failed',waveform_error=str(exc))
+                    if row.get('mode')=='coverage_smoke':row.update(status='failed',error='Waveform validation failed: '+str(exc))
             if row.get('mode')=='coverage_smoke':
                 from .smoke_runs import startup_error
                 error=startup_error((folder/(row['id']+'.log')).read_text(errors='replace'))
@@ -262,7 +270,7 @@ def routes(projects,runner):
         """Resolve an existing execution directory without accepting user-supplied roots."""
         project=Path(root(identity)).resolve()
         if not re.fullmatch('[0-9a-f]{32}',run_id):raise HTTPException(400,'Invalid run ID')
-        folder=(project/'.flowcanvas/test-runs').resolve()
+        folder=(project/'output/flowcanvas/test-runs').resolve()
         if not folder.is_relative_to(project):raise HTTPException(403,'Run storage escapes project')
         metadata=folder/(run_id+'.json')
         if not metadata.is_file():raise HTTPException(404,'Run not found')
@@ -310,6 +318,17 @@ def routes(projects,runner):
         if candidate.suffix.lower() not in {'.vcd','.fst'}:
             raise HTTPException(415,'Inline viewing supports VCD and FST')
         return FileResponse(candidate,media_type='application/octet-stream',headers={'Cache-Control':'no-store'})
+
+    @router.get('/{identity}/test-runs/{run_id}/waveform-signals')
+    def waveform_signals(identity:str,run_id:str,case_id:str,waveform:str='waveforms/waves.vcd',
+                         query:str='**',offset:int=0,limit:int=100):
+        """Page real waveform declarations for the native signal picker, confined to its case and run."""
+        from .waveform_analysis import WaveAnalysisStore
+        try:
+            if len(query)>256:raise ValueError('Signal query exceeds limit')
+            return WaveAnalysisStore(root(identity),case_id,run_id,waveform).execute('inspect',query=query,offset=offset,limit=limit)
+        except (ValueError,OSError,KeyError) as exc:
+            raise HTTPException(422,str(exc)) from None
 
     @router.get('/{identity}/test-runs/{run_id}/waveform-analysis')
     def waveform_analysis(identity:str,run_id:str,case_id:str,waveform:str='waveforms/waves.vcd'):

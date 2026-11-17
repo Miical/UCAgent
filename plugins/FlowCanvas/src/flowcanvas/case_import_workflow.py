@@ -46,7 +46,7 @@ class CaseImportChecker(Checker):
                     from .native_vcs import configuration, build_identity
                     configuration(store.root)
                     build_identity(store.root)
-                    if not (store.root/'.flowcanvas/coverage/targets.json').is_file():
+                    if not (store.root/'output/flowcanvas/coverage/targets.json').is_file():
                         raise ValueError('Prepare native functional card mappings in coverage/targets.json')
                 else:
                     adapter=scope.get('coverage_adapter')
@@ -66,6 +66,8 @@ class CaseImportChecker(Checker):
                 entry=(card.name,card.runner.command if card.runner else '')
                 if entry in entries:raise ValueError('Duplicate case entry and command')
                 entries.add(entry)
+                if self.mode!='cards' and '{wave_dir}' not in card.runner.command:
+                    raise ValueError('Runner must enable VCD dumping into {wave_dir}/waves.vcd: '+identity)
                 if self.mode=='coverage' and not all(token in card.runner.command for token in ('{coverage_db}','{coverage_name}')):
                     raise ValueError('Runner must forward shared coverage path and unique run name: '+identity)
             if self.mode=='smoke':
@@ -79,13 +81,16 @@ class CaseImportChecker(Checker):
                 run_id=scope.get('smoke_run_id','')
                 if not isinstance(run_id,str) or not re.fullmatch('[0-9a-f]{32}',run_id):
                     raise ValueError('Record the completed coverage smoke run ID')
-                folder=store.root/'.flowcanvas/test-runs'
+                folder=store.root/'output/flowcanvas/test-runs'
                 run=json.loads((folder/(run_id+'.json')).read_text())
                 if (run.get('mode')!='coverage_smoke' or run.get('case_id')!=identity or
                         run.get('smoke_status')!='passed' or run.get('status')!='completed' or
                         run.get('exit_code')!=0 or run.get('stop_reason')!='natural_exit' or
                         run.get('coverage_status')!='validated' or not run.get('ended')):
                     raise ValueError('Complete the short smoke naturally and validate real coverage extraction')
+                from .run_waveform import validate_run_waveform
+                if run.get('waveform_status')!='validated' or run.get('waveform_receipt')!=validate_run_waveform(store.root,run):
+                    raise ValueError('Complete a smoke with a readable, unchanged primary VCD waveform')
                 if run.get('case_identity')!=case_identity(card):
                     raise ValueError('Smoke command or source changed; repeat coverage smoke')
                 if data.coverage is None or run.get('coverage_identity')!=coverage_identity(data.coverage.model_dump()):

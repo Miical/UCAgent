@@ -94,7 +94,7 @@ def view_snapshot(service, session, view):
             from .coverage_runtime import public
             state=public(project['path'])
             value['current_source']=value.pop('source')
-            value['coverage']=dict(metric=view.coverage_metric or 'line',file=view.coverage_file,build_id=state.get('build_id'),report_path='.flowcanvas/coverage')
+            value['coverage']=dict(metric=view.coverage_metric or 'line',file=view.coverage_file,build_id=state.get('build_id'),report_path='output/flowcanvas/coverage')
         return value
     target_view=getattr(card,'entity_type','')=='target'
     if target_view:
@@ -128,7 +128,7 @@ def view_snapshot(service, session, view):
             value['source']['content']=value['source']['content'][:12000]
             value['source']['truncated']=True
     if view.run_id:
-        metadata=Path(project['path'])/'.flowcanvas/test-runs'/(view.run_id+'.json')
+        metadata=Path(project['path'])/'output/flowcanvas/test-runs'/(view.run_id+'.json')
         if not metadata.is_file():raise HTTPException(404,'Run not found')
         run=json.loads(metadata.read_text())
         if run.get('case_id')!=card.id:raise HTTPException(422,'Run does not belong to this case')

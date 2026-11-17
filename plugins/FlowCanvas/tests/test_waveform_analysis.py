@@ -8,7 +8,7 @@ from flowcanvas.waveform_analysis import WaveAnalysisStore
 @pytest.fixture
 def waveform(tmp_path):
     """Create one terminal execution with known transitions and four-state values."""
-    folder=tmp_path/'.flowcanvas/test-runs';directory=folder/('a'*32)/'waveforms'
+    folder=tmp_path/'output/flowcanvas/test-runs';directory=folder/('a'*32)/'waveforms'
     directory.mkdir(parents=True)
     (folder/('a'*32+'.json')).write_text(json.dumps(dict(case_id='case',status='completed')))
     path=directory/'waves.vcd'

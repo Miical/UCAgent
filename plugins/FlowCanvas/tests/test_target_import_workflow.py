@@ -1,5 +1,6 @@
 """Import workflow gates and the UI's workflow attachment contract."""
 import json
+import pytest
 from pathlib import Path
 
 from flowcanvas.targets import Targets, execute
@@ -8,14 +9,24 @@ from flowcanvas.plugin import get_plugin
 from ucagent.util.config import load_yaml_with_env_vars
 
 
-def test_import_gate_rejects_unmapped_and_stale_sources(tmp_path):
+@pytest.mark.parametrize('point,bin_decl,accepted',[
+    ('addr_cp: coverpoint addr {','bins one = {1};',True),
+    ('addr_cross: cross addr_cp, op_cp {','bins one = binsof(addr_cp);',True),
+    ('addr_cp: coverpoint addr {','wildcard bins one = {1};',True),
+    ('assert property (addr == 1);','bins one = {1};',False),
+    ('if (addr != 1) `uvm_error("CHECK", "coverpoint addr")','bins one = {1};',False),
+    ('// addr_cp: coverpoint addr\nassert property (addr);','bins one = {1};',False),
+    ('addr_cp: coverpoint addr {','ignore_bins one = {1};',False),
+    ('addr_cp: coverpoint addr {','illegal_bins one = {1};',False),
+])
+def test_import_gate_rejects_unmapped_and_stale_sources(tmp_path,point,bin_decl,accepted):
     """Only finished, source-backed cards account for declared import candidates."""
     project=tmp_path/'project'; project.mkdir()
     work=tmp_path/'workspace'; (work/'summary').mkdir(parents=True)
     (tmp_path/'request.json').write_text(json.dumps({'project_root':str(project)}))
-    source=project/'checks.py'; source.write_text('class Checks:\n    def verify_value(self, x):\n        assert x == 1\n')
+    source=project/'coverage.sv'; source.write_text('covergroup checks;\n'+point+'\n'+bin_decl+'\n}\nendgroup\n')
     scope=work/'summary/import-scope.json'
-    scope.write_text(json.dumps({'files':['checks.py'],'documents':[],'exclusions':[]}))
+    scope.write_text(json.dumps({'files':['coverage.sv'],'documents':[],'exclusions':[]}))
     checker=TargetImportChecker(); checker.workspace=str(work)
     assert checker.do_check()[0]
     checker=TargetImportChecker(final=True);checker.workspace=str(work)
@@ -27,15 +38,18 @@ def test_import_gate_rejects_unmapped_and_stale_sources(tmp_path):
     ids=call('apply',count=3)['ids']
     call('begin_modify',ids=ids)
     call('update',cards=[{'id':ids[0],'kind':'group','name':'行为','description':'功能域',
-          'bindings':[{'file':'checks.py','line':1,'line_count':3}]},
+          'bindings':[{'file':'coverage.sv','line':1,'line_count':len(source.read_text().splitlines())}]},
          {'id':ids[1],'kind':'point','parent':ids[0],'name':'结果','description':'检查输入',
-          'bindings':[{'file':'checks.py','line':2,'line_count':2}]},
+          'bindings':[{'file':'coverage.sv','line':2,'line_count':1}]},
          {'id':ids[2],'kind':'testpoint','parent':ids[1],'name':'值为一','description':'断言结果',
-          'bindings':[{'file':'checks.py','line':3,'line_count':1}]}])
-    scope.write_text(json.dumps({'files':['checks.py'],'documents':[],'card_ids':ids}))
+          'bindings':[{'file':'coverage.sv','line':len(point.splitlines())+2,'line_count':1}]}])
+    scope.write_text(json.dumps({'files':['coverage.sv'],'documents':[],'card_ids':ids}))
     call('end_modify',ids=ids,planned=True)
-    assert checker.do_check()[0],checker.do_check()
-    source.write_text(source.read_text().replace('== 1','== 2'))
+    assert checker.do_check()[0] is accepted,checker.do_check()
+    if not accepted:
+        assert 'Import only' in checker.do_check()[1]['error']
+        return
+    source.write_text(source.read_text().replace('covergroup checks','covergroup changed'))
     assert not checker.do_check()[0]
 
 

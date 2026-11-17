@@ -22,7 +22,7 @@ def read_code(text, project, dut_instance, top_module, source_files):
         matches=sources.get(sha,[])
         if not matches:continue  # Only explicit project RTL, not verification interfaces.
         if len(matches)!=1:raise ValueError('Ambiguous RTL source snapshot: '+source[1])
-        file,_=matches[0];cache=root/'.flowcanvas/coverage/sources'/(sha+Path(file).suffix)
+        file,_=matches[0];cache=root/'output/flowcanvas/coverage/sources'/(sha+Path(file).suffix)
         cache.parent.mkdir(parents=True,exist_ok=True);cache.write_bytes(raw)
         chunks=re.split(r'^Module Instance : (\S+)\s*$',body,flags=re.M)
         header=chunks[0]

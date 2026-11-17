@@ -6,8 +6,14 @@ from collections import Counter
 MARKER = re.compile(r'^\s*(?://|#)\s*@flowcanvas\s+id=(bind_[0-9a-f]{32})\s*$')
 
 
+def read_source(path):
+    """Read source without normalizing its original line endings."""
+    with path.open(encoding='utf-8',newline='') as stream:return stream.read()
+
+
 def fingerprint(text):
     """Hash the selected text without nested FlowCanvas marker lines."""
+    text=text.replace('\r\n','\n').replace('\r','\n')
     return hashlib.sha256(''.join(line for line in text.splitlines(keepends=True)
                                    if not MARKER.fullmatch(line.rstrip('\r\n'))).strip().encode()).hexdigest()
 
@@ -28,7 +34,7 @@ def span(text, start, count):
 
 def snapshot(path, bindings):
     """Locate each stored marker and validate its explicit range without parsing code."""
-    text = path.read_text(encoding='utf-8')
+    text = read_source(path)
     markers = [(n+1,m[1]) for n,line in enumerate(text.splitlines())
                if (m := MARKER.fullmatch(line))]
     counts = Counter(identity for _,identity in markers)
@@ -47,7 +53,7 @@ def inspect_files(store, files):
     """Return numbered raw source and existing markers for AI range selection."""
     result=[]
     for file in files:
-        text=store.file(file).read_text(encoding='utf-8')
+        text=read_source(store.file(file))
         result.append({'file':file,'line_count':len(text.splitlines()),'content':text,
                        'fingerprint':fingerprint(text)})
     return result

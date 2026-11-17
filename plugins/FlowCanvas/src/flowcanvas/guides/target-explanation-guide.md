@@ -30,6 +30,10 @@
 - `check_kind` 使用 `unknown`、`coverage_only`、`assertion`、`comparison` 或 `mixed`。只有 coverpoint/cover/bin 采样且没有发现对应断言或比较时，应说明“当前仅有覆盖采样，尚未找到独立正确性检查”。不能把 monitor、打印日志、覆盖命中自动当作判定逻辑。
 - 源码说明不代表运行通过；退出码、覆盖命中和正确性结论应区分。
 
+## 导入与创建时的源码绑定
+
+沿实际调用和数据流绑定全部相关实现片段，不局限于目标声明：定义、激励与约束、监视和采样、断言或比较、覆盖采样及必要配置可以跨文件分别绑定。角色依次使用 `definition`、`stimulus`、`check`、`coverage`、`configuration`；直接相关的 DUT 逻辑可使用 `rtl`。选取完整且紧凑的逻辑片段，同角色重叠范围合并，更新时保留既有绑定；不存在的机制明确说明，不伪造绑定。所有标记插入后重新读取最终位置，再生成说明引用。仅生成说明的任务不改变既有绑定。
+
 ## 关联与更新
 
 先调用 `verification_targets(inspect, ids=[当前目标ID])` 阅读最新目标、绑定、版本、本规范及 `explanation_schema`；必要时通过 `files` / `binding_id` 阅读源码，并用 `test_cases(inspect)` 核对关联用例。

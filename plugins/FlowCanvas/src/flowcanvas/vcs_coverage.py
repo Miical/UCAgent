@@ -23,7 +23,7 @@ def identity():
  return h.hexdigest()
 if p['op']=='identity':print(identity())
 elif p['op']=='run':
- run=root/'.flowcanvas/runs'/p['id'];run.mkdir(parents=True,exist_ok=False)
+ run=root/'output/flowcanvas/runs'/p['id'];run.mkdir(parents=True,exist_ok=False)
  before=identity();(run/'build-id').write_text(before)
  shutil.copy2(build/'Cache.v',run/'Cache.v')
  if (build/'src/components/cache_bus_cov.sv').is_file():shutil.copy2(build/'src/components/cache_bus_cov.sv',run/'cache_bus_cov.sv')
@@ -35,13 +35,13 @@ elif p['op']=='run':
  (run/'finished.json').write_text(json.dumps({'exit_code':rc,'build_id':before}))
  sys.exit(rc)
 elif p['op']=='extract':
- run=root/'.flowcanvas/runs'/p['id'];result=json.loads((run/'finished.json').read_text())
+ run=root/'output/flowcanvas/runs'/p['id'];result=json.loads((run/'finished.json').read_text())
  if not list((run/'coverage.vdb/snps/coverage/db/testdata').glob('*')):raise RuntimeError('No runtime coverage data')
  print(json.dumps(dict(result,artifact=str(run/'coverage.vdb'),rtl_sha256=hashlib.sha256((run/'Cache.v').read_bytes()).hexdigest(),functional_source=(run/'cache_bus_cov.sv').read_text() if (run/'cache_bus_cov.sv').is_file() else '')))
 elif p['op']=='merge':
- out=root/'.flowcanvas/coverage'/p['id'];out.mkdir(parents=True,exist_ok=False)
+ out=root/'output/flowcanvas/coverage'/p['id'];out.mkdir(parents=True,exist_ok=False)
  inputs=p['inputs']
- if not inputs or any(not str(x).startswith(str(root/'.flowcanvas/runs')+'/') for x in inputs):raise RuntimeError('Invalid input database')
+ if not inputs or any(not str(x).startswith(str(root/'output/flowcanvas/runs')+'/') for x in inputs):raise RuntimeError('Invalid input database')
  import shlex
  cmd='urg -dir '+' '.join(shlex.quote(x) for x in inputs)+' -metric line+group -format text -show ratios -group instcov_for_score -group lrm_bin_name -dbname '+shlex.quote(str(out/'merged'))+' -report '+shlex.quote(str(out/'report'))
  with (out/'urg.log').open('w') as log:

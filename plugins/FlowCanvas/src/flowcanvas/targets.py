@@ -16,12 +16,16 @@ LOCK = threading.RLock()
 SKILL = Path(__file__).parent / 'skills/verification-targets/SKILL.md'
 
 
+SOURCE_SUFFIXES={'.v','.sv','.svh','.py','.sh','.bash','.mk','.yaml','.yml','.f','.tcl'}
+SOURCE_NAMES={'Makefile','makefile','GNUmakefile'}
+
+
 class Binding(BaseModel):
     model_config = ConfigDict(extra='forbid')
     id: str = Field(pattern=r'^bind_[0-9a-f]{32}$')
     file: str
     kind: str
-    role: Literal['definition', 'stimulus', 'check', 'coverage', 'rtl'] = 'definition'
+    role: Literal['definition', 'stimulus', 'check', 'coverage', 'rtl', 'configuration'] = 'definition'
     fingerprint: str = ''
     line_count: int = Field(default=0, ge=0)
 
@@ -97,8 +101,8 @@ class Targets:
 
     def file(self, relative):
         path = (self.root / relative).resolve()
-        if not path.is_relative_to(self.root) or path.suffix not in {'.v', '.sv', '.svh', '.py'} or not path.is_file():
-            raise ValueError('绑定必须指向项目中的现有 .v/.sv/.svh/.py 源文件')
+        if not path.is_relative_to(self.root) or (path.suffix not in SOURCE_SUFFIXES and path.name not in SOURCE_NAMES) or not path.is_file():
+            raise ValueError('Binding must reference a supported project source or configuration file')
         return path
 
     def read(self):
@@ -113,7 +117,7 @@ class Targets:
         for target in definition.targets:
             for binding in target.bindings:
                 path = (self.root / binding.file).resolve()
-                if not path.is_relative_to(self.root) or path.suffix not in {'.v','.sv','.svh','.py'}:
+                if not path.is_relative_to(self.root) or (path.suffix not in SOURCE_SUFFIXES and path.name not in SOURCE_NAMES):
                     raise ValueError('绑定路径必须是项目内源码')
         definition.revision = expected_revision + 1
         atomic(self.path, definition.model_dump())

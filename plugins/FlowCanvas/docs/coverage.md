@@ -19,7 +19,7 @@ observations through shared readers.
 The fixed project layout is:
 
 ```
-.flowcanvas/coverage/
+output/flowcanvas/coverage/
   config.json                 # provider, native DUT hierarchy, optional URG executable
   build.json                  # compiled inputs used to identify the build
   targets.json                # explicit native functional selectors -> panel bindings
@@ -95,7 +95,7 @@ does not establish per-instance attribution.
 Each LCOV file contains project-relative `path`, source `sha256`,
 `line_hits` keyed by executable source line, and derived `covered_lines`,
 `uncovered_lines`, `partial_lines`. The adapter saves exact source snapshots
-under `.flowcanvas/coverage/sources/`. Source viewing checks the hash rather
+under `output/flowcanvas/coverage/sources/`. Source viewing checks the hash rather
 than fetching a hardcoded project or remote host.
 
 ### Functional observations

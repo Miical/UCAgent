@@ -28,7 +28,7 @@ def source_snapshot(project_root, instance, metric='line', file=None):
     file=source['path']
     candidate=(project/file).resolve()
     if not candidate.is_relative_to(project):raise HTTPException(422,'Source path is outside the project')
-    cache=project/'.flowcanvas/coverage/sources'/(expected+Path(file).suffix)
+    cache=project/'output/flowcanvas/coverage/sources'/(expected+Path(file).suffix)
     path=cache if cache.is_file() else candidate
     if not path.is_file():raise HTTPException(404,'Build source snapshot is unavailable')
     raw=path.read_bytes()

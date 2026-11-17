@@ -209,10 +209,12 @@ class WorkflowRuntime:
                 if not spec['rtl_file']:
                     raise ValueError('Provide an existing RTL path')
                 dut = spec['dut']
-                root = self.service.root / 'workflow_runs' / uuid.uuid4().hex
+                root = (project_root / 'output/flowcanvas/workflow-runs' if project_root else self.service.root / 'workflow_runs') / uuid.uuid4().hex
+                if project_root and not root.resolve().is_relative_to(project_root):
+                    raise ValueError('Workflow output escapes project')
                 report = None
                 if project_root and identity == 'rtl-summary':
-                    report = project_root / 'output' / 'rtl-summary' / dut / root.name / 'summary.md'
+                    report = project_root / 'output/flowcanvas/design-summary' / dut / root.name / 'summary.md'
                     if not report.resolve().is_relative_to(project_root):
                         raise ValueError('Summary output must remain inside the bound project')
                 relative = Path(dut) / Path(spec['rtl_file']).name

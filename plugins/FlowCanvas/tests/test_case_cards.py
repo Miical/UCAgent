@@ -25,7 +25,7 @@ def test_batch_registration_binding_and_running_lock(api):
     call('update',cards=[dict(id=i,name=name,title='用例',description='断言通过',runner={'command':'python -m pytest {case}','description':'Fixture'},bindings=[dict(file='test_examples.py',line=line,line_count=2)])
                          for i,name,line in zip(ids,('test_a','test_b'),(1,4))])
     call('end_modify',ids=ids)
-    folder=root/'.flowcanvas/test-runs';folder.mkdir()
+    folder=root/'output/flowcanvas/test-runs';folder.mkdir(parents=True)
     run=folder/'active.json';run.write_text(json.dumps(dict(case_id=ids[0],status='running')))
     for action in ('update','delete'):
         with pytest.raises(ValueError,match='running'):call('begin_modify',ids=ids,action=action)

@@ -66,5 +66,5 @@ def test_metric_context_follows_modules_and_rejects_foreign_evidence(tmp_path,mo
         with pytest.raises(HTTPException):view_snapshot(service,session,view)
     (root/'dut.sv').write_text('changed')
     with pytest.raises(HTTPException):snapshot()
-    cache=root/'.flowcanvas/coverage/sources';cache.mkdir(parents=True);(cache/(sha+'.sv')).write_text(content)
+    cache=root/'output/flowcanvas/coverage/sources';cache.mkdir(parents=True);(cache/(sha+'.sv')).write_text(content)
     assert snapshot()['source']['sha256']==sha

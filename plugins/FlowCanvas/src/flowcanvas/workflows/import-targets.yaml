@@ -12,6 +12,11 @@ mission:
       Import existing verification targets into the current FlowCanvas project {PROJECT_ROOT}.
       The selected DUT is {DUT}. Inspect its verification entrypoints, file lists and shared dependencies.
       Import only the user's selected module scope, not unrelated library verification environments.
+      Import ONLY existing SystemVerilog covergroup, coverpoint, cross and explicit normal bins.
+      Never create targets from property/assert/cover property, scoreboard comparisons, sequences,
+      Python classes/functions/asserts, RTL branches or document-only plans. These may be supporting
+      source context for a real coverage declaration, but are never independent imported targets.
+      Each imported target requires a definition-role binding starting at its actual coverage declaration.
       Use concise readable Chinese card titles and descriptions. Prefer existing verification documents
       and test plans; cross-check them against code. Without documents, derive text from real source.
       Report differences between plans and implementation. Never fabricate coverage hits or passing tests.
@@ -20,6 +25,10 @@ mission:
       populate explanation with the feature's meaning and verification approach, or the test point's
       trigger conditions, expected behavior and actual checking mechanism. Cite real source excerpts;
       mark inference and coverage-only sampling explicitly. Groups remain organizational containers.
+      Follow each target through the real call/data flow and bind all relevant declaration, stimulus,
+      constraints, sampling, assertion/scoreboard and necessary configuration fragments across files.
+      Use definition/stimulus/check/coverage/configuration/rtl roles as appropriate; do not bind unrelated
+      code or invent missing mechanisms. Preserve existing bindings when replacing the complete list.
       Save bindings first, inspect their final source lines, then update explanation using the same
       owned transaction. Only link existing test cases with evidence; do not invent relationships.
       The server generates source_hashes. Missing evidence stays unknown rather than fabricated.
@@ -43,7 +52,7 @@ stage:
     desc: 确认验证源码与文档范围
     task:
       - "Read project verification entrypoints, build file lists and relevant verification documents. Follow necessary includes, but exclude unrelated DUTs, tools, logs and build products."
-      - "Use verification_targets inspect(files) to read raw source with no syntax parser; identify coverage/checking ranges yourself. Write {OUT}/import-scope.json with files (project-relative verification sources), documents (existing reference documents, or []), card_ids (initially []), and exclusions (initially []). No README is required."
+      - "Use verification_targets inspect(files) to read raw source with no syntax parser; identify only covergroup/coverpoint/cross/normal-bin declaration ranges yourself. Write {OUT}/import-scope.json with files (project-relative verification sources), documents (existing reference documents, or []), card_ids (initially []), and exclusions (initially []). No README is required."
     output_files: ["{OUT}/import-scope.json"]
     checker:
       - name: scope
@@ -52,9 +61,9 @@ stage:
   - name: import_verification_cards
     desc: 创建中文卡片并绑定已有实现
     task:
-      - "Read existing cards and reuse matching source bindings. Map covergroup to group, coverpoint/cross to point, explicit normal bins to testpoint; exclude ignore/illegal bins and do not invent implicit combinations. Python checking structures may be mapped from class/function/assert nodes where appropriate."
+      - "Read existing cards and reuse matching source bindings. Map covergroup to group, coverpoint/cross to point, explicit normal bins to testpoint; exclude ignore/illegal bins and do not invent implicit combinations. Do not import assertions, scoreboards, sequences or Python checks as targets."
       - "Reference the verified documentation when writing concise Chinese titles and descriptions; otherwise explain source intent plainly. Include sampling/trigger and expected checking behavior when the code supports it. Do not duplicate one behavior just because it appears in a document and in code."
-      - "Import in manageable batches using the five target operations. Select complete source ranges, starting at a source line and spanning line_count lines; the tool inserts a stable marker before the range. Record all imported/reused IDs in card_ids, including parent cards. Allocate only required IDs, assign types and parent links with update, bind actual implementation positions, and end each completed batch. Preserve unrelated existing cards."
+      - "Import in manageable batches using the five target operations. Select complete source ranges with a definition-role binding beginning at the actual covergroup, labeled coverpoint/cross or normal bins declaration, starting at a source line and spanning line_count lines; the tool inserts a stable marker before the range. Record all imported/reused IDs in card_ids, including parent cards. Allocate only required IDs, assign types and parent links with update, bind actual implementation positions, and end each completed batch. Preserve unrelated existing cards."
       - "For helper or duplicated definitions that should not be separate cards, add an exclusions entry {file,reason} to import-scope.json with a concrete explanation. Never hide a required target just to pass acceptance. Unimplemented document plans are reported separately, not represented as implemented cards."
     checker:
       - name: imported_cards

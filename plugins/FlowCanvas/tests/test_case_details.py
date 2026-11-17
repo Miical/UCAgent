@@ -87,8 +87,37 @@ async def test_wave_directory_expansion_without_simulation(tmp_path,monkeypatch)
     monkeypatch.setattr(runner,'execute',record_only)
     row=await runner.start(tmp_path,identity)
     await asyncio.gather(*runner.tasks.values())
-    wave_dir=tmp_path/'.flowcanvas/test-runs'/row['id']/'waveforms'
+    wave_dir=tmp_path/'output/flowcanvas/test-runs'/row['id']/'waveforms'
     assert wave_dir.is_dir()
     assert row['wave_dir']==str(wave_dir)
     assert shlex.split(row['command'])[-1]==str(wave_dir)
     assert '{wave_dir}' not in row['command']
+
+
+@pytest.mark.asyncio
+async def test_native_signal_picker_pages_actual_run_declarations(tmp_path):
+    """Signal browsing shares exact run ownership and native-tick bounds with AI annotations."""
+    runner=Runs();folder=runner.folder(tmp_path);identity='c'*32;directory=folder/identity/'waveforms';directory.mkdir(parents=True)
+    (folder/(identity+'.json')).write_text(json.dumps(dict(id=identity,case_id='tc_one',status='completed',started=1)))
+    (directory/'waves.vcd').write_text('$timescale 1 ns $end\n$scope module tb $end\n$var wire 1 ! clk $end\n$var wire 1 " req $end\n$upscope $end\n$enddefinitions $end\n#0\n0!\n0"\n#10\n1!\n1"\n')
+    app=FastAPI();app.include_router(routes(SimpleNamespace(state={'recent':[dict(id='p',path=str(tmp_path))]}),runner))
+    async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app),base_url='http://test') as client:
+        url='/api/chat/projects/p/test-runs/'+identity+'/waveform-signals'
+        result=await client.get(url,params=dict(case_id='tc_one',limit=1));assert result.status_code==200
+        page=result.json();assert page['total']==2 and len(page['signals'])==1 and page['begin']=='0' and page['end']=='10'
+        page=(await client.get(url,params=dict(case_id='tc_one',query='**req**'))).json();assert page['signals'][0]['name']=='tb.req'
+        assert (await client.get(url,params=dict(case_id='other'))).status_code==422
+        assert (await client.get(url,params=dict(case_id='tc_one',offset=-1))).status_code==422
+
+
+@pytest.mark.asyncio
+async def test_embedded_renderer_uses_only_native_control_protocol(tmp_path):
+    """Keep standalone messaging and PWA registration outside the embedded waveform canvas."""
+    from flowcanvas.server import create_app
+    app=create_app(tmp_path/'state')
+    async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app),base_url='http://localhost') as client:
+        response=await client.get('/surfer/?embedded=1');assert response.status_code==200
+        assert 'register_message_listener()' not in response.text
+        assert 'FlowCanvas owns the embedded control protocol' in response.text
+        assert 'flowcanvas-wave-error' in response.text and 'background:#fff!important' in response.text
+        assert 'register_message_listener()' in (await client.get('/surfer/')).text

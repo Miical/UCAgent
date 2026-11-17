@@ -19,7 +19,7 @@ class CoverageWatch:
 
     async def tick(self, root):
         """Ingest a changed snapshot only after quiescence and without an active managed run."""
-        root=Path(root).resolve();folder=root/'.flowcanvas/coverage'
+        root=Path(root).resolve();folder=root/'output/flowcanvas/coverage'
         if not (folder/'config.json').exists():return
         if any(r['id'] in self.runner.tasks or r['status'] in {'starting','running'} for r in self.runner.list(root)):return
         if await asyncio.to_thread(writer_active,root):return

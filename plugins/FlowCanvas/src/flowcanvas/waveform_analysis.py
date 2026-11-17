@@ -40,7 +40,7 @@ class WaveAnalysisStore:
         self.root = Path(root).resolve()
         if not re.fullmatch(r'[0-9a-f]{32}', run_id):
             raise ValueError('Invalid run ID')
-        folder = (self.root/'.flowcanvas/test-runs').resolve()
+        folder = (self.root/'output/flowcanvas/test-runs').resolve()
         if not folder.is_relative_to(self.root):
             raise ValueError('Run storage escapes project')
         self.run = json.loads((folder/(run_id+'.json')).read_text())

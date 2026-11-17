@@ -22,7 +22,7 @@ def project_file(root, name):
 
 def configuration(root):
     """Read fixed-location metadata; simulator commands are never project-defined."""
-    folder=Path(root)/'.flowcanvas/coverage'
+    folder=Path(root)/'output/flowcanvas/coverage'
     config=json.loads((folder/'config.json').read_text())
     if config.get('provider')!='vcs':raise ValueError('Unsupported native coverage provider')
     return config
@@ -30,7 +30,7 @@ def configuration(root):
 
 def build_identity(root):
     """Hash declared compiled artifacts and design metadata, excluding runtime hit data."""
-    root=Path(root).resolve();folder=root/'.flowcanvas/coverage'
+    root=Path(root).resolve();folder=root/'output/flowcanvas/coverage'
     manifest=json.loads((folder/'build.json').read_text())
     inputs=manifest.get('inputs')
     if not isinstance(inputs,list) or not inputs:raise ValueError('Coverage build.json needs compiled inputs')
@@ -51,7 +51,7 @@ def build_identity(root):
 
 def fingerprint(root):
     """Observe native database and metadata changes without reading large counter files."""
-    root=Path(root);folder=root/'.flowcanvas/coverage';entries=[('reader_version',2)]
+    root=Path(root);folder=root/'output/flowcanvas/coverage';entries=[('reader_version',2)]
     for path in [folder/'config.json',folder/'build.json',folder/'targets.json',root/'.flowcanvas/project.json']:
         if path.is_file():
             stat=path.stat();entries.append((str(path),stat.st_mtime_ns,stat.st_size))
@@ -73,7 +73,7 @@ def fingerprint(root):
 
 def map_functional(root, groups):
     """Use explicit native selectors and compiled-source fingerprints, never title guesses."""
-    root=Path(root);mapping=root/'.flowcanvas/coverage/targets.json'
+    root=Path(root);mapping=root/'output/flowcanvas/coverage/targets.json'
     if not mapping.exists():return dict(observations=[]),[]
     entries=json.loads(mapping.read_text());observations=[];warnings=[]
     for item in entries:
@@ -107,7 +107,7 @@ def map_functional(root, groups):
 async def extract(root, database, output, build_id):
     """Run native URG and convert one stable database snapshot into the shared schema."""
     root=Path(root).resolve();output=Path(output);output.parent.mkdir(parents=True,exist_ok=True)
-    config=configuration(root);folder=root/'.flowcanvas/coverage'
+    config=configuration(root);folder=root/'output/flowcanvas/coverage'
     executable=config.get('urg_executable') or shutil.which('urg')
     if not executable:raise ValueError('URG is unavailable; configure urg_executable or put urg on PATH')
     compile_db=folder/'database/compile.vdb';databases=[str(database)]
@@ -154,7 +154,7 @@ async def extract(root, database, output, build_id):
 
 def writer_active(root):
     """Recognize local VCS processes still writing the agreed database, including external runs."""
-    database=str(Path(root).resolve()/'.flowcanvas/coverage/database/coverage.vdb')
+    database=str(Path(root).resolve()/'output/flowcanvas/coverage/database/coverage.vdb')
     proc=Path('/proc')
     if not proc.is_dir():return False
     for path in proc.iterdir():
@@ -172,7 +172,7 @@ def writer_active(root):
 
 def metadata_identity(root):
     """Bind smoke receipts to native extraction metadata and the executed compilation."""
-    folder=Path(root)/'.flowcanvas/coverage';digest=hashlib.sha256(build_identity(root).encode())
+    folder=Path(root)/'output/flowcanvas/coverage';digest=hashlib.sha256(build_identity(root).encode())
     for name in ('config.json','build.json','targets.json'):
         path=folder/name
         if path.exists():digest.update(name.encode()+path.read_bytes())

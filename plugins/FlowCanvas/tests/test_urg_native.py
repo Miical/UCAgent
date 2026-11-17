@@ -59,7 +59,7 @@ def test_native_aggregate_projection_and_merge_guard(coverage_project):
         target_id=card.id,binding_fingerprints={b.id:b.fingerprint for b in card.bindings},
         covered=2,total=8,bins=[])]))
     validate_report(report)
-    atomic(root/'.flowcanvas/coverage/state.json',dict(epoch='one',runs=[],report=report))
+    atomic(root/'output/flowcanvas/coverage/state.json',dict(epoch='one',runs=[],report=report))
     item=store.status()['coverage']['targets'][card.id]['observations'][0]
     assert (item['covered'],item['total'],item['bins'])==(2,8,[])
     paths=[root/'one.json',root/'two.json']

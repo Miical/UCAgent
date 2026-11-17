@@ -14,7 +14,7 @@ mission:
       本流程按单个场景增量建设：优先复用项目已有的测试目录、运行命令、API、dut/env fixture、Bundle、参考模型和覆盖模型；只补齐该场景需要的缺口，不要求先实现完整环境、全部API或全部功能覆盖；但当前用例的行覆盖率与功能覆盖率采集链路都必须配置完成。
       不修改 RTL，不伪造 DUT、fc_cover 或预期值，不为适配错误结果削弱断言。规格缺失时依据实际设计分析，区分实现事实和待确认需求，不把可疑 RTL 自动当成正确规格。
       编写代码前先 test_cases(inspect/apply/begin_modify) 登记占位，始终复用该 ID；不通过 import 重复登记。修改既有卡片及绑定先 begin_modify，结束后 end_modify；创建中沿用原 ID，暂停后 begin_modify。
-      运行命令使用 {wave_dir}，平台预先创建该目录，实际位置为 {run_dir}/waveforms。将 {wave_dir}/waves.vcd 传入真实仿真器或 fixture 并直接输出这一份 VCD，核对编译调试前提与运行时开关；不生成中间 VPD，不增加转换步骤，不只建目录或传未使用参数。波形页自动打开该文件，不要求用户选择。保留仿真退出状态，报告缺失输出，不复用历史文件；不为验证配置而运行仿真。
+      FlowCanvas 新生成的构建产物放在 output/flowcanvas/build，运行产物统一放在 output/flowcanvas/test-runs/<run_id>；复用已有构建时不迁移用户原有编译输入。运行命令使用 {wave_dir}，平台预先创建该目录，实际位置为 {run_dir}/waveforms。将 {wave_dir}/waves.vcd 传入真实仿真器或 fixture 并直接输出这一份 VCD，明确开启真实的波形记录开关，覆盖脚本默认关闭设置，指定 DUT 层级，并核对编译调试前提；不生成中间 VPD，不增加转换步骤，不只建目录或传未使用参数。波形页自动打开该文件，不要求用户选择。保留仿真退出状态，报告缺失输出，不复用历史文件；不为验证配置而运行仿真。
       默认不运行 DUT 仿真、pytest 收集、回归或动态 Bug 取证。静态检查不导入项目模块；不为检查而启动仿真。确需运行验证时交由用户后续点击运行测试用例。
       每阶段使用 SetCurrentStageJournal 和 Complete 推进，直到最终验收；完成只表示代码编写、静态检查及登记完成，不能宣称用例通过或覆盖命中。结束调用 Exit。
     tips:
@@ -85,7 +85,7 @@ stage:
       - "优先使用 python -m flowcanvas.coverage_adapter：extract --adapter toffee 读取 Toffee JSON 和从本次原始行数据库转换的 LCOV，或 extract --adapter normalized 接受其他适配器的统一报告；merge 按原子行命中和 bin 次数合并，不平均百分比。必要时读取 --help。VCS 等已有原生合并器可继续使用，只要输出同一报告格式。"
       - "保存项目 verification/coverage/flowcanvas-map.json，内容为真实 FG/FC/CK 完整标签路径到测试点 ID；保存 build-inputs.json，列出 RTL、编译产物、覆盖定义和影响采样的共享代码相对路径，不包含普通新增用例。使用 identity 计算构建标识，禁止固定字符串。"
       - "用 test_case_runs(operation=configure, settings={coverage:配置}) 保存 coverage-json-v1 的提取命令、独立原始/标准报告路径、合并命令和构建标识命令。testcase_plan.json 加 coverage_plan：adapter（toffee 或 normalized）、line_source 与 functional_source（均包含 {run_dir}）、mapping_file 与 build_inputs_file（项目相对路径）。必须补齐两种覆盖率采集：coverage_plan 中 line_enabled 与 functional_enabled 均为 true，并用 collector_files 列出真实采集源码。运行时缺失数据可以标 unavailable，但不能用 unavailable 代替创建时的配置任务；本创建流程只配置和静态核对，不运行 DUT。"
-      - "通过 test_cases(update/inspect/update) 更新同一占位 ID，绑定测试函数，保留 creating 状态供下一阶段审查；同步新增或修改目标的源码绑定。"
+      - "通过 test_cases(update/inspect/update) 更新同一占位 ID，绑定测试函数，保留 creating 状态供下一阶段审查；同步新增或修改目标的源码绑定。源码绑定只保留用例强相关的完整片段：definition 绑定可运行入口，stimulus 绑定该场景实际使用的 sequence/virtual sequence；场景独有且理解用例不可缺少的约束、辅助任务或预期检查可补充绑定。为理解调用链而读取共享代码，不等于需要绑定；不默认关联共享 monitor、driver、sequencer、agent、env、基类、通用记分板、覆盖采集、fixture、RTL 或构建运行脚本，不为了填满角色而扩展范围。仅在确有不可替代的场景专属逻辑时绑定其最小完整片段并说明理由。保留强相关的既有绑定，去掉当前用例过宽的基础设施绑定，不修改其他用例或共享源码。"
     reference_files: ["{OUT}/testcase_plan.json", "Guide_Doc/dut_test_case.md", "Guide_Doc/dut_fixture.md", "Guide_Doc/dut_api_instruction.md", "Guide_Doc/dut_function_coverage_def.md"]
     checker:
       - name: implemented_case

@@ -96,11 +96,16 @@ def create_app(state_dir=None) -> FastAPI:
     surfer = Path(package.origin).parent / 'server/static/surfer'
     if (surfer / 'index.html').is_file():
         @app.get('/surfer/', response_class=HTMLResponse)
-        def waveform_viewer():
+        def waveform_viewer(embedded:bool=False):
             """Reuse Surfer's bootstrap and attach run-scoped annotations after loading."""
             page=(surfer/'index.html').read_text()
-            page=page.replace('<script src="deep-link.js"></script>', '<script src="deep-link.js"></script><script src="/assets/wave-viewer.js"></script>')
+            page=page.replace('<script src="deep-link.js"></script>', '<script src="deep-link.js"></script><script src="/assets/wave-points.js"></script><script src="/assets/wave-viewer.js"></script>')
             page=page.replace('/*SURFER_SETUP_HOOKS*/', 'await window.FlowCanvasWaveViewer(surfer);')
+            if embedded:
+                page=page.replace('register_message_listener()', '/* FlowCanvas owns the embedded control protocol. */')
+                page=page.replace("if ('serviceWorker' in navigator", "if (false && 'serviceWorker' in navigator")
+                page=page.replace('</head>','<style>html,body{background:#fff!important}</style></head>')
+                page=page.replace('window.on_surfer_error = on_surfer_error;', "window.on_surfer_error = msg => { on_surfer_error(msg); parent.postMessage({type:'flowcanvas-wave-error',message:String(msg)}, location.origin); };")
             return HTMLResponse(page,headers={'Cache-Control':'no-store'})
         app.mount('/surfer', StaticFiles(directory=surfer, html=True), name='flowcanvas-surfer')
     app.mount("/assets", StaticFiles(directory=web), name="flowcanvas-assets")

@@ -25,8 +25,11 @@ Hierarchy: group -> point -> testpoint. Titles (name) and descriptions are conci
 referencing verification documentation when available and checked against source; otherwise derive
 from source. Do not confuse a plan, a valid binding, coverage hits and passing verification.
 
-Import existing definitions by reading source, not by relying on syntax parsing. Usually covergroups
-map to groups, coverpoints/crosses to points and explicit normal bins to testpoints. Exclude
+Import existing definitions by reading source, not by relying on syntax parsing. For project import, accept ONLY SystemVerilog covergroups
+(group), coverpoints/crosses (point), and explicit normal bins (testpoint). Each imported card needs
+a definition-role binding beginning at its actual coverage declaration. Do not create imported targets
+from assertions/properties, cover property, scoreboard comparisons, sequences, Python checks or
+document-only plans. Such code may support an existing coverage target as context. Exclude
 ignore/illegal bins. Do not invent implicit combinations. Read macro bodies when they define targets.
 Check complete ranges, meaningful parent relationships and concrete instance ownership yourself.
 Server checks only marker uniqueness, range bounds, fingerprints and card state; it does not prove
@@ -39,3 +42,12 @@ the guide and write explanation through the same owned update transaction. Featu
 function and verification decomposition; testpoints explain triggers, expectations and actual checks.
 Cite exact code and existing case IDs; never infer correctness from coverage hits. Bind source first,
 then inspect final lines before writing explanations. Groups remain organizational containers.
+
+When importing or creating targets, follow the actual behavior across files and bind all relevant
+fragments, not only its coverpoint/bin declaration. Use definition for the target declaration,
+stimulus for driving/constraints, check for assertions/comparisons, coverage for sampling and coverage
+logic, configuration for environment/build/runtime setup, and rtl only when directly needed.
+Bind compact complete logical ranges, preserve existing bindings when updating the full list, and
+merge duplicate or overlapping ranges with the same role. Do not invent absent checks or attach
+unrelated code merely to fill a role. After all binding insertions, re-inspect final source locations
+before writing explanations. Explanation-only tasks preserve the existing bindings.

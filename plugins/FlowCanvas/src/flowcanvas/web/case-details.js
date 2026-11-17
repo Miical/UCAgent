@@ -24,6 +24,7 @@ window.FlowCanvasDetailSection=function(owner,label,key=label){
 window.FlowCanvasCaseDetails=function(host,project){
   const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
   let selected=null,report=null,tab='overview',runId=null,sourceId=null,revision='',generation=0,offset=0,polling=false;
+  let wavePanel=null,waveExplanation=null;
   let runs=[],log=null,runCommand=null,runSelect=null,wavePath='',waveRevision='',wavePolling=false;
   const positions=new Map(),tabPrefix='case-detail-'+Math.random().toString(36).slice(2)+'-';
   const names={overview:'概览',source:'源码',runs:'运行记录',wave:'波形'};
@@ -47,7 +48,7 @@ window.FlowCanvasCaseDetails=function(host,project){
   /** Build a project-scoped URL from the current immutable selection. */
   function base(){return '/api/chat/projects/'+encodeURIComponent(project().id);}
   /** Create the shared flat section used throughout case details. */
-  function section(label){const node=label==='波形'?el('section','case-section'):window.FlowCanvasDetailSection(host,label,selected.id+':'+tab+':'+label);if(label==='波形')node.append(el('h4','module-section-heading',label));body.append(node);return node;}
+  function section(label,key=label){const node=label==='波形'?el('section','case-section'):window.FlowCanvasDetailSection(host,label,selected.id+':'+tab+':'+key);if(label==='波形')node.append(el('h4','module-section-heading',label));body.append(node);if(label==='AI 解读'&&tab==='wave'){waveExplanation=node;window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,node);}return node;}
   /** Render a labeled value using the shared section layout. */
   function field(label,value,code=false){section(label).append(el(code?'pre':'p','',value||'尚未填写'));}
   function overviewBlock(data){
@@ -116,25 +117,32 @@ window.FlowCanvasCaseDetails=function(host,project){
   }
   /** Populate one shared run selector for the log and waveform tabs. */
   function picker(){
-    runSelect=el('select','case-detail-select');runSelect.ariaLabel='选择本用例的运行记录';
-    for(const row of runs){const option=el('option','',new Date(row.started*1000).toLocaleString()+' · '+(statusNames[row.status]||row.status)+' · '+row.id.slice(0,8));option.value=row.id;runSelect.append(option);}
-    runSelect.value=runId;runSelect.onchange=()=>{runId=runSelect.value;render();};body.append(runSelect);
+    const picker=el('div','case-run-picker'),label=el('label','case-run-picker-label','运行记录');
+    runSelect=el('select','case-detail-select case-run-select');runSelect.ariaLabel='选择本用例的运行记录';
+    for(const [index,row] of runs.entries()){const time=new Date(row.started*1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});const option=el('option','',time+' · '+(statusNames[row.status]||row.status)+(index===0?' · 最近':''));option.value=row.id;runSelect.append(option);}
+    runSelect.value=runId;runSelect.onchange=()=>{runId=runSelect.value;render();};
+    const current=runs.find(row=>row.id===runId),badge=el('span','case-run-status',statusNames[current?.status]||current?.status||'');badge.dataset.status=current?.status||'';
+    label.append(runSelect);picker.append(label,badge);body.append(picker);
   }
-  /** Display the selected source directly and highlight its bound range. */
+  /** Show every related source file once, highlighting all of its bound fragments. */
   async function source(token){
     const bindings=report?.bindings||[];
     if(!bindings.length){body.append(el('p','case-detail-empty','尚无源码绑定'));return;}
-    if(!bindings.some(binding=>binding.id===sourceId))sourceId=bindings[0].id;
-    const result=await json(base()+'/testcases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation:'inspect',binding_id:sourceId})});
+    if(!bindings.some(binding=>binding.id===sourceId))sourceId=bindings.find(binding=>binding.role==='definition')?.id||bindings[0].id;
+    const results=await Promise.allSettled(bindings.map(binding=>json(base()+'/testcases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation:'inspect',binding_id:binding.id})})));
     if(token!==generation)return;
-    const data=result.source;const pre=el('pre','case-detail-source');pre.tabIndex=0;pre.ariaLabel='测试用例源码';
-    const full=data.file_content!==undefined,start=full?1:data.line;
-    (full?data.file_content:data.content).split('\n').forEach((text,index)=>{const line=start+index,row=el('div',line>=data.line&&line<=data.end_line?'is-bound':'');row.dataset.line=String(line);row.append(el('span','',String(line)),el('code','',text||' '));if(line===data.line)row.dataset.start='true';pre.append(row);});
-    publish();
-    let scrollTimer;
-    body.onscroll=()=>{clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>{if(token!==generation)return;const bounds=body.getBoundingClientRect();const row=[...pre.children].find(node=>node.getBoundingClientRect().bottom>bounds.top);if(row)publish({line:Number(row.dataset.line)});},150);};
-    pre.onmouseup=()=>{const selection=window.getSelection();if(!selection?.toString()||!pre.contains(selection.anchorNode)||!pre.contains(selection.focusNode))return;const first=selection.anchorNode.parentElement.closest('[data-line]'),last=selection.focusNode.parentElement.closest('[data-line]');if(first&&last){const lines=[Number(first.dataset.line),Number(last.dataset.line)];publish({line:Math.min(...lines),end_line:Math.max(...lines)});}};
-    const sourceSection=section('源码');sourceSection.classList.add('case-section-source');sourceSection.append(pre);requestAnimationFrame(()=>{if(token===generation){const row=pre.querySelector('[data-start]');if(row)pre.scrollTop=Math.max(0,row.offsetTop-pre.offsetTop-70);}});
+    const files=new Map(),blocks=[],roles={definition:'用例定义',stimulus:'激励与约束',check:'检查逻辑',coverage:'覆盖采样',configuration:'环境与配置',rtl:'RTL 实现'};
+    results.forEach((result,index)=>{const binding=bindings[index];if(result.status==='rejected'){const part=section(roles[binding.role]||'源码');part.append(el('p','targets-error',binding.file+'：'+result.reason.message));return;}const source=result.value.source;if(!files.has(source.file))files.set(source.file,[]);files.get(source.file).push({...source,id:binding.id,role:binding.role});});
+    for(const [file,ranges] of files){
+      const part=section([...new Set(ranges.map(range=>roles[range.role]||'源码'))].join(' · '),file);part.classList.add('case-section-source');part.querySelector('summary').append(el('code','',file));
+      const pre=el('pre','case-detail-source');pre.tabIndex=0;pre.ariaLabel='测试用例相关源码';
+      const full=ranges[0].file_content!==undefined,start=full?1:ranges[0].line;
+      (full?ranges[0].file_content:ranges[0].content).split('\n').forEach((text,index)=>{const line=start+index,bound=ranges.find(range=>line>=range.line&&line<=range.end_line),row=el('div',bound?'is-bound':'');row.dataset.line=String(line);row.dataset.bindingId=(bound||ranges[0]).id;row.append(el('span','',String(line)),el('code','',text||' '));pre.append(row);});
+      pre.onmouseup=()=>{const selection=window.getSelection();if(!selection?.toString()||!pre.contains(selection.anchorNode)||!pre.contains(selection.focusNode))return;const first=selection.anchorNode.parentElement.closest('[data-line]'),last=selection.focusNode.parentElement.closest('[data-line]');if(first&&last){sourceId=first.dataset.bindingId;const lines=[Number(first.dataset.line),Number(last.dataset.line)];publish({line:Math.min(...lines),end_line:Math.max(...lines)});}};
+      part.append(pre);blocks.push({part,pre});
+    }
+    publish();let scrollTimer;
+    body.onscroll=()=>{clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>{if(token!==generation||body.hidden)return;const top=body.getBoundingClientRect().top,block=blocks.find(({part,pre})=>part.open&&pre.getBoundingClientRect().bottom>top),row=block&&[...block.pre.children].find(item=>item.getBoundingClientRect().bottom>top);if(row){sourceId=row.dataset.bindingId;publish({line:Number(row.dataset.line)});}},150);};
   }
   /** Fetch logs incrementally and retain the user's scroll position. */
   async function output(token){
@@ -152,9 +160,10 @@ window.FlowCanvasCaseDetails=function(host,project){
     picker();const run=runs.find(row=>row.id===runId);
     if(tab==='wave'){
       const result=await json(base()+'/test-runs/'+encodeURIComponent(runId)+'/waveforms');if(token!==generation)return;
-      if(!result.files.length){
+      const waiting=['starting','running'].includes(run?.status);
+      if(!result.files.length||run?.waveform_status==='failed'||waiting){
         const viewer=section('波形'),actions=el('div','case-overview-actions'),task=taskButton('case-waveform','解读波形');task.disabled=true;task.title='本次运行尚无波形文件';actions.append(task);viewer.querySelector('.module-section-heading').remove();
-        viewer.append(el('p','case-detail-empty','本次运行尚无波形文件'));const explanation=section('AI 解读');explanation.classList.add('case-wave-explanation');explanation.querySelector('.module-section-heading').append(actions);explanation.append(el('p','case-detail-empty','生成波形后可进行解读。'));return;
+        viewer.append(el('p','case-detail-empty',waiting?'运行仍在生成波形，结束后将自动载入。':run?.waveform_error?'波形不可用：'+run.waveform_error:'本次运行尚无波形文件'));const explanation=section('AI 解读');explanation.classList.add('case-wave-explanation');explanation.querySelector('.module-section-heading').append(actions);explanation.append(el('p','case-detail-empty','生成波形后可进行解读。'));return;
       }
       const viewer=section('波形');viewer.classList.add('case-section-wave');
       const file=result.files.find(file=>file.path==='waveforms/waves.vcd')||result.files.find(file=>/\.(vcd|fst)$/i.test(file.path));
@@ -165,18 +174,14 @@ window.FlowCanvasCaseDetails=function(host,project){
       waveRevision=JSON.stringify([saved.revision,saved.status]);
       const actions=el('div','case-overview-actions');actions.append(taskButton('case-waveform','解读波形',{run_id:runId,waveform:path}));viewer.querySelector('.module-section-heading').remove();
       const source=base()+'/test-runs/'+encodeURIComponent(runId)+'/waveform-view/'+path.split('/').map(encodeURIComponent).join('/');
-      const frame=el('iframe','case-wave-viewer');frame.title='Surfer 波形查看器';frame.allow='cross-origin-isolated';
-      const url=new URL('/surfer/',location.origin);url.searchParams.set('load_url',new URL(source,location.origin).href);
-      if(saved.status==='ready'){
-        url.searchParams.set('analysis_url',analysisUrl);url.searchParams.set('startup_commands','run_command_file_from_url '+location.origin+'/surfer/ucagent-wave-ready.sucl');
-      }
-      frame.src=url.href;viewer.append(frame);
+      const catalogUrl=analysisUrl.replace('/waveform-analysis?','/waveform-signals?');
+      wavePanel=window.FlowCanvasWavePanel(viewer,{source,analysisUrl,catalogUrl,runSelect:runSelect.closest('.case-run-picker'),analysis:saved.analysis,onSelection:()=>{for(const button of waveExplanation?.querySelectorAll('.case-wave-point-title')||[])button.setAttribute('aria-pressed','false');}});
       const explanation=section('AI 解读');explanation.classList.add('case-wave-explanation');explanation.querySelector('.module-section-heading').append(actions);
       if(!saved.analysis){explanation.append(el('p','case-detail-empty',saved.status==='stale'?'波形已更新，请重新解读。':'点击右侧 AI 按钮生成解读。'));return;}
       for(const [index,point] of saved.analysis.points.entries()){
         const entry=el('article','case-wave-point'),jump=el('button','case-wave-point-title',(index+1)+'. '+point.title);jump.type='button';
         jump.setAttribute('aria-pressed',String(index===0));jump.title='查看对应信号和时间窗口';
-        jump.onclick=()=>{for(const button of explanation.querySelectorAll('.case-wave-point-title'))button.setAttribute('aria-pressed',String(button===jump));frame.contentWindow.postMessage({type:'flowcanvas-wave-point',index},location.origin);};
+        jump.onclick=()=>{for(const button of explanation.querySelectorAll('.case-wave-point-title'))button.setAttribute('aria-pressed',String(button===jump));wavePanel?.focus(index);};
         entry.append(jump,el('span','case-wave-point-time',point.time+' · 原生时间刻度'),el('p','',point.explanation));
         const values=el('p','case-wave-point-values');values.append(el('code','',Object.entries(point.values).map(([signal,value])=>signal+' = '+value).join('\n')));entry.append(values);explanation.append(entry);
       }
@@ -188,7 +193,7 @@ window.FlowCanvasCaseDetails=function(host,project){
   }
   /** Replace only the active tab when selection changes, guarding stale asynchronous responses. */
   function render(){
-    const token=++generation;offset=0;log=null;wavePath='';body.onscroll=null;body.replaceChildren();body.dataset.tab=tab;title.replaceChildren();
+    const token=++generation;wavePanel?.dispose();wavePanel=null;waveExplanation=null;if(selected)window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,null);offset=0;log=null;wavePath='';body.onscroll=null;body.replaceChildren();body.dataset.tab=tab;title.replaceChildren();
     for(const button of tabs.children){const active=button.id===tabPrefix+tab;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;}
     body.setAttribute('role','tabpanel');body.setAttribute('aria-labelledby',tabPrefix+tab);
     if(!selected){title.append(el('strong','','测试用例详情'));body.append(el('p','case-detail-empty','在左侧选择测试用例'));return;}
@@ -204,14 +209,22 @@ window.FlowCanvasCaseDetails=function(host,project){
   }
   const runPoll=setInterval(async()=>{if(host.closest('[hidden]')||document.hidden||tab!=='runs'||!runId||!log||polling)return;polling=true;const token=generation;try{await output(token);}catch(error){if(token===generation)log.textContent=error.message;}finally{polling=false;}},1000);
   const wavePoll=setInterval(async()=>{
-    if(tab!=='wave'||!wavePath||document.hidden||host.closest('[hidden]')||wavePolling)return;
+    if(tab!=='wave'||!runId||document.hidden||host.closest('[hidden]')||wavePolling)return;
     wavePolling=true;const token=generation;
-    try{const saved=await json(base()+'/test-runs/'+encodeURIComponent(runId)+'/waveform-analysis?case_id='+encodeURIComponent(selected.id)+'&waveform='+encodeURIComponent(wavePath));if(token===generation&&JSON.stringify([saved.revision,saved.status])!==waveRevision)render();}catch{}finally{wavePolling=false;}
+    try{
+      if(['starting','running'].includes(runs.find(row=>row.id===runId)?.status)){
+        const rows=await json(base()+'/test-runs?case_id='+encodeURIComponent(selected.id)+'&include_smoke=true');
+        if(token!==generation)return;const next=rows.find(row=>row.id===runId);if(next&&next.status!==runs.find(row=>row.id===runId)?.status){render();return;}
+      }
+      if(!wavePath)return;
+      const saved=await json(base()+'/test-runs/'+encodeURIComponent(runId)+'/waveform-analysis?case_id='+encodeURIComponent(selected.id)+'&waveform='+encodeURIComponent(wavePath));if(token===generation&&JSON.stringify([saved.revision,saved.status])!==waveRevision)render();}catch{}finally{wavePolling=false;}
   },2500);
   const onRun=event=>{
     if(event.detail.project?.id===project()?.id&&event.detail.run?.case_id===selected?.id){runId=event.detail.run.id;tab='runs';render();}
   };
   document.addEventListener('flowcanvas-test-run',onRun);
+  const onClose=event=>{if(event.detail.case_id===selected?.id){wavePanel?.dispose();wavePanel=null;window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,null);revision='';}};
+  document.addEventListener('flowcanvas-case-tab-closed',onClose);
   render();
-  return {dispose(){generation++;clearInterval(runPoll);clearInterval(wavePoll);document.removeEventListener('flowcanvas-test-run',onRun);host.remove();},context(){return {tab,run_id:runId,binding_id:tab==='source'?sourceId:null};},select(node,bindings){const next=JSON.stringify([node,bindings]);if(revision===next)return;const changed=selected?.id!==node?.id;selected=node;report=bindings;revision=next;if(changed){const position=positions.get(node?.id)||{};tab=position.tab||'overview';runId=position.run_id||null;sourceId=position.binding_id||null;}render();}};
+  return {dispose(){generation++;wavePanel?.dispose();if(selected)window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,null);clearInterval(runPoll);clearInterval(wavePoll);document.removeEventListener('flowcanvas-test-run',onRun);document.removeEventListener('flowcanvas-case-tab-closed',onClose);host.remove();},context(){return {tab,run_id:runId,binding_id:tab==='source'?sourceId:null};},select(node,bindings){const next=JSON.stringify([node,bindings]);if(revision===next)return;const changed=selected?.id!==node?.id;selected=node;report=bindings;revision=next;if(changed){const position=positions.get(node?.id)||{};tab=position.tab||'overview';runId=position.run_id||null;sourceId=position.binding_id||null;}render();}};
 };

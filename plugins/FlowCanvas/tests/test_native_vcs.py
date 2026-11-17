@@ -15,7 +15,7 @@ from flowcanvas.testcases import CoverageConfig
 
 def native_project(root):
     """Create native report fixtures and a local stand-in for the URG command protocol."""
-    folder=root/'.flowcanvas/coverage';folder.mkdir(parents=True)
+    folder=root/'output/flowcanvas/coverage';folder.mkdir(parents=True)
     source=root/'Top.sv';source.write_text('module Top(input a);\nassign y=a;\nendmodule\n')
     binary=root/'simv';binary.write_text('binary-A')
     atomic(root/'.flowcanvas/project.json',dict(rtl=dict(top='Top',files=['Top.sv'])))

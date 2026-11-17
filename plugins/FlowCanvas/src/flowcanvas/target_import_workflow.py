@@ -1,9 +1,11 @@
 """Read-only acceptance of AI-selected import scopes and explicit line bindings."""
 import json
+import re
 from pathlib import Path
 
 from ucagent.checkers.base import Checker
 from .targets import Targets
+from .line_bindings import read_source
 
 
 class TargetImportChecker(Checker):
@@ -52,6 +54,21 @@ class TargetImportChecker(Checker):
                     raise ValueError('Card requires valid marker and line-count bindings: '+identity)
                 if not any(b.file in files for b in card.bindings):
                     raise ValueError('Bind the card within the declared source scope: '+identity)
+                # Validate the selected declaration boundary without parsing or elaborating UVM.
+                patterns={
+                    'group':r'^covergroup\b',
+                    'point':r'^(?:[A-Za-z_$][\w$]*\s*:\s*)?(?:coverpoint|cross)\b',
+                    'testpoint':r'^(?:wildcard\s+)?bins\s+[A-Za-z_$][\w$]*\s*(?:\[[^\]]*\]\s*)?=',
+                }
+                declarations=[]
+                for binding in report['reports'][identity]['bindings']:
+                    if binding['role']!='definition' or binding['file'] not in files:
+                        continue
+                    text=''.join(read_source(store.file(binding['file'])).splitlines(keepends=True)[binding['line']-1:binding['end_line']])
+                    text=re.sub(r'"(?:\\.|[^"\\])*"|/\*[\s\S]*?\*/|//[^\n]*', ' ',text).lstrip()
+                    declarations.append(text)
+                if not any(re.match(patterns[card.kind],text) for text in declarations):
+                    raise ValueError('Import only covergroup/group, coverpoint or cross/point, and normal bins/testpoint; bind the declaration with role=definition: '+identity)
                 if card.parent and card.parent not in ids:
                     raise ValueError('Include the imported hierarchy parent in card_ids: '+identity)
             for item in scope.get('exclusions',[]):

@@ -56,7 +56,7 @@ def routes(service):
             for path in files:
                 digest.update(path.read_bytes())
             key = digest.hexdigest()
-            cache = service.root / 'rtl_views' / identity / key
+            cache = root / 'output/flowcanvas/rtl-views' / key
             with lock:
                 output = cache / 'view.json'
                 if output.is_file():

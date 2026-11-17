@@ -80,7 +80,7 @@ def test_context_freezes_authoritative_card_and_rejects_foreign_artifacts(tmp_pa
     assert 'file_content' not in snapshot['source']
     assert snapshot['view']['line']==2
     with pytest.raises(HTTPException):view_snapshot(service,session,CaseView(tab='source',binding_id='foreign'))
-    folder=root/'.flowcanvas/test-runs';folder.mkdir()
+    folder=root/'output/flowcanvas/test-runs';folder.mkdir(parents=True)
     run_id='a'*32;metadata=folder/(run_id+'.json')
     metadata.write_text(json.dumps(dict(id=run_id,case_id=second,status='completed')))
     with pytest.raises(HTTPException):view_snapshot(service,session,CaseView(tab='runs',run_id=run_id))

@@ -63,6 +63,8 @@ class TestcaseAuthoringChecker(Checker):
                 return True, {"case_id": case.id, "state": "reserved"}
             if not case.runner:
                 raise ValueError("Configure this case runner before finishing authoring")
+            if "{wave_dir}" not in case.runner.command:
+                raise ValueError("Enable the simulator waveform switch and route VCD output to {wave_dir}/waves.vcd")
             coverage_plan = plan.get("coverage_plan") or {}
             if not definition.coverage or coverage_plan.get("adapter") not in {"toffee", "normalized"}:
                 raise ValueError("Configure coverage extraction and record coverage_plan.adapter")

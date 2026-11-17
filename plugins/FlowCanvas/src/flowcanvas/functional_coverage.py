@@ -49,7 +49,7 @@ def parse_groups(text, source):
 
 
 def revision(root):
-    path=Path(root)/'.flowcanvas/coverage/state.json'
+    path=Path(root)/'output/flowcanvas/coverage/state.json'
     if not path.exists(): return ''
     s=json.loads(path.read_text())
     return str(s.get('epoch',''))+':'+str(s.get('updated',''))
@@ -57,7 +57,7 @@ def revision(root):
 
 def project(root, definition, parsed, binding_reports):
     """Match stable source bindings only against the actual compiled source."""
-    path=Path(root)/'.flowcanvas/coverage/state.json'
+    path=Path(root)/'output/flowcanvas/coverage/state.json'
     state=json.loads(path.read_text()) if path.exists() else {}
     functional=(state.get('report') or {}).get('functional', {})
     groups=functional.get('groups', [])

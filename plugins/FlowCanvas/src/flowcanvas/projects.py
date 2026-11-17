@@ -24,6 +24,10 @@ class Projects:
         except (OSError, ValueError):
             self.state = {'current': None, 'recent': []}
 
+        if self.state.get('current'):
+            from .artifact_layout import migrate_artifacts
+            migrate_artifacts(self.state['current']['path'])
+
     @property
     def current(self):
         return self.state.get('current')
@@ -47,6 +51,9 @@ class Projects:
         return {**data, 'path': str(path), 'needs_import': False}
 
     def activate(self, project):
+        if project:
+            from .artifact_layout import migrate_artifacts
+            migrate_artifacts(project['path'])
         self.state['current'] = project
         if project:
             self.state['recent'] = [project] + [p for p in self.state['recent'] if p['path'] != project['path']][:11]

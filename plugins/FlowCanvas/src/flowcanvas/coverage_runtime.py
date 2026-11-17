@@ -8,14 +8,14 @@ from .targets import atomic
 
 
 def state(root):
-    path=Path(root)/'.flowcanvas/coverage/state.json'
+    path=Path(root)/'output/flowcanvas/coverage/state.json'
     if not path.exists():atomic(path,dict(epoch=uuid.uuid4().hex,build_id=None,runs=[],report=None))
     return json.loads(path.read_text())
 
 
 def reset(root):
     """Delete cumulative databases/reports while retaining run history and source snapshots."""
-    folder=Path(root)/'.flowcanvas/coverage'
+    folder=Path(root)/'output/flowcanvas/coverage'
     for child in folder.iterdir() if folder.exists() else []:
         if child.name in {'sources','config.json','build.json','targets.json'}:
             continue
@@ -27,7 +27,7 @@ def reset(root):
         if child.is_dir() and not child.is_symlink():shutil.rmtree(child)
         else:child.unlink()
     data=dict(epoch=uuid.uuid4().hex,build_id=None,runs=[],report=None)
-    atomic(Path(root)/'.flowcanvas/coverage/state.json',data)
+    atomic(Path(root)/'output/flowcanvas/coverage/state.json',data)
     return data
 
 
@@ -79,10 +79,10 @@ async def collect(runner,row,log):
                 from .native_vcs import fingerprint
                 current.update(database_fingerprint=fingerprint(row['cwd']),ingestion_status='ready')
                 for key in ('ingestion_error','failed_fingerprint','failed_at'):current.pop(key,None)
-            atomic(Path(row['cwd'])/'.flowcanvas/coverage/state.json',current)
+            atomic(Path(row['cwd'])/'output/flowcanvas/coverage/state.json',current)
             row['coverage_status']='merged'
             return
-        merge=Path(row['cwd'])/'.flowcanvas/coverage'/current['epoch']/uuid.uuid4().hex
+        merge=Path(row['cwd'])/'output/flowcanvas/coverage'/current['epoch']/uuid.uuid4().hex
         merge.mkdir(parents=True)
         manifest=merge/'inputs.json';atomic(manifest,[r['artifact'] for r in inputs])
         values.update(inputs_manifest=manifest,merge_dir=merge)
@@ -92,7 +92,7 @@ async def collect(runner,row,log):
         from .coverage_schema import validate_report
         report=validate_report(report,row['build_id'])
         current.update(build_id=row['build_id'],runs=inputs,report=report,updated=time.time())
-        atomic(Path(row['cwd'])/'.flowcanvas/coverage/state.json',current)
+        atomic(Path(row['cwd'])/'output/flowcanvas/coverage/state.json',current)
         row['coverage_status']='merged'
 
 

@@ -25,7 +25,7 @@ AI 导入前必须通过 `test_cases(operation="configure", expected_revision=..
 python -m flowcanvas.test_runner --project /path/to/project --case tc_... --server http://127.0.0.1:8810
 ```
 
-运行记录和 stdout/stderr 存在 `.flowcanvas/test-runs/`；右侧「输出」页每 500ms 增量读取，可切换历史记录。刷新不丢日志。命令退出 0 仅显示「命令完成」，不等价于测试通过。每项目最多一个运行，避免共享构建目录相互覆盖。服务退出终止本地进程组并标记中断；远程 SSH 命令是否退出取决于远端脚本，重启服务不会自动恢复或重试命令。
+运行记录和 stdout/stderr 存在 `output/flowcanvas/test-runs/`；右侧「输出」页每 500ms 增量读取，可切换历史记录。刷新不丢日志。命令退出 0 仅显示「命令完成」，不等价于测试通过。每项目最多一个运行，避免共享构建目录相互覆盖。服务退出终止本地进程组并标记中断；远程 SSH 命令是否退出取决于远端脚本，重启服务不会自动恢复或重试命令。
 
 ## 项目级 coverage 配置
 
@@ -40,11 +40,11 @@ build_id_command 必须针对实际执行位置和编译输入，不能仅使用
 
 ## uvm-cache / Redmi 已接入版本
 
-`flowcanvas.vcs_coverage` 适配远端 VCS W-2024.09-SP1，通过 `--build-dir` 选择远端构建，默认 `build/simv`，当前实验配置使用 `.flowcanvas/build-single-instance/simv`，不自动同步或重新编译。每次运行写入远端 `.flowcanvas/runs/<run_id>`；复制覆盖率静态设计数据但排除旧 testdata，采集使用独立数据库和名称。URG 只合并当前批次的独立数据库，原始产物保留。
+`flowcanvas.vcs_coverage` 适配远端 VCS W-2024.09-SP1，通过 `--build-dir` 选择远端构建，默认 `build/simv`，当前实验配置使用 `.flowcanvas/build-single-instance/simv`，不自动同步或重新编译。每次运行写入远端 `output/flowcanvas/runs/<run_id>`；复制覆盖率静态设计数据但排除旧 testdata，采集使用独立数据库和名称。URG 只合并当前批次的独立数据库，原始产物保留。
 
 模块报告解析针对本项目每个模块一个实例的结构；不支持的多实例报告会拒绝，不能将模块合计冒充实例覆盖率。实际构建 Cache.v 的 SHA256 与本地源码比较，不匹配时在验证进度页标注远端版本。页面展示模块自身统计，不将父模块和子模块重复累计。
 
-累计状态在 `.flowcanvas/coverage/state.json`，每次合并先写独立目录再发布状态；运行 ID 去重。清空使用新 epoch，历史记录保留，旧批次迟到结果不计入。构建 ID 不兼容时拒绝混合，需清空开始新批次。当前仍维持项目级串行运行，尚未开放并行。
+累计状态在 `output/flowcanvas/coverage/state.json`，每次合并先写独立目录再发布状态；运行 ID 去重。清空使用新 epoch，历史记录保留，旧批次迟到结果不计入。构建 ID 不兼容时拒绝混合，需清空开始新批次。当前仍维持项目级串行运行，尚未开放并行。
 
 
 ## 验证目标累计命中
@@ -80,7 +80,7 @@ build_id_command 必须针对实际执行位置和编译输入，不能仅使用
 
 VCS 项目使用平台内置 `coverage.provider=vcs`。每张用例仍独立保存 runner，
 把 `{coverage_db}`、`{coverage_name}` 传给真实仿真命令。正式运行固定写入
-`.flowcanvas/coverage/database/coverage.vdb`，由 FlowCanvas 统一调用 URG 提取，
+`output/flowcanvas/coverage/database/coverage.vdb`，由 FlowCanvas 统一调用 URG 提取，
 更新行覆盖率、翻转覆盖率和功能覆盖率；项目不再维护专属解析脚本或提取命令。
 服务也会自动监测外部命令更新的同一数据库，等待写入稳定后刷新面板。
 
@@ -128,18 +128,28 @@ Runs are filtered by case ID, including labeled isolated smoke executions.
 Selecting a run selects its log and waveform artifacts together. Exit status
 does not certify assertions or scoreboard checks. Waveforms are inventoried only
 within the selected managed execution directory. Supported artifact extensions
-are VCD, FST, FSDB, VPD and WLF. The primary VCD/FST artifact opens automatically in the embedded UCAgent Surfer viewer; its bundled
+are VCD, FST, FSDB, VPD and WLF. The primary VCD/FST artifact opens automatically in the FlowCanvas waveform panel, using the embedded UCAgent Surfer rendering core; its bundled
 FST fallback and loading progress are reused. Other formats retain the artifact download API.
 Viewing a waveform does not certify correctness. Files elsewhere are not attributed
 to the run; configure its runner to keep artifacts under `{run_dir}`.
 
 
+## 项目运行产物目录
+
+FlowCanvas 的项目运行产物统一放在 `output/flowcanvas/`：`test-runs/` 保存运行元数据、日志及每次运行目录；`coverage/` 保存覆盖率配置、数据库、报告和源码快照；`workflow-runs/` 保存工作流记录与隔离工作目录；`rtl-views/` 保存设计解析缓存；新生成的编译产物放在 `build/`。项目、用例、验证目标和模块概览定义仍保存在 `.flowcanvas/`。旧的项目运行、覆盖率和备份目录在无运行任务时迁移，并保留旧路径兼容链接。
+
 ## 每次运行的波形目录
 
-运行模板使用 `{wave_dir}`，由平台创建并展开为本次 `{run_dir}/waveforms` 的绝对路径，与覆盖率数据库路径一样只由平台进行一次 shell 转义。生成、导入用例的工作流须将它接到实际仿真器或 fixture 的波形输出，核对编译调试选项及运行时开关，不能只创建目录。
+运行模板必须显式开启实际仿真器或 fixture 的波形记录开关，指定 DUT 层级并覆盖脚本默认关闭设置；使用 `{wave_dir}`，由平台创建并展开为本次 `{run_dir}/waveforms` 的绝对路径，与覆盖率数据库路径一样只由平台进行一次 shell 转义。生成、导入用例的工作流须将它接到实际仿真器或 fixture 的波形输出，核对编译调试选项及运行时开关，不能只创建目录。
 
-波形页读取所选运行的产物，自动打开 `{wave_dir}/waves.vcd`，不显示波形文件选择框。工作流配置仿真器直接生成这一份 VCD，不生成中间 VPD 或增加转换步骤。保留仿真失败状态，报告缺失输出，不搬用历史文件，不把波形存在当作测试通过。更新命令只影响后续运行，不补写旧运行产物。
+波形页读取所选运行的产物，自动打开 `{wave_dir}/waves.vcd`，不显示波形文件选择框。工作流配置仿真器直接生成这一份 VCD，不生成中间 VPD 或增加转换步骤。保留仿真失败状态，报告缺失输出，不搬用历史文件，不把波形存在当作测试通过。更新命令只影响后续运行，不补写旧运行产物。运行结束后平台解析主 VCD，检查信号、时间跨度及可读数值，保存文件指纹。导入冒烟必须同时通过覆盖率和波形验收；缺失、空文件、解析失败或验收后文件发生变化均不能完成导入。波形生成失败单独报告，不改变正式运行的仿真退出码。
 
+
+## 波形面板
+
+默认只嵌入波形绘图核心，隐藏完整查看器的菜单、工具栏、侧边信号树和状态栏。FlowCanvas 提供原生的信号搜索、最多 32 条信号选择、缩放、全程视图和时间单位操作；信号目录由所选用例本次波形的真实声明分页读取。已有 AI 解读时默认显示全部 AI 信号，并高亮第一条解读对应的信号组，否则从真实目录选择少量时钟、复位、握手及其他信号。信号名称保持原样，不添加 AI 前缀或标签；点击名称可单独高亮该信号，复选框只控制是否显示。更多菜单保留完整查看器和 VCD 下载入口。
+
+运行尚未结束时等待完整产物，结束后自动载入。加载及解析失败在面板内提示并可重试；切换用例子标签或运行、关闭查看器时取消旧请求并移除事件监听，旧页面的消息不能控制新查看器。操作消息仅接受同源、当前绘图窗口和受限命令集合，信号与 AI 点位切换继续使用原生时间精度。
 
 ## 波形 AI 解读
 
@@ -147,7 +157,7 @@ to the run; configure its runner to keep artifacts under `{run_dir}`.
 
 模型通过 `case_waveform` 的 `inspect` 获取真实信号目录、原生时间边界与保存格式，通过 `values` 分页读取四态信号变化，再用 `save` 保存选取的信号及逐点解释。保存要求匹配 `expected_revision`，核对信号存在、点位范围及点位信号状态；时间使用原生刻度十进制字符串，不使用日志周期号代替。最多选择 32 条信号、16 个点，每个点填写标题、解释、观察或推断标记及相关信号。
 
-记录位于本次运行的 `waveform-analysis.json`，绑定实际波形的 SHA-256。波形变化后旧解读不再应用；更新通过工具完成，不直接编辑管理文件。每条解读的 `points[i].signals` 是该点所需的最小信号组，`analysis.signals` 保存各组的去重并集。Surfer 默认选取第一条的信号，不添加会占据信号行的原生 Marker；点位编号和解释保留在下方解读栏，“AI 解读”作为独立栏目逐点显示说明及实际信号值，点击点位时替换上一条的信号组，缩放到该点的 `start/end` 时间窗口，再移动游标到该点。未指定窗口时根据相邻点间距自动选择局部范围，并限制在实际波形时间边界内。点位状态来自波形，文字解释仍是模型解读，不构成测试通过证明。
+记录位于本次运行的 `waveform-analysis.json`，绑定实际波形的 SHA-256。波形变化后旧解读不再应用；更新通过工具完成，不直接编辑管理文件。每条解读的 `points[i].signals` 是该点所需的最小信号组，`analysis.signals` 保存各组的去重并集。波形面板始终保留全部 AI 信号，名称保持源码原样，当前选中的信号组用蓝色波形及名称选中效果高亮，每个解读点位由随视口缩放的独立标注层画出贯穿整个绘图区的竖线与编号；未选中时为浅灰色细线，当前点位为蓝色高亮；不添加会占据信号行的原生 Marker；点位编号和解释保留在下方解读栏，“AI 解读”显示在现有右侧栏，与“专属对话”切换；进入波形页默认打开解读，每条解读始终完整显示解释文字和实际信号值，点击点位时更新对应信号组的高亮，其他 AI 信号继续显示，保留当前缩放比例，仅将视图和游标定位到该点；标注线逐帧跟随原生波形视口。点位状态来自波形，文字解释仍是模型解读，不构成测试通过证明。
 
 
 ## 覆盖率源码标签与共享对话
@@ -165,4 +175,6 @@ to the run; configure its runner to keep artifacts under `{run_dir}`.
 
 设计总览依次提供“概览、源码、覆盖率”三个子标签。覆盖率按当前选中的模块展示对应指标及构建源码高亮，支持指标和文件选择，沿用设计专属对话。设计总览内覆盖率列表的源码入口打开本页覆盖率子标签；验证目标内的覆盖率列表则打开独立源码标签。源码仍由覆盖率 API 校验构建指纹，不用当前源码替代历史构建内容；无数据时明确显示空状态。
 
-用例、设计总览、验证目标、Bug 与覆盖率详情统一采用连续的白底折叠栏目，栏目之间无间隙，以细横线和轻微的标题阴影分隔。生成概览或说明的 AI 操作以图标加文字的描边按钮置于内容顶部，保留任务预览；波形解读操作位于解读标题旁。详情代码完整展开，由页面统一纵向滚动；波形查看器保持独立的可用高度。
+用例、设计总览、验证目标、Bug 与覆盖率详情统一采用连续的白底折叠栏目，栏目之间无间隙，以细横线和轻微的标题阴影分隔。生成概览或说明的 AI 操作以图标加文字的描边按钮置于内容顶部，保留任务预览；波形解读操作位于解读标题旁。详情代码完整展开，由页面统一纵向滚动；波形查看器保持独立的可用高度，波形解读位于右侧栏，主区域不重复显示解读。
+
+用例源码只绑定强相关的场景代码：以 `definition` 绑定可运行入口，以 `stimulus` 绑定具体的 sequence/virtual sequence；场景独有且理解用例不可缺少的约束、辅助任务或预期检查可补充绑定。读取依赖以理解执行过程，不等于需要将依赖加入源码列表。共享 monitor、driver、sequencer、agent、env、基类、通用记分板、覆盖采集、fixture、RTL 和构建运行脚本不默认关联，不要求填满所有绑定角色；例外应限于不可替代的场景专属片段并说明理由。重新导入保留用例 ID 和强相关绑定，清理当前用例过宽的基础设施绑定，不改其他用例或共享源码。同文件只展示一次，高亮绑定范围。配置绑定能力仍保留给必要例外，标记保留原换行，脚本 shebang 保持首行。

@@ -27,7 +27,7 @@ print("READY test_start",flush=True)
     identity,call=make_case(root,script)
     case=Cases(root).read().targets[0]
     call('begin_modify',ids=[identity])
-    call('update',cards=[dict(id=identity,runner=dict(command=shlex.quote(sys.executable)+' test_start.py {coverage_db} {coverage_name} {case}',description='Shared database fixture'))])
+    call('update',cards=[dict(id=identity,runner=dict(command='FLOWCANVAS_WAVE_DIR={wave_dir} '+shlex.quote(sys.executable)+' test_start.py {coverage_db} {coverage_name} {case}',description='Shared database fixture'))])
     call('end_modify',ids=[identity])
     adapter=root/'adapter.py'
     adapter.write_text('''import json,sys
@@ -81,13 +81,13 @@ async def test_clear_deletes_database_and_blocks_active_run(tmp_path):
         assert response.status_code==409
         await asyncio.gather(*runner.tasks.values())
         old=state(tmp_path)['epoch'];assert Path(row['coverage_db']).exists()
-        source=tmp_path/'.flowcanvas/coverage/sources/hash.v';source.parent.mkdir();source.write_text('snapshot')
+        source=tmp_path/'output/flowcanvas/coverage/sources/hash.v';source.parent.mkdir();source.write_text('snapshot')
         response=await client.post('/api/chat/projects/p/coverage/reset')
         assert response.status_code==200
         assert response.json()['epoch']!=old and response.json()['report'] is None
         assert not Path(row['coverage_db']).exists()
         assert source.exists()
-        assert (tmp_path/'.flowcanvas/test-runs'/row['id']).exists()
+        assert (tmp_path/'output/flowcanvas/test-runs'/row['id']).exists()
     await runner.close()
 
 

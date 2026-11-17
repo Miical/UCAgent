@@ -30,7 +30,7 @@ Instance :
     assert rows[0]['files'][0]['path']=='Top.sv'
     assert metrics['toggle']['dut']['total']==4
     assert metrics['toggle']['dut']['covered']==4
-    assert (tmp_path/'.flowcanvas/coverage/sources').is_dir()
+    assert (tmp_path/'output/flowcanvas/coverage/sources').is_dir()
     with pytest.raises(ValueError,match='native totals'):
         read_code(text.replace('Total Bits 4 4','Total Bits 8 8'),tmp_path,'tb.dut','Top',['Top.sv'])
     source.write_text('module Changed;endmodule')

@@ -1,10 +1,12 @@
 /** One central case workspace reuses the existing chat surface and tracks its visible context. */
 (()=>{
   const pane=document.querySelector('.chat-pane'),bottom=document.createElement('div');bottom.className='case-chat-bottom';
-  bottom.append(...pane.children);
+  const chatSurface=document.createElement('div');chatSurface.className='case-chat-surface';chatSurface.append(...pane.children);
+  const analysisPane=document.createElement('aside');analysisPane.className='case-wave-sidebar';analysisPane.hidden=true;analysisPane.setAttribute('aria-label','波形 AI 解读');bottom.append(chatSurface,analysisPane);
+  const waveAnalyses=new Map();let sidebarMode='analysis',sidebarWaveKey=null;
   const top=document.createElement('section');top.className='case-view-area';top.hidden=true;top.ariaLabel='详情查看区域';
   const divider=document.createElement('div');divider.className='case-horizontal-divider';divider.tabIndex=0;divider.hidden=true;
-  divider.setAttribute('role','separator');divider.ariaLabel='调整用例详情与专属对话宽度';divider.setAttribute('aria-orientation','vertical');
+  divider.setAttribute('role','separator');divider.ariaLabel='调整详情与右侧栏宽度';divider.setAttribute('aria-orientation','vertical');
   const context=document.createElement('div');context.className='case-view-context';context.hidden=true;context.setAttribute('role','status');
   bottom.querySelector('.composer').prepend(context);pane.append(top,divider,bottom);
   const toggle=document.getElementById('detail-toggle').cloneNode(true);toggle.id='case-chat-toggle';toggle.classList.add('case-chat-toggle');
@@ -45,8 +47,20 @@
   const dedicated=document.createElement('div');dedicated.className='workspace-dedicated-label';dedicated.setAttribute('role','status');
   const dedicatedChip=document.createElement('span');dedicatedChip.className='workspace-dedicated-chip';dedicatedChip.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="7" cy="6" r="2.5"/><path d="M2.5 16v-1.5a4.5 4.5 0 0 1 9 0V16M12 6h4v4"/><circle cx="16" cy="13" r="2"/></svg><span class="workspace-dedicated-title">专属对话</span><span class="workspace-dedicated-dot" aria-hidden="true">·</span>';
   const dedicatedName=document.createElement('span');dedicatedName.className='workspace-dedicated-name';dedicatedChip.append(dedicatedName);dedicated.append(dedicatedChip);
+  const waveNav=document.createElement('nav');waveNav.className='workspace-wave-nav';waveNav.hidden=true;waveNav.setAttribute('role','tablist');waveNav.setAttribute('aria-label','波形侧边栏');
+  for(const [mode,label] of [['analysis','AI 解读'],['chat','专属对话']]){const button=document.createElement('button');button.type='button';button.textContent=label;if(mode==='chat'){button.className='workspace-dedicated-chip';button.innerHTML=dedicatedChip.innerHTML;}button.dataset.mode=mode;button.setAttribute('role','tab');button.onclick=()=>{sidebarMode=mode;syncSidebar();};button.onkeydown=event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.stopPropagation();event.preventDefault();sidebarMode=event.key==='Home'?'analysis':event.key==='End'?'chat':sidebarMode==='analysis'?'chat':'analysis';syncSidebar();waveNav.querySelector('[aria-selected="true"]').focus();}};waveNav.append(button);}
+  /** Reuse the same sidebar boundary while swapping only its visible content. */
+  function syncSidebar(){
+    const wave=!!current&&view.tab==='wave'&&(!current.testcase.entity_type||current.testcase.entity_type==='case'),key=wave?current.project.id+':'+current.testcase.id+':'+(view.run_id||''):null;
+    if(key&&key!==sidebarWaveKey){sidebarWaveKey=key;sidebarMode='analysis';if(chatCollapsed)collapseChat(false);}
+    if(!wave){sidebarWaveKey=null;sidebarMode='chat';}
+    waveNav.querySelector('.workspace-dedicated-name').textContent=dedicatedName.textContent;
+    waveNav.hidden=!wave||chatCollapsed;dedicated.hidden=wave;chatSurface.hidden=wave&&sidebarMode==='analysis';analysisPane.hidden=!wave||sidebarMode!=='analysis';
+    for(const button of waveNav.children){const active=button.dataset.mode===sidebarMode;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;}
+    if(wave){const content=waveAnalyses.get(current.project.id+':'+current.testcase.id);if(content){if(analysisPane.firstChild!==content)analysisPane.replaceChildren(content);}else if(analysisPane.firstChild?.dataset.placeholder!=='true'){const empty=document.createElement('p');empty.className='case-detail-empty';empty.dataset.placeholder='true';empty.textContent='正在读取波形解读…';analysisPane.replaceChildren(empty);}}
+  }
   const projectSwitch=document.createElement('div');projectSwitch.className='workspace-project-switch';projectSwitch.append(document.getElementById('project-open'));
-  tabActions.append(sidebarNav,dedicated,document.getElementById('detail-toggle'),toggle);sidebarHeader.remove();tabs.append(tabActions);
+  tabActions.append(sidebarNav,dedicated,waveNav,document.getElementById('detail-toggle'),toggle);sidebarHeader.remove();tabs.append(tabActions);
   const tabBoundary=document.createElement('span');tabBoundary.className='workspace-tab-boundary';tabBoundary.setAttribute('aria-hidden','true');tabs.append(tabBoundary);
   document.body.prepend(tabs);
   /** Align the first tab with the content boundary as the project pane resizes or collapses. */
@@ -68,8 +82,9 @@
   function collapseChat(value,persist=false){
     chatCollapsed=value;pane.classList.toggle('case-chat-collapsed',value);
     bottom.inert=value&&!!current;divider.tabIndex=value?-1:0;
-    toggle.title=(value?'展开':'收起')+(current?.testcase.entity_type==='module'?'设计对话':current?.testcase.entity_type==='target'?'目标对话':current?.testcase.entity_type==='coverage'?'覆盖率对话':current?.testcase.entity_type==='bug'?'Bug 对话':'用例对话');toggle.setAttribute('aria-label',toggle.title);toggle.setAttribute('aria-expanded',String(!value));
+    toggle.title=(value?'展开':'收起')+(view.tab==='wave'?'右侧栏':current?.testcase.entity_type==='module'?'设计对话':current?.testcase.entity_type==='target'?'目标对话':current?.testcase.entity_type==='coverage'?'覆盖率对话':current?.testcase.entity_type==='bug'?'Bug 对话':'用例对话');toggle.setAttribute('aria-label',toggle.title);toggle.setAttribute('aria-expanded',String(!value));
     if(persist)try{localStorage.setItem('flowcanvas.caseChatCollapsed',String(value));}catch{}
+    syncSidebar();
   }
   toggle.onclick=()=>{clearTimeout(motionTimer);pane.classList.add('case-chat-motion');collapseChat(!chatCollapsed,true);motionTimer=setTimeout(()=>pane.classList.remove('case-chat-motion'),500);};collapseChat(chatCollapsed);
 
@@ -86,6 +101,7 @@
   function leave(){restoreKey=null;if(!current){paintTabs();return;}current=null;view={};pane.classList.remove('case-workspace-open','case-chat-collapsed','case-chat-motion');bottom.inert=false;top.hidden=divider.hidden=context.hidden=true;document.dispatchEvent(new CustomEvent('flowcanvas-case-close'));paintTabs();}
   /** Update keyed editor tabs without replacing click targets during a double click. */
   function paintTabs(){
+    syncSidebar();
     let main=tabs.querySelector('.case-main-tab'),list=tabs.querySelector('.case-workspace-tab-scroll');
     if(!main){
       main=document.createElement('button');main.type='button';main.className='case-workspace-tab case-main-tab';main.innerHTML='<span class="case-workspace-tab-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M3 3h10v8H7l-4 3zM5.5 6h5M5.5 8h3"/></svg></span>';main.title='主对话 · 固定标签页';main.setAttribute('aria-label','主对话（固定）');main.setAttribute('role','tab');main.onclick=leave;
@@ -128,16 +144,19 @@
   function pinTab(key){const item=opened.get(key);if(item?.preview){item.preview=false;paintTabs();}}
   tabs.onkeydown=event=>{
     if(event.target.getAttribute('role')!=='tab'||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
-    event.preventDefault();const buttons=[...tabs.querySelectorAll('[role="tab"]')],index=buttons.indexOf(event.target);
+    event.preventDefault();const buttons=[...tabs.querySelectorAll('.case-workspace-tab[role="tab"]')],index=buttons.indexOf(event.target);
     const next=event.key==='Home'?buttons[0]:event.key==='End'?buttons.at(-1):buttons[(index+(event.key==='ArrowRight'?1:-1)+buttons.length)%buttons.length];next.click();
     requestAnimationFrame(()=>{const active=tabs.querySelector('[aria-selected="true"]');active?.focus();});
   };
   paintTabs();
   document.addEventListener('flowcanvas-view',event=>{if(event.detail!=='测试用例'&&event.detail!=='设计总览'&&event.detail!=='验证目标'&&event.detail!=='Bug 管理')leave();});
   document.addEventListener('flowcanvas-case-ordinary',leave);
-  document.addEventListener('flowcanvas-case-view',event=>{if(current?.testcase.id!==event.detail.case_id)return;view=event.detail.view;publish();});
+  document.addEventListener('flowcanvas-case-view',event=>{if(current?.testcase.id!==event.detail.case_id)return;view=event.detail.view;syncSidebar();publish();});
+  document.addEventListener('flowcanvas-case-sidebar-chat',()=>{if(current&&view.tab==='wave'){sidebarMode='chat';collapseChat(false);syncSidebar();}});
   window.FlowCanvasCaseWorkspace={
     ready,
+    /** Dock the selected case's existing explanation node without copying its callbacks or state. */
+    setWaveAnalysis(projectId,caseId,node){const key=projectId+':'+caseId;if(node){node.open=true;const heading=node.querySelector('summary');if(heading)heading.addEventListener('click',event=>{if(event.target===heading)event.preventDefault();});waveAnalyses.set(key,node);}else waveAnalyses.delete(key);syncSidebar();},
     /** Read saved tab identity without treating its cached metadata as source evidence. */
     tab(projectId,id){return opened.get(projectId+':'+id)?.testcase||(id.startsWith('coverage_')?[...opened.values()].find(item=>item.project.id===projectId&&item.testcase.entity_type==='coverage'&&item.testcase.coverage_metric===id.slice(9))?.testcase:undefined);},
     mount(detail){detail.hidden=!current||detail.dataset.entityId!==current.testcase.id;top.append(detail);},

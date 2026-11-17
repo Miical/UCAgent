@@ -178,7 +178,16 @@ update(cards=[{id,name,title,description,runner,bindings}]) sets the code entry,
 source-grounded description and complete bindings. Python name is the pytest entry without the
 file prefix (test_name or TestClass::test_name); UVM name is the actual runnable test class.
 Each binding is {file,line,line_count,role}; existing markers use id instead of line.
-Use role=definition for the actual case implementation. Line numbers are one-based; the server
+Use role=definition for the actual executable case entry and stimulus for its concrete sequence or
+virtual sequence. Bind only fragments that directly define this case's scenario. Add a case-specific
+constraint, helper task or expected-result check only when indispensable to explaining the case.
+Reading shared implementation for understanding does not require binding it. Do not recursively bind
+shared monitors, drivers, sequencers, agents, environments, base tests, generic scoreboards, coverage
+collectors, fixtures, RTL or build/run scripts merely because they are dependencies. Do not fill every
+role. Any exception must be a compact, indispensable case-specific fragment with a clear rationale.
+Bindings replaces the complete list: retain strong existing bindings and remove overly broad
+infrastructure-only attachments from the current case; preserve other cases and all shared source.
+Never bind whole unrelated files, duplicate overlapping ranges, or invent missing mechanisms. Line numbers are one-based; the server
 inserts stable marker comments and verifies their ranges, not language syntax. Do not invent entries.
 end_modify(ids) requires a valid definition binding, title, description and entry; planned completion
 is unavailable for cases. Resume with the original IDs. Running cases cannot be edited or deleted.
@@ -189,7 +198,7 @@ Each case runner is {command,description} and is set via update. Shared coverage
 test_case_runs(operation=configure,settings={coverage}); inspect returns the existing settings. Each runner command requires standalone {case}, expanded and
 shell-quoted once by the server; Python entries include the absolute file path. Reports use {run_dir}.
 Waveforms use {wave_dir}, an existing per-run directory at {run_dir}/waveforms. Forward it to the
-actual simulator/fixture and enable dumping through the real project flow; mkdir or an unused option
+actual simulator/fixture, explicitly turn on its waveform switch and DUT scope, override disabled defaults, and enable dumping through the real project flow; mkdir or an unused option
 does not enable dumping. Generate one primary waveform directly at {wave_dir}/waves.vcd, using the
 simulator's VCD controls and required compile options. Do not add intermediate VPD files or conversion
 steps. The waveform page opens it automatically. Preserve simulation exit status and report missing
@@ -210,7 +219,7 @@ An explanation, clean exit or coverage hit does not prove correct behavior or th
 
     def check_idle(self, ids):
         """Reject card mutations while a selected test is executing."""
-        for path in (self.root/'.flowcanvas/test-runs').glob('*.json'):
+        for path in (self.root/'output/flowcanvas/test-runs').glob('*.json'):
             run=json.loads(path.read_text())
             if run.get('case_id') in ids and run.get('status') in {'starting','running'}:
                 raise ValueError('Stop the running case before editing or deleting it')
@@ -243,7 +252,7 @@ def configure(root, settings, expected_revision):
     with LOCK:
         store=Cases(root)
         if any(json.loads(p.read_text()).get('status') in {'starting','running'}
-               for p in (store.root/'.flowcanvas/test-runs').glob('*.json')):
+               for p in (store.root/'output/flowcanvas/test-runs').glob('*.json')):
             raise ValueError('Wait until the project run ends before configuring execution')
         data=store.read()
         if 'coverage' in settings:

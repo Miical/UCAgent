@@ -848,7 +848,7 @@ window.FlowCanvasAI={
     if(session.case_binding?.project_id!==project.id||session.case_binding?.case_id!==testcase.id)throw Error('用例对话已切换，请重试');
     const id=session.id;
     const result=await request('/sessions/'+id+'/messages',{text,case_view:view,model,effort,speed:speedMode,task_card:{title:taskTitle,workflow:'',project:project.name,requirements:(testcase.title||testcase.name)+(requirements?'\n'+requirements:'')}});
-    if(selected===id)render(result);
+    if(selected===id){render(result);document.dispatchEvent(new CustomEvent('flowcanvas-case-sidebar-chat'));}
     await list();return result;
   },
   async startCase({text,current=true,project,requirements,design=null}){

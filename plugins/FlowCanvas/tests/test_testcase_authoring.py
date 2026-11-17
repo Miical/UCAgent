@@ -22,7 +22,7 @@ def authored(tmp_path):
     cases=Cases(root)
     case=reserve_case(cases,"test_zero",{"title":"Zero operands","description":"Check zero input sum"},0,"owner")
     definition=cases.read()
-    definition.targets[0].runner=RunTemplate(command="pytest --report-dir={run_dir}/report {case}",description="Existing project pytest runner")
+    definition.targets[0].runner=RunTemplate(command="FLOWCANVAS_WAVE_DIR={wave_dir} pytest --report-dir={run_dir}/report {case}",description="Existing project pytest runner")
     definition.coverage=CoverageConfig(tool="toffee-verilator",description="Native report and LCOV",
         artifact_path="{run_dir}/coverage.json",extract_command="python extract.py --dat-dir {run_dir}/raw",
         merge_command="python merge.py {inputs_manifest} {merge_dir}",
@@ -217,7 +217,7 @@ def test_report_directory_must_match_toffee_output_contract(authored):
     """Creation rejects assuming JSON is directly below Toffee's report root."""
     root,work,cases,identity,source,plan_path,request_path,check=authored
     data=cases.read()
-    data.targets[0].runner.command="pytest {case} --toffee-report --report-dir={run_dir}/toffee"
+    data.targets[0].runner.command="FLOWCANVAS_WAVE_DIR={wave_dir} pytest {case} --toffee-report --report-dir={run_dir}/toffee"
     data.coverage.extract_command="python -m flowcanvas.coverage_adapter extract --dat-dir {run_dir}/raw --report {run_dir}/toffee/toffee_report.json"
     cases.save(data,data.revision)
     ok,result=check()

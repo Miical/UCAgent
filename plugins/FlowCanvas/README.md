@@ -137,7 +137,7 @@ Light 为默认主题，主题选择由 FlowCanvas 独立保存。
 
 验收后的项目输出路径固定为：
 
-    output/rtl-summary/<模块名>/<运行ID>/summary.md
+    output/flowcanvas/design-summary/<模块名>/<运行ID>/summary.md
 
 每次运行独立保存。工作流先在任务工作区生成 summary/summary.md，验收后由工作台发布到
 上述项目路径；文件发布成功后才生成完成回执。源码和项目 .flowcanvas 配置不被改写。
