@@ -136,24 +136,34 @@
   </section>
   <dialog id="project-dialog" class="project-dialog">
     <header><h2 id="project-dialog-title">打开项目</h2><button id="project-close" class="icon-button" aria-label="关闭">×</button></header>
-    <p id="project-dialog-hint">选择工作台所在机器上的项目文件夹</p>
-    <div id="project-actions"><button id="project-new">新建项目</button><button id="project-without">不打开项目，直接对话</button></div>
+    <p id="project-dialog-hint">选择包含 Verilog / SystemVerilog RTL 设计的文件夹</p>
+    <div id="project-actions"><button id="project-leave" type="button" hidden>关闭当前项目</button></div>
     <div id="project-browse">
-      <form id="project-path-form"><div class="project-path-input"><input id="project-path" aria-label="文件夹路径" placeholder="输入文件夹路径" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="project-path-suggestions"><div id="project-path-suggestions" role="listbox" aria-label="匹配文件夹" hidden></div></div><button>前往</button></form>
+      <div class="project-folder-toolbar">
+        <button id="project-parent" type="button" aria-label="上一级文件夹" title="上一级文件夹"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16V4m-5 5 5-5 5 5"/></svg></button>
+        <button id="project-home" type="button" title="返回主目录">主目录</button>
+        <div id="project-address" class="project-address" tabindex="0" aria-label="文件夹路径，按 Enter 编辑" title="点击路径栏输入路径 · Alt+D">
+          <nav id="project-breadcrumbs" aria-label="当前目录"></nav>
+          <form id="project-path-form" hidden><div class="project-path-input"><input id="project-path" aria-label="文件夹路径" placeholder="输入文件夹路径，按 Enter 跳转" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="project-path-suggestions"><div id="project-path-suggestions" role="listbox" aria-label="匹配文件夹" hidden></div></div></form>
+        </div>
+      </div>
+      <div id="project-folders" aria-label="子文件夹" aria-busy="false"></div>
+      <p id="project-folder-selection" class="project-folder-selection" role="status"></p>
       <h3 class="project-recents-heading">最近打开的项目</h3>
       <div id="project-recents" aria-label="最近打开的项目"></div>
     </div>
     <div id="project-import" hidden><label for="project-name">项目名称</label><input id="project-name" maxlength="120"><p id="project-import-path"></p>
       <div id="project-rtl-import">
-        <label for="project-top">顶层模块</label>
-        <input id="project-top" autocomplete="off" spellcheck="false" placeholder="输入模块名称或源码路径筛选" role="combobox" aria-autocomplete="list" aria-controls="project-module-options" aria-expanded="false">
+        <label for="project-top">RTL 顶层模块</label>
+        <input id="project-top" autocomplete="off" spellcheck="false" placeholder="请选择顶层模块，可输入名称或路径筛选" role="combobox" aria-autocomplete="list" aria-controls="project-module-options" aria-expanded="false">
         <div id="project-module-options" role="listbox" aria-label="顶层模块候选" hidden></div>
         <p id="project-rtl-status" role="status"></p>
         <div id="project-filelist" aria-label="依赖文件清单"></div>
-      </div><p>将在所选目录创建 <code>.flowcanvas/project.json</code>，保存项目标识与名称。</p></div>
+      </div></div>
     <p id="project-error" role="alert" hidden></p>
-    <footer><button id="project-back" hidden>重新选择</button><button id="project-confirm">选择此文件夹</button></footer>
+    <footer><button id="project-back" hidden>重新选择</button><button id="project-confirm">打开此文件夹</button></footer>
   </dialog>
+  <script src="/assets/sidebar-motion.js"></script>
   <script src="/assets/app.js"></script>
   <script src="/assets/projects.js"></script>
   <script type="module" src="/assets/rtl-viewer.js"></script>

@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import time
+import threading
 import uuid
 import subprocess
 import sys
@@ -18,6 +19,7 @@ class ProjectRequest(BaseModel):
 
 class Projects:
     def __init__(self, state_root):
+        self.lock=threading.RLock()
         self.file = state_root / 'projects' / 'state.json'
         try:
             self.state = json.loads(self.file.read_text())
@@ -50,6 +52,16 @@ class Projects:
             raise HTTPException(400, '项目管理文件无效或版本不受支持，未覆盖原文件') from None
         return {**data, 'path': str(path), 'needs_import': False}
 
+    def require_rtl(self, project, request=None):
+        """Reject existing project metadata whose selected RTL definition is unavailable."""
+        rtl=project.get('rtl') or {}
+        source=(Path(project['path'])/rtl.get('top_file','')).resolve()
+        if not rtl.get('top') or not rtl.get('top_file') or not source.is_relative_to(Path(project['path']).resolve()) or not source.is_file():
+            raise HTTPException(422, '此项目缺少有效的 RTL 顶层设计，请选择包含 RTL 设计的文件夹')
+        if request and ((request.top and request.top!=rtl['top']) or
+                (request.top_file and (Path(project['path'])/request.top_file).resolve()!=source)):
+            raise HTTPException(409, '项目的 RTL 顶层在首次创建时已固定，不能更改；请打开原项目')
+
     def activate(self, project):
         if project:
             from .artifact_layout import migrate_artifacts
@@ -61,6 +73,8 @@ class Projects:
         temp = self.file.with_suffix('.tmp')
         temp.write_text(json.dumps(self.state, ensure_ascii=False, indent=2))
         temp.replace(self.file)
+        callback=getattr(self,'on_activate',None)
+        if callback:callback(project)
         return project
 
 
@@ -147,7 +161,8 @@ def routes(projects, sessions=None, workflow_root=None):
             children = sorted((p for p in root.iterdir() if p.is_dir() and not p.name.startswith('.')), key=lambda p: p.name.lower())
         except OSError:
             raise HTTPException(403, '无法读取此文件夹') from None
-        return {'path': str(root), 'parent': str(root.parent), 'folders': [{'name': p.name, 'path': str(p)} for p in children]}
+        return {'path': str(root), 'parent': str(root.parent), 'is_project': (root/'.flowcanvas/project.json').is_file(),
+                'folders': [{'name': p.name, 'path': str(p), 'is_project': (p/'.flowcanvas/project.json').is_file()} for p in children]}
 
     @router.post('/modules')
     def modules(request: ProjectRequest):
@@ -161,58 +176,67 @@ def routes(projects, sessions=None, workflow_root=None):
 
     @router.post('/open')
     def open_project(request: ProjectRequest):
-        project = projects.inspect(projects.directory(request.path))
-        return project if project['needs_import'] else projects.activate(project)
+        root=projects.directory(request.path)
+        project=projects.inspect(root)
+        if project['needs_import']:
+            inventory=parse_rtl(root)
+            if not inventory.get('modules'):
+                raise HTTPException(422, '所选文件夹未找到 RTL 模块，请选择包含 Verilog / SystemVerilog 设计的文件夹')
+            return {**project,'modules':inventory['modules']}
+        projects.require_rtl(project,request)
+        return projects.activate(project)
 
     @router.post('/close')
     def close_project():
         projects.activate(None)
         return {'current': None}
 
-    @router.post('/create')
-    def create_project(request: ProjectRequest):
-        parent = projects.directory(request.path)
-        name = request.name.strip()
-        if not name or name in {'.', '..'} or '/' in name or '\\' in name or '\x00' in name:
-            raise HTTPException(400, '请输入有效的项目文件夹名称')
-        root = parent / name
-        try:
-            root.mkdir()
-        except FileExistsError:
-            raise HTTPException(409, '同名文件夹已存在，请换一个名称或使用打开项目') from None
-        except OSError:
-            raise HTTPException(403, '无法在所选位置创建项目目录') from None
-        return import_project(ProjectRequest(path=str(root), name=name))
-
     @router.post('/import')
     def import_project(request: ProjectRequest):
         root = projects.directory(request.path)
         project = projects.inspect(root)
         if not project['needs_import']:
+            projects.require_rtl(project,request)
             return projects.activate(project)
         name = request.name.strip()
         if not name:
             raise HTTPException(400, '请输入项目名称')
-        rtl = parse_rtl(root, request.top, request.top_file) if request.top else None
-        if not request.top and (any(root.rglob('*.sv')) or any(root.rglob('*.v'))):
-            raise HTTPException(400, '请选择顶层模块后导入')
-        if rtl and not rtl['ready']:
+        if not request.top:
+            raise HTTPException(400, '请选择 RTL 顶层模块后打开项目')
+        rtl = parse_rtl(root, request.top, request.top_file)
+        if not rtl.get('files'):
+            raise HTTPException(422, '所选文件夹缺少 RTL 设计源码')
+        if not rtl['ready']:
             raise HTTPException(422, 'RTL 依赖尚未解析完整：' + '\n'.join(rtl['issues']))
         data = {'schema_version': 1, 'id': uuid.uuid4().hex, 'name': name, 'created_at': time.time()}
         if rtl:
             data['rtl'] = {**rtl, 'filelist': '.flowcanvas/rtl.f', 'filelist_base': '.'}
-        marker = root / '.flowcanvas' / 'project.json'
-        try:
-            marker.parent.mkdir(exist_ok=True)
-            if rtl:
-                lines = ['+incdir+' + json.dumps(p, ensure_ascii=False) for p in rtl['include_dirs']] + [json.dumps(p, ensure_ascii=False) for p in rtl['files']]
-                (marker.parent / 'rtl.f').write_text('\n'.join(lines) + '\n')
-            with marker.open('x') as handle:
-                handle.write(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
-        except FileExistsError:
-            raise HTTPException(409, '项目已由其他操作导入，请重新打开') from None
-        except OSError:
-            raise HTTPException(403, '无法在该目录创建项目管理文件') from None
-        return projects.activate({**data, 'path': str(root), 'needs_import': False})
+        # Recheck after parsing under one lock so racing first opens cannot rewrite a fixed filelist.
+        with projects.lock:
+            existing=projects.inspect(root)
+            if not existing['needs_import']:
+                projects.require_rtl(existing,request)
+                return projects.activate(existing)
+            marker = root / '.flowcanvas' / 'project.json'
+            try:
+                marker.parent.mkdir(exist_ok=True)
+                if rtl:
+                    lines = ['+incdir+' + json.dumps(p, ensure_ascii=False) for p in rtl['include_dirs']] + [json.dumps(p, ensure_ascii=False) for p in rtl['files']]
+                    (marker.parent / 'rtl.f').write_text('\n'.join(lines) + '\n')
+                with marker.open('x') as handle:
+                    handle.write(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
+            except FileExistsError:
+                raise HTTPException(409, '项目已由其他操作导入，请重新打开') from None
+            except OSError:
+                raise HTTPException(403, '无法在该目录创建项目管理文件') from None
+            return projects.activate({**data, 'path': str(root), 'needs_import': False})
+
+    @router.post('/initialize')
+    def initialize_project(request: ProjectRequest):
+        """Create metadata only in an existing uninitialized folder; never create a new folder."""
+        project=projects.inspect(projects.directory(request.path))
+        if not project['needs_import']:
+            raise HTTPException(409, '此文件夹已有项目，请使用“打开项目”')
+        return import_project(request)
 
     return router

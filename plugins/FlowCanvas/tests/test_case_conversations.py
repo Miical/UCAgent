@@ -18,7 +18,8 @@ def setup(tmp_path):
     second=call('apply',count=1)['ids'][0]
     service=ChatService(tmp_path/'state')
     project=dict(id='project',name='fixture',path=str(root))
-    service.projects.state['recent']=[project];service.projects.state['current']='project'
+    (root/'.flowcanvas/project.json').write_text(json.dumps({'schema_version':1,**project}))
+    service.projects.activate(project)
     # Routes resolve explicit project IDs, not whichever project is selected in the shell.
     app=FastAPI();app.include_router(routes(service))
     return service,app,root,identity,second

@@ -27,7 +27,7 @@ python -m flowcanvas.test_runner --project /path/to/project --case tc_... --serv
 
 运行记录和 stdout/stderr 存在 `output/flowcanvas/test-runs/`；右侧「输出」页每 500ms 增量读取，可切换历史记录。刷新不丢日志。命令退出 0 仅显示「命令完成」，不等价于测试通过。每项目最多一个运行，避免共享构建目录相互覆盖。服务退出终止本地进程组并标记中断；远程 SSH 命令是否退出取决于远端脚本，重启服务不会自动恢复或重试命令。
 
-用例列表用绿色、红色、蓝色圆点分别表示最近一次正式运行的“通过 / 失败 / 运行中”，运行中圆点带呼吸动画，悬停查看状态和依据，未运行、无法判定或版本失效时不显示标识；冒烟不计入正式结果。运行记录的“执行结果”保留判定依据。退出码 0 本身不表示通过，需有无错误的 UVM 结果汇总、明确 TEST PASSED 或 pytest 通过汇总；明确检查错误优先判失败。新运行记录冻结入口、runner 和全部源码绑定的身份，绑定失效或源码/命令更新后，旧结果不作为当前用例标识。缺少完整版本凭证的历史记录仍可查看日志和结果依据，但不显示当前版本的通过标识。
+用例列表用绿色、红色、蓝色圆点分别表示最近一次正式运行的“通过 / 失败 / 运行中”，运行中圆点带呼吸动画，悬停查看状态和依据，未运行、无法判定或版本失效时显示浅灰色圆点，悬停区分原因；冒烟不计入正式结果。运行记录的“执行结果”保留判定依据。退出码 0 本身不表示通过，需有无错误的 UVM 结果汇总、明确 TEST PASSED 或 pytest 通过汇总；明确检查错误优先判失败。新运行记录冻结入口、runner 和全部源码绑定的身份，绑定失效或源码/命令更新后，旧结果不作为当前用例标识。缺少完整版本凭证的历史记录仍可查看日志和结果依据，但不显示当前版本的通过标识。
 
 ## 项目级 coverage 配置
 
@@ -101,14 +101,17 @@ DUT 范围、实际构建输入和功能卡片映射放在固定的 `coverage/co
 
 The test-case page initially shows only the case list beside ordinary chat.
 The workspace has a pinned, non-closeable main-conversation tab followed by open case tabs.
+On the first visit to each project or panel, the left sidebar is expanded and the right sidebar is collapsed. Later visits restore that panel's explicit choices; opening waveform view does not expand the sidebar automatically.
 Single-clicking a case reuses one italic preview tab; double-clicking the case or its tab
 keeps it open. Double-click no longer renames a case. Kept tabs remain open while the
 preview slot is reused. Each tab contains its workbench: Overview,
 Source, Runs and Waveform tabs on the left, and its embedded dedicated conversation
-on the right. A horizontal resize preference controls the split. Selecting the main tab restores its previous conversation. Each case keeps its own mounted
+on the right. A horizontal resize preference controls the split. Selecting the main tab restores its previous conversation or intentional unsent draft, including after refresh; its saved selection is independent of scoped conversation history. Each case keeps its own mounted
 inspector, source/overview position, waveform viewer, conversation history and draft while
 its tab is open. Closing a tab releases its inspector without deleting the case or its
 conversation; closing the active tab selects a neighbor or returns to the main tab.
+
+Project main and scoped conversations are stored together under `.flowcanvas/conversations/` in the bound project; unbound conversations stay in the global user-state directory. Opening/closing projects switches histories and browser drafts without copying them across scopes.
 
 Opening a case performs a read-only binding lookup. The first send lazily creates
 its initial conversation with `case_binding={project_id,case_id}` in server metadata.
@@ -161,7 +164,7 @@ FlowCanvas 的项目运行产物统一放在 `output/flowcanvas/`：`test-runs/`
 
 模型通过 `case_waveform` 的 `inspect` 获取真实信号目录、原生时间边界与保存格式，通过 `values` 分页读取四态信号变化，再用 `save` 保存选取的信号及逐点解释。保存要求匹配 `expected_revision`，核对信号存在、点位范围及点位信号状态；时间使用原生刻度十进制字符串，不使用日志周期号代替。最多选择 32 条信号、16 个点，每个点填写标题、解释、观察或推断标记及相关信号。
 
-记录位于本次运行的 `waveform-analysis.json`，绑定实际波形的 SHA-256。波形变化后旧解读不再应用；更新通过工具完成，不直接编辑管理文件。每条解读的 `points[i].signals` 是该点所需的最小信号组，`analysis.signals` 保存各组的去重并集。波形面板始终保留全部 AI 信号，名称保持源码原样，当前选中的信号组用蓝色波形及名称选中效果高亮，每个解读点位由随视口缩放的独立标注层画出贯穿整个绘图区的竖线与编号；未选中时为浅灰色细线，当前点位为蓝色高亮；不添加会占据信号行的原生 Marker；点位编号和解释保留在下方解读栏，“AI 解读”显示在现有右侧栏，与“专属对话”切换；进入波形页默认打开解读，每条解读始终完整显示解释文字和实际信号值，点击点位时更新对应信号组的高亮，其他 AI 信号继续显示，保留当前缩放比例，仅将视图和游标定位到该点；标注线逐帧跟随原生波形视口。点位状态来自波形，文字解释仍是模型解读，不构成测试通过证明。
+记录位于本次运行的 `waveform-analysis.json`，绑定实际波形的 SHA-256。波形变化后旧解读不再应用；更新通过工具完成，不直接编辑管理文件。每条解读的 `points[i].signals` 是该点所需的最小信号组，`analysis.signals` 保存各组的去重并集。波形面板始终保留全部 AI 信号，名称保持源码原样，当前选中的信号组用蓝色波形及名称选中效果高亮，每个解读点位由随视口缩放的独立标注层画出贯穿整个绘图区的竖线与编号；未选中时为浅灰色细线，当前点位为蓝色高亮；不添加会占据信号行的原生 Marker；点位编号和解释保留在下方解读栏，“AI 解读”显示在现有右侧栏，与“专属对话”切换；波形页右侧栏展开后默认显示解读，每条解读始终完整显示解释文字和实际信号值，点击点位时更新对应信号组的高亮，其他 AI 信号继续显示，保留当前缩放比例，仅将视图和游标定位到该点；标注线逐帧跟随原生波形视口。点位状态来自波形，文字解释仍是模型解读，不构成测试通过证明。
 
 
 ## 覆盖率源码标签与共享对话

@@ -51,3 +51,10 @@ Bind compact complete logical ranges, preserve existing bindings when updating t
 merge duplicate or overlapping ranges with the same role. Do not invent absent checks or attach
 unrelated code merely to fill a role. After all binding insertions, re-inspect final source locations
 before writing explanations. Explanation-only tasks preserve the existing bindings.
+
+Shared coverage classes/covergroups used by several actual instances must be copied into independent
+per-instance implementations before synchronization. Give copies unique class/type/include-guard
+names, fix includes/factory/configuration wiring and create unique binding IDs; never copy marker IDs.
+Preserve sampling/checking behavior and RTL. Reuse existing split copies on later synchronization.
+Record original source, actual instances, copies and wiring changes in import-scope.json instance_splits.
+Shared or multi-instance reuse is not an exclusion reason; unresolved wiring is a blocking failure.

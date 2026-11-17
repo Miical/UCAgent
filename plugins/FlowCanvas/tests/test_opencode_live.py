@@ -1746,7 +1746,8 @@ else:
             client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test')
             owner = None
             try:
-                response = await client.post('/api/chat/projects/import', json={'path': str(project), 'name': 'Run monitor fixture'})
+                (project / 'Probe.v').write_text('module Probe; endmodule\n')
+                response = await client.post('/api/chat/projects/import', json={'path': str(project), 'name': 'Run monitor fixture', 'top': 'Probe', 'top_file': 'Probe.v'})
                 self.assertEqual(response.status_code, 200, response.text)
                 identity = response.json()['id']
                 runner_config = {'command': shlex.quote(sys.executable) + ' -m pytest -q -s {case}', 'description': 'Local Python integration fixture; no simulation or remote execution.'}
@@ -1905,7 +1906,8 @@ else:
             client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test')
             owner = None
             try:
-                imported = await client.post('/api/chat/projects/import', json={'path': str(project), 'name': 'Deletion fixture'})
+                (project / 'Probe.v').write_text('module Probe; endmodule\n')
+                imported = await client.post('/api/chat/projects/import', json={'path': str(project), 'name': 'Deletion fixture', 'top': 'Probe', 'top_file': 'Probe.v'})
                 self.assertEqual(imported.status_code, 200, imported.text)
                 runner_config = {'command': shlex.quote(sys.executable) + ' -m pytest -q {case}', 'description': 'Run the selected local assertion fixture; no hardware simulation.'}
                 store = Cases(project)

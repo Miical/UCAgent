@@ -84,9 +84,17 @@ class TargetImportChecker(Checker):
                     raise ValueError('Import only covergroup/group, coverpoint or cross/point, and normal bins/testpoint; bind the declaration with role=definition: '+identity)
                 if card.parent and card.parent not in ids:
                     raise ValueError('Include the imported hierarchy parent in card_ids: '+identity)
+            coverage_sources=[]
+            for file in files:
+                text=re.sub(r'"(?:\\.|[^"\\])*"|/\*[\s\S]*?\*/|//[^\n]*', ' ',read_source(store.file(file)))
+                if re.search(r'\bcovergroup\b',text):coverage_sources.append(file)
+            if not ids and coverage_sources:
+                raise ValueError('Coverage declarations exist: split shared definitions into independently wired copies and import them; empty synchronization cannot pass')
             for item in scope.get('exclusions',[]):
                 if not isinstance(item,dict) or item.get('file') not in files or not isinstance(item.get('reason'),str) or not item['reason'].strip():
                     raise ValueError('Every exclusion requires a scoped file and concrete reason')
+                if item['file'] in coverage_sources and re.search(r'reus|shared|multiple|multi.instance|duplicat|复用|共用|多实例|共享|重复',item['reason'],re.I):
+                    raise ValueError('Shared coverage cannot be excluded; copy and wire independent per-instance definitions before importing: '+item['file'])
             return True, {'cards':len(ids),'revision':report['revision']}
         except (OSError,ValueError,KeyError,TypeError) as exc:
             return False, {'error_code':'TARGET_IMPORT_INCOMPLETE','error':str(exc),

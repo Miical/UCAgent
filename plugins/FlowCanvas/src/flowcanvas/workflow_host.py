@@ -21,6 +21,9 @@ def main():
         overrides.update({'template_overwrite.PROJECT_ROOT': spec['project_root'],
                           'template_overwrite.SOURCE_RTL': spec['source_file'],
                           'template_overwrite.DUT_OUTPUT': spec['dut_output']})
+    if spec.get('workflow_id') == 'import-project':
+        from .project_import_workflow import project_import_overrides
+        overrides.update(project_import_overrides())
     if spec.get('workflow_id') == 'default':
         from ucagent.util.config import get_config
         from .default_workflow import panel_stages

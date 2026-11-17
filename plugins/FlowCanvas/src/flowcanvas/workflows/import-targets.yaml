@@ -47,8 +47,23 @@ mission:
       resume interrupted operations; avoid duplicate records. update carries kind/name/description/parent
       and bindings using file/line/line_count/role; existing markers use id instead of line. Do not edit management JSON directly.
       Do not run simulations, compile a DUT, create test cases, or rewrite verification behavior.
-      Binding marker comments may be added by the tool. If definitions are reused across objects or
-      cannot be mapped uniquely, explicitly exclude them with a reason instead of silently merging them.
+      Binding marker comments may be added by the tool. Shared coverage definitions MUST be split,
+      never excluded merely because multiple objects instantiate the same class or covergroup.
+      Make a distinct independent copy per actual verification instance (for example CPU, memory,
+      MMIO), using unique class/type/include-guard names and separate target/binding IDs. Update
+      includes/filelists, factory creation types and config_db wiring so each instance uses its own
+      copied coverage implementation. Do not use inheritance that still shares the original coverage
+      declaration. Do not duplicate existing marker IDs when copying; keep original IDs only for
+      the retained original definition and allocate new markers for copies. Preserve sampling,
+      signals, timing, constraints and checking behavior; never modify DUT RTL to satisfy import.
+      Reinspect the resulting instance-to-source wiring and register all copies. Repeated sync reuses
+      these copies instead of copying again. Record the original file, instance paths, copy files and
+      concrete wiring changes in instance_splits in import-scope.json. Infrastructure source edits
+      needed for this split are authorized. Use the current conversation's native project editing
+      tools for project source changes; workflow EditTextFile remains confined to its own output
+      workspace. Do not compile or run simulations in this phase.
+      If wiring cannot be determined from source, report a concrete blocker and fail acceptance;
+      never claim success by excluding reused definitions or creating no targets.
       Store only a compact import scope in {OUT}/import-scope.json; plans and descriptions belong on cards.
       Continue through all stages using SetCurrentStageJournal and Complete, then Exit after acceptance.
     tips:
@@ -62,7 +77,7 @@ stage:
     desc: 确认验证源码与文档范围
     task:
       - "Read project verification entrypoints, build file lists and relevant verification documents. Follow necessary includes, but exclude unrelated DUTs, tools, logs and build products."
-      - "Use verification_targets inspect(files) to read raw source with no syntax parser; identify only covergroup/coverpoint/cross/normal-bin declaration ranges yourself. Write {OUT}/import-scope.json with files (project-relative verification sources), documents (existing reference documents, or []), card_ids (initially []), repairs (initially []), and exclusions (initially []). No README is required."
+      - "Use verification_targets inspect(files) to read raw source with no syntax parser; identify only covergroup/coverpoint/cross/normal-bin declaration ranges yourself. Write {OUT}/import-scope.json with files (project-relative verification sources), documents (existing reference documents, or []), card_ids (initially []), repairs (initially []), instance_splits (initially []), and exclusions (initially []). No README is required."
     output_files: ["{OUT}/import-scope.json"]
     checker:
       - name: scope
@@ -73,8 +88,8 @@ stage:
     task:
       - "Read existing cards and reuse matching source bindings. Map covergroup to group, coverpoint/cross to point, explicit normal bins to testpoint; exclude ignore/illegal bins and do not invent implicit combinations. Do not import assertions, scoreboards, sequences or Python checks as targets."
       - "Reference the verified documentation when writing concise Chinese titles and descriptions; otherwise explain source intent plainly. Include sampling/trigger and expected checking behavior when the code supports it. Do not duplicate one behavior just because it appears in a document and in code."
-      - "Import in manageable batches using the five target operations. Select complete source ranges with a definition-role binding beginning at the actual covergroup, labeled coverpoint/cross or normal bins declaration, starting at a source line and spanning line_count lines; the tool inserts a stable marker before the range. Record all synchronized IDs in card_ids, including unchanged reused targets and parent cards. Reused healthy targets require no write transaction. An empty card_ids is valid when the scope contains no eligible definitions. Allocate only required IDs, assign types and parent links with update, bind actual implementation positions, and end each completed batch. Preserve unrelated existing cards."
-      - "For helper or duplicated definitions that should not be separate cards, add an exclusions entry {file,reason} to import-scope.json with a concrete explanation. Never hide a required target just to pass acceptance. Unimplemented document plans are reported separately, not represented as implemented cards."
+      - "Import in manageable batches using the five target operations. Select complete source ranges with a definition-role binding beginning at the actual covergroup, labeled coverpoint/cross or normal bins declaration, starting at a source line and spanning line_count lines; the tool inserts a stable marker before the range. Record all synchronized IDs in card_ids, including unchanged reused targets and parent cards. Reused healthy targets require no write transaction. An empty card_ids is valid only when the scoped source contains no eligible coverage declarations; reused declarations must first be split and imported. Allocate only required IDs, assign types and parent links with update, bind actual implementation positions, and end each completed batch. Preserve unrelated existing cards."
+      - "Never exclude reused or shared coverage declarations. Split independent copies for each real instance and import them. For genuinely unrelated helpers or non-target source, add an exclusions entry {file,reason} to import-scope.json with a concrete explanation. Never hide a required target just to pass acceptance. Unimplemented document plans are reported separately, not represented as implemented cards."
     checker:
       - name: imported_cards
         clss: flowcanvas.target_import_workflow.TargetImportChecker

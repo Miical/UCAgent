@@ -168,3 +168,16 @@ def test_synchronization_accepts_scope_without_coverage(tmp_path):
     (work/'summary/import-scope.json').write_text(json.dumps(dict(files=['checks.sv'],card_ids=[],repairs=[],exclusions=[dict(file='checks.sv',reason='Assertions are outside coverage target synchronization')])) )
     checker=TargetImportChecker(final=True);checker.workspace=str(work)
     assert checker.do_check()[0],checker.do_check()
+
+
+
+def test_shared_covergroup_cannot_pass_as_an_empty_exclusion(tmp_path):
+    """Shared coverage must be split/imported instead of silently accepting zero targets."""
+    project=tmp_path/'project';project.mkdir();(project/'shared.sv').write_text('class shared_cov;\ncovergroup cg;\ncp: coverpoint value;\nendgroup\nendclass\n')
+    work=tmp_path/'workspace';(work/'summary').mkdir(parents=True)
+    (tmp_path/'request.json').write_text(json.dumps(dict(project_root=str(project),target_baseline=[],target_snapshot=[])))
+    (work/'summary/import-scope.json').write_text(json.dumps(dict(files=['shared.sv'],card_ids=[],exclusions=[dict(file='shared.sv',reason='CPU, memory and MMIO reuse the same coverage class')])) )
+    checker=TargetImportChecker(final=True);checker.workspace=str(work)
+    accepted,error=checker.do_check()
+    assert not accepted
+    assert 'split shared definitions' in error['error']

@@ -7,7 +7,6 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
   let caseResults=new Map(),runCases=new Set(),pendingRun=null,runsLoaded=false,runsChecking=false;
   const opened=new Set();
   const localTextWrites=new Map(),textHighlights=new Map();
-  const operationAnimationStart=new Map();
   const coverageModes=[['functional','功能覆盖率'],['line','行覆盖率'],['toggle','翻转覆盖率'],['branch','分支覆盖率'],['cond','条件覆盖率'],['fsm','状态机覆盖率'],['assert','断言']];
   let coverageTab='functional',functionalPane=null,linePane=null,lineFrame=null,tabBar=null;
   function selectCoverageTab(mode,instance){
@@ -309,8 +308,8 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     const occupied=pendingRun!==null||runCases.size>0;
     for(const badge of panel.querySelectorAll('[data-case-result]')){
       const row=caseResults.get(badge.dataset.caseResult),status=runCases.has(badge.dataset.caseResult)?'running':row?.result_current?row?.test_result?.status:null;
-      const label=({passed:'通过',failed:'失败',running:'运行中'})[status]||'';
-      badge.hidden=!status;badge.dataset.status=status||'';badge.textContent='';badge.setAttribute('role','img');badge.setAttribute('aria-label',label);
+      const label=({passed:'通过',failed:'失败',running:'运行中'})[status]||(row?'暂无当前版本的有效结果':'未运行');
+      badge.hidden=false;badge.dataset.status=status||'neutral';badge.textContent='';badge.setAttribute('role','img');badge.setAttribute('aria-label',label);
       badge.title=label+(row?.test_result?.reason?' · '+row.test_result.reason:'');
     }
     for(const button of panel.querySelectorAll('[data-case-run]')){
@@ -410,15 +409,14 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     const ordered=[];const collect=parent=>{for(const node of data.targets.filter(item=>item.parent===parent&&visible.has(item.id))){ordered.push(node);if(!goalCollapsed.has(node.id))collect(node.id);}};collect(null);
     /** Render plain hierarchical list items without inheriting legacy card surfaces. */
     const appendItems=(parent,container,depth=0)=>{for(const node of data.targets.filter(item=>item.parent===parent&&visible.has(item.id))){
-      const children=data.targets.filter(item=>item.parent===node.id&&visible.has(item.id)),expanded=!goalCollapsed.has(node.id),wrapper=el('div','verification-item verification-'+node.kind),header=el('div','target-header'),heading=el('div','goal-row-heading');wrapper.dataset.targetId=node.id;
+      const children=data.targets.filter(item=>item.parent===node.id&&visible.has(item.id)),expanded=!goalCollapsed.has(node.id),wrapper=el('div','verification-item verification-'+node.kind),header=el('div','target-header'),heading=el('div','goal-row-heading');wrapper.dataset.targetId=node.id;wrapper.style.setProperty('--goal-depth',String(depth));
       const pending=node.lifecycle&&node.lifecycle!=='ready';
       let inheritedDeletion=false;
       if(node.lifecycle==='deleting'){let ancestor=data.targets.find(item=>item.id===node.parent);while(ancestor){if(ancestor.lifecycle==='deleting'){inheritedDeletion=true;break;}ancestor=data.targets.find(item=>item.id===ancestor.parent);}}
       if(pending){wrapper.dataset.lifecycle=node.lifecycle;wrapper.classList.add('case-in-progress');header.setAttribute('aria-busy',String(node.operation_status==='running'));}
       if(pending&&node.operation_status==='running'&&!inheritedDeletion){
-        if(!operationAnimationStart.has(node.id))operationAnimationStart.set(node.id,performance.now());
-        wrapper.classList.add('case-operation-active');wrapper.style.setProperty('--operation-phase',(-((performance.now()-operationAnimationStart.get(node.id))%2600))+'ms');
-      }else operationAnimationStart.delete(node.id);
+        wrapper.classList.add('case-operation-active');wrapper.style.setProperty('--operation-phase',(-(performance.now()%2600))+'ms');
+      }
       const focus=id=>list.querySelector('.target-card-head[data-target-id="'+id+'"]')?.focus();
       const open=()=>{if(node.kind==='group'){if(children.length)toggle();return;}selectedTarget=node.id;goalDetail(node);for(const item of list.querySelectorAll('.target-card-head')){const selected=item.dataset.targetId===node.id;item.setAttribute('aria-selected',String(selected));item.closest('.target-header').classList.toggle('is-selected',selected);}};
       const head=button('',event=>{if(node.kind==='group'&&event.detail>1)return;open();},'target-card-head');head.dataset.targetId=node.id;head.setAttribute('role','treeitem');head.setAttribute('aria-level',String(depth+1));const selected=window.FlowCanvasCaseWorkspace.context()?.testcase.id===node.id;head.setAttribute('aria-selected',String(selected));header.classList.toggle('is-selected',selected);if(children.length)head.setAttribute('aria-expanded',String(expanded));head.title=node.kind==='group'?'点击展开或收起功能组':'单击预览，双击固定标签';
@@ -501,7 +499,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       let inheritedDeletion=false;
       if(node.lifecycle==='deleting'){let ancestor=byId.get(node.parent);while(ancestor){if(ancestor.lifecycle==='deleting'){inheritedDeletion=true;break;}ancestor=byId.get(ancestor.parent);}}
       const report=data.reports[node.id]||{status:'planned',bindings:[]};const children=data.targets.filter(n=>n.lifecycle!=='draft'&&n.parent===node.id&&visible.has(n.id));
-      const wrapper=el('article','target-card target-'+node.kind);wrapper.dataset.targetId=node.id;if(node.operation_status==='running'&&node.lifecycle&&node.lifecycle!=='ready'){if(!operationAnimationStart.has(node.id))operationAnimationStart.set(node.id,performance.now());wrapper.style.setProperty('--operation-phase',(-((performance.now()-operationAnimationStart.get(node.id))%2600))+'ms');}else operationAnimationStart.delete(node.id);if(!bugMode&&node.lifecycle&&node.lifecycle!=='ready'){wrapper.dataset.lifecycle=node.lifecycle;wrapper.classList.add('case-in-progress');wrapper.classList.toggle('case-operation-active',node.operation_status==='running'&&!inheritedDeletion);}const head=button('',()=>{
+      const wrapper=el('article','target-card target-'+node.kind);wrapper.dataset.targetId=node.id;if(node.operation_status==='running'&&node.lifecycle&&node.lifecycle!=='ready'){wrapper.style.setProperty('--operation-phase',(-(performance.now()%2600))+'ms');}if(!bugMode&&node.lifecycle&&node.lifecycle!=='ready'){wrapper.dataset.lifecycle=node.lifecycle;wrapper.classList.add('case-in-progress');wrapper.classList.toggle('case-operation-active',node.operation_status==='running'&&!inheritedDeletion);}const head=button('',()=>{
         if(inlineEditing)return;
         selectedTarget=node.id;
         if(caseMode){for(const h of panel.querySelectorAll('.target-header.is-selected'))h.classList.remove('is-selected');header.classList.add('is-selected');caseDetail?.select(node,data.reports[node.id]);window.FlowCanvasCaseWorkspace.open(project,node,caseDetail.context());return;}
@@ -522,7 +520,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       head.append(chevron);
       if(!caseMode&&!bugMode)head.append(el('span','target-kind',kinds[node.kind][0]));
       const title=el('span','target-title',caseMode?(node.title||node.name):node.name);title.dataset.textField=caseMode&&node.title?'title':'name';head.append(title);
-      if(caseMode){const badge=el('span','case-result-badge');badge.dataset.caseResult=node.id;badge.hidden=true;head.prepend(badge);}
+      if(caseMode){const badge=el('span','case-result-badge');badge.dataset.caseResult=node.id;badge.dataset.status='neutral';badge.setAttribute('role','img');badge.setAttribute('aria-label','未运行');badge.title='未运行';head.prepend(badge);}
       if(caseMode){
         head.title=node.kind==='group'?'点击展开或收起功能组':'单击预览，双击固定标签';
         head.ondblclick=event=>{event.preventDefault();event.stopPropagation();window.FlowCanvasCaseWorkspace.pin(project.id,node.id);};

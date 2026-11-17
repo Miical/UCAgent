@@ -1,5 +1,6 @@
 """Coverage conversations share metric ownership while validating each selected build source."""
 import hashlib
+import json
 from types import SimpleNamespace
 
 import httpx2
@@ -26,7 +27,8 @@ def setup(tmp_path,monkeypatch):
         return {},SimpleNamespace(instance=instance,name=row['module']),{}
     monkeypatch.setattr(module_details,'module_record',module_record)
     service=ChatService(tmp_path/'state');project=dict(id='p',name='fixture',path=str(root))
-    service.projects.state={'recent':[project],'current':project}
+    (root/'.flowcanvas').mkdir(exist_ok=True);(root/'.flowcanvas/project.json').write_text(json.dumps({'schema_version':1,**project}))
+    service.projects.activate(project)
     app=FastAPI();app.include_router(routes(service))
     return service,project,app,root,content,sha
 

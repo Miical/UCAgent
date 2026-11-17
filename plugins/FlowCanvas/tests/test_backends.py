@@ -135,7 +135,7 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
         metadata['rtl'] = {'top': 'Probe', 'top_file': 'Probe.v'}
         marker.write_text(json.dumps(metadata))
         (root / 'output').symlink_to(Path(self.temp.name), target_is_directory=True)
-        with self.assertRaisesRegex(ValueError, 'inside the bound project'):
+        with self.assertRaisesRegex(ValueError, 'Workflow output escapes project'):
             await runtime.run('rtl-summary')
         self.assertEqual(runtime.processes, {})
 
@@ -278,7 +278,7 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
         self.service.event({'kind': 'disconnected', 'session_id': owners[1]['id'], 'error': 'process exited'})
         for owner in owners:
             with self.subTest(backend=owner['backend']):
-                saved = json.loads((self.service.root / (owner['id'] + '.json')).read_text())
+                saved = json.loads(self.service.session_path(owner).read_text())
                 self.assertEqual(saved['status'], 'error')
                 self.assertEqual(saved['error'], 'process exited')
                 self.assertTrue(saved['queue_paused'])
@@ -334,7 +334,7 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
         await self.service.close()
         for owner in owners:
             expected = 'error' if owner['backend'] == 'opencode' else 'interrupted'
-            saved = json.loads((self.service.root / (owner['id'] + '.json')).read_text())
+            saved = json.loads(self.service.session_path(owner).read_text())
             self.assertEqual(saved['status'], expected)
             self.assertTrue(saved['queue_paused'])
             self.assertTrue(saved['ended_at'])
@@ -371,7 +371,7 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.wait_for(entered.wait(), 2)
                 await self.service.close()
                 expected = 'error' if status == 'failed' else status
-                saved = json.loads((self.service.root / (owner['id'] + '.json')).read_text())
+                saved = json.loads(self.service.session_path(owner).read_text())
                 self.assertEqual(saved['status'], expected)
                 self.assertEqual(saved['items'][0]['task_run']['status'], expected)
                 self.assertTrue(saved['queue_paused'])
@@ -392,7 +392,7 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
             'text': 'task', 'model': 'codex-model', 'effort': 'low'})
         self.assertEqual(response.status_code, 202)
         await asyncio.gather(*self.service.jobs)
-        saved = json.loads((self.service.root / (owner['id'] + '.json')).read_text())
+        saved = json.loads(self.service.session_path(owner).read_text())
         self.assertEqual(saved['status'], 'completed')
         self.assertEqual(saved['error'], '')
         self.assertTrue(saved['queue_paused'])
@@ -477,7 +477,7 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
                         self.service.event({'kind': 'turn', 'session_id': owner['id'],
                             'thread': owner['thread'], 'turn': 'turn', 'status': status, 'error': ''})
                         self.assertEqual(owner['status'], 'error')
-                    saved = json.loads((self.service.root / (owner['id'] + '.json')).read_text())
+                    saved = json.loads(self.service.session_path(owner).read_text())
                     self.assertEqual(saved['status'], 'error')
                     self.assertEqual(saved['items'][0]['task_run']['status'], 'error')
                     self.assertEqual(saved['items'][1]['status'], 'error')

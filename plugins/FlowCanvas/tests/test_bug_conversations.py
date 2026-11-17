@@ -1,4 +1,5 @@
 """Bug tabs retain scoped histories and keep simulated demo records distinct from real evidence."""
+import json
 import pytest
 import httpx2
 from fastapi import FastAPI, HTTPException
@@ -13,7 +14,7 @@ async def test_bug_tabs_and_demo_provenance(tmp_path):
     root=tmp_path/'project';root.mkdir()
     first=execute(root,dict(operation='create',name='Demo missing data',expected_revision=0,values=dict(example=True,description='Hypothetical UI example',condition='Hypothetical burst',expected='All bytes retained',actual='Assumed missing byte; not reproduced',evidence='No simulation evidence')))
     second=execute(root,dict(operation='create',name='Demo stale flag',expected_revision=Bugs(root).read().revision,values=dict(example=True)))
-    service=ChatService(tmp_path/'state');project=dict(id='p',path=str(root));service.projects.state={'current':project,'recent':[project]};app=FastAPI();app.include_router(routes(service))
+    service=ChatService(tmp_path/'state');project=dict(id='p',path=str(root));(root/'.flowcanvas/project.json').write_text(json.dumps({'schema_version':1,'name':'fixture',**project}));service.projects.activate(project);app=FastAPI();app.include_router(routes(service))
     async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app),base_url='http://test') as client:
         url='/api/chat/projects/p/bugs/'+first['id']+'/conversation'
         assert (await client.get(url)).json()=={'session':None}

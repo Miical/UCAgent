@@ -121,7 +121,7 @@ export class ConversationView {
     }
     if(!session.items.length){
       const caseEmpty=!!session.case_binding;
-      const welcomeKey=JSON.stringify([caseEmpty,session.page_context?.testcase.entity_type||'',!!session.page_context]),previous=this.root.querySelector('.chat-welcome,.case-chat-empty');
+      const welcomeKey=JSON.stringify([caseEmpty,session.page_context?.testcase.entity_type||'',!!session.page_context,!!session.show_global_prompts]),previous=this.root.querySelector('.chat-welcome,.case-chat-empty');
       if(previous&&previous.dataset.welcomeKey!==welcomeKey)previous.remove();
       if(!this.root.childNodes.length){
         if(session.case_binding){
@@ -137,7 +137,20 @@ export class ConversationView {
           }
           this.root.append(welcome);return;
         }
-        const welcome=element('div','chat-welcome');welcome.dataset.welcomeKey=welcomeKey;welcome.append(element('div','welcome-mark','✦'),element('span','welcome-eyebrow','UCAgent FlowCanvas'),element('h3','','一起，把验证想清楚。'),element('p','','分析设计、梳理场景，或从一个问题开始。'));this.root.append(welcome);
+        const welcome=element('div','chat-welcome');welcome.dataset.welcomeKey=welcomeKey;welcome.append(element('div','welcome-mark','✦'),element('span','welcome-eyebrow','UCAgent FlowCanvas'),element('h3','','一起，把验证想清楚。'),element('p','','分析设计、梳理场景，或从一个问题开始。'));
+        if(session.show_global_prompts){
+          const prompts=element('div','welcome-prompts');prompts.setAttribute('aria-label','试着问问');
+          for(const [label,text] of [
+            ['我可以用 FlowCanvas 做什么？','我可以用 FlowCanvas 做什么？'],
+            ['如何开始一个新项目？','如何开始一个新项目？'],
+            ['帮我理清一个想法','帮我理清一个想法']
+          ]){
+            const button=element('button','welcome-prompt',label);button.type='button';button.title=text;
+            button.onclick=()=>this.root.dispatchEvent(new CustomEvent('compose-reuse',{detail:text}));prompts.append(button);
+          }
+          welcome.append(prompts);
+        }
+        this.root.append(welcome);
       }
       return;
     }

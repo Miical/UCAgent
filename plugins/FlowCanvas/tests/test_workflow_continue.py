@@ -60,6 +60,39 @@ class WorkflowContinuationTests(unittest.TestCase):
         owner=restored.sessions[self.owner["id"]]
         self.assertTrue(owner["delegation_stopped"])
         self.assertFalse(owner["workflow_runs"][0]["auto_continue"])
+    def test_ten_automatic_recoveries_are_a_durable_hard_limit(self):
+        """The tenth recovery may run, but an unfinished eleventh turn cannot be launched."""
+        for attempt in range(10):
+            self.owner['turn']='turn-'+str(attempt)
+            self.assertTrue(self.run_continue())
+            self.assertEqual(self.card['auto_continue_attempts'],attempt+1)
+        self.owner['turn']='turn-eleven'
+        self.assertFalse(self.run_continue())
+        self.assertEqual(self.service.launch.call_count,10)
+        self.assertFalse(self.card['auto_continue'])
+        self.assertTrue(self.owner['queue_paused'])
+        self.assertTrue(self.owner['delegation_stopped'])
+        self.assertEqual(self.owner['status'],'interrupted')
+        self.assertIn('10',self.owner['error'])
+        restored=ChatService(self.service.root).sessions[self.owner['id']]
+        self.assertEqual(restored['workflow_runs'][0]['auto_continue_attempts'],10)
+        self.assertFalse(self.run_continue())
+
+    def test_old_workflow_counts_its_existing_automatic_messages(self):
+        """Deployment cannot give an already-retried workflow another ten attempts."""
+        self.owner['items']=[dict(kind='user',workflow_label='自动继续工作流',text='Resume "card"') for _ in range(10)]
+        self.assertFalse(self.run_continue())
+        self.assertEqual(self.card['auto_continue_attempts'],10)
+        self.assertFalse(self.service.launch.called)
+
+    def test_accepted_receipt_wins_at_the_recovery_limit(self):
+        """A completed workflow is not marked failed just because it used its whole budget."""
+        self.card['auto_continue_attempts']=10
+        (Path(self.temp.name)/'complete.json').write_text('{}')
+        self.assertFalse(self.run_continue())
+        self.assertEqual(self.owner['status'],'completed')
+        self.assertFalse(self.owner.get('error'))
+
     def test_user_stop_or_backend_error_disarms_the_workflow(self):
         self.owner["thread"]="native"
         self.owner["status"]="running"

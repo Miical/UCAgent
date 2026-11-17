@@ -32,6 +32,26 @@ for(const group of document.querySelectorAll('[role="tablist"]')){
 }
 const workspace=document.querySelector('.workspace');
 let widths=[25,45,30],caseTabActive=false,mainDetailCollapsed=true;
+let sidebarScope=null,sidebarPanel=null,sidebarRight=true,restoringSidebars=false;
+/** Remember independent panel choices; a first visit always opens left and folds right. */
+window.FlowCanvasSidebarState={
+  activate(projectId){const scope=projectId||'global';if(sidebarScope!==scope||!sidebarPanel)this.enter('nav:'+document.getElementById('project-heading').textContent,scope);},
+  enter(panel,projectId=sidebarScope){
+    if(!projectId)return {leftCollapsed:false,rightCollapsed:true};
+    // Without a project, navigation shares the same main-chat sidebar state.
+    if(projectId==='global'&&panel.startsWith('nav:'))panel='nav:global';
+    if(sidebarScope===projectId&&sidebarPanel===panel)return {leftCollapsed:workspace.classList.contains('project-collapsed'),rightCollapsed:sidebarRight};
+    sidebarScope=projectId;sidebarPanel=panel;let state={leftCollapsed:false,rightCollapsed:true};
+    try{const saved=JSON.parse(localStorage.getItem('flowcanvas.sidebar-state.v1.'+sidebarScope+'.'+panel)||'null');if(saved&&typeof saved.leftCollapsed==='boolean'&&typeof saved.rightCollapsed==='boolean')state=saved;}catch{}
+    restoringSidebars=true;sidebarRight=state.rightCollapsed;toggleProject(state.leftCollapsed,false);
+    if(panel.startsWith('nav:'))toggleDetails(state.rightCollapsed,false,false);
+    restoringSidebars=false;return state;
+  },
+  save(right=sidebarRight){
+    if(!sidebarScope||!sidebarPanel||restoringSidebars)return;sidebarRight=right;
+    try{localStorage.setItem('flowcanvas.sidebar-state.v1.'+sidebarScope+'.'+sidebarPanel,JSON.stringify({leftCollapsed:workspace.classList.contains('project-collapsed'),rightCollapsed:right}));}catch{}
+  }
+};
 // Keep the project width independent of the other panes' expanded/collapsed proportions.
 try{const saved=Number(localStorage.getItem('flowcanvas.projectWidth'));if(Number.isFinite(saved)&&saved>=345)workspace.style.setProperty('--project-track',saved+'px');}catch{}
 
@@ -76,31 +96,27 @@ function toggleDetails(collapsed,preserveProject=true,persist=true){
   document.querySelector('.splitter[data-split="1"]').tabIndex=hidden?-1:0;
   const button=document.getElementById('detail-toggle');
   button.setAttribute('aria-expanded',String(!hidden));button.title=button.ariaLabel=hidden?'展开右侧栏':'收起右侧栏';
-  if(persist)try{localStorage.setItem('flowcanvas.detailCollapsed',String(collapsed));}catch{}
+  if(persist)window.FlowCanvasSidebarState.save(collapsed);
 }
-let detailMotionTimer;
 document.getElementById('detail-toggle').onclick=()=>{
-  clearTimeout(detailMotionTimer);workspace.classList.add('detail-motion');
-  toggleDetails(!workspace.classList.contains('detail-collapsed'));
-  detailMotionTimer=setTimeout(()=>workspace.classList.remove('detail-motion'),500);
+  const collapsed=!workspace.classList.contains('detail-collapsed');
+  globalThis.FlowCanvasSidebarMotion?.(workspace,document.querySelector('.detail-pane'),'detail-motion','detail-collapsed',collapsed);
+  toggleDetails(collapsed);
 };
-// First visits keep the conversation focused; restore an explicit saved preference.
-let initialDetailCollapsed=true;
-try{initialDetailCollapsed=localStorage.getItem('flowcanvas.detailCollapsed')!=='false';}catch{}
-toggleDetails(initialDetailCollapsed,false);
+// Until project-specific state loads, use the first-visit defaults.
+toggleDetails(true,false,false);
 
 /** Collapse the project column from its active navigation icon, keeping navigation visible. */
-let projectMotionTimer;
 function toggleProject(collapsed,animate=true){
-  if(animate){clearTimeout(projectMotionTimer);workspace.classList.add('project-motion');projectMotionTimer=setTimeout(()=>workspace.classList.remove('project-motion'),500);}
+  if(animate)globalThis.FlowCanvasSidebarMotion?.(workspace,document.querySelector('.project-pane'),'project-motion','project-collapsed',collapsed);
   workspace.classList.toggle('project-collapsed',collapsed);
   document.querySelector('.project-pane').inert=collapsed;
   document.querySelector('.splitter[data-split="0"]').tabIndex=collapsed?-1:0;
   const projectToggle=document.getElementById('project-sidebar-toggle');if(projectToggle){projectToggle.setAttribute('aria-expanded',String(!collapsed));projectToggle.title=projectToggle.ariaLabel=collapsed?'展开左侧栏':'收起左侧栏';}
   for(const button of document.querySelectorAll('[data-view]')){button.setAttribute('aria-expanded',String(!collapsed&&button.dataset.view===document.getElementById('project-heading').textContent));button.setAttribute('aria-controls','project-content');}
-  try{localStorage.setItem('flowcanvas.projectCollapsed',String(collapsed));}catch{}
+  if(animate)window.FlowCanvasSidebarState.save();
 }
-try{toggleProject(localStorage.getItem('flowcanvas.projectCollapsed')==='true',false);}catch{}
+toggleProject(false,false);
 
 /** Return to the pinned main conversation without resetting histories or opening a design tab. */
 document.querySelector('.brand-home').onclick=event=>{
@@ -113,8 +129,7 @@ document.querySelector('.brand-home').onclick=event=>{
 document.addEventListener('flowcanvas-open-workflow',()=>{
   if(caseTabActive)return;
   if(workspace.classList.contains('detail-collapsed')){
-    clearTimeout(detailMotionTimer);workspace.classList.add('detail-motion');toggleDetails(false);
-    detailMotionTimer=setTimeout(()=>workspace.classList.remove('detail-motion'),500);
+    globalThis.FlowCanvasSidebarMotion?.(workspace,document.querySelector('.detail-pane'),'detail-motion','detail-collapsed',false);toggleDetails(false);
   }
 });
 
@@ -122,6 +137,7 @@ document.addEventListener('flowcanvas-open-workflow',()=>{
 document.addEventListener('flowcanvas-view',event=>{
   if(![...document.querySelectorAll('[data-view]')].some(button=>button.dataset.view===event.detail))return;
   try{localStorage.setItem('flowcanvas.activeView',event.detail);}catch{}
+  if(!caseTabActive)window.FlowCanvasSidebarState.enter('nav:'+event.detail);
 });
 try{
   const saved=localStorage.getItem('flowcanvas.activeView');
@@ -145,7 +161,8 @@ function caseSidebarScope(event){
   const active=event.type==='flowcanvas-case-context';
   if(caseTabActive===active)return;
   caseTabActive=active;
-  if(active){clearTimeout(detailMotionTimer);workspace.classList.remove('detail-motion');}
+  if(active)workspace.classList.remove('detail-motion');
+  else window.FlowCanvasSidebarState.enter('nav:'+document.getElementById('project-heading').textContent);
   toggleDetails(mainDetailCollapsed,false,false);
 }
 document.addEventListener('flowcanvas-case-context',caseSidebarScope);

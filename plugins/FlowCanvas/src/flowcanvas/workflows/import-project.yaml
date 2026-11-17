@@ -1,0 +1,16 @@
+# Compose the existing synchronization workflows at host startup; never copy their stages.
+include: import-targets.yaml
+mission:
+  name: 导入项目
+  prompt:
+    system: |
+      Import the current FlowCanvas project {PROJECT_ROOT} by completing two consecutive phases:
+      first synchronize verification targets, then synchronize test cases and their execution setup.
+      Reuse the original workflows' instructions, stages and acceptance checkers in that order.
+      Both phases are repeatable: preserve unchanged targets and cases, add missing definitions,
+      and perform only evidenced minimal repairs. Preserve IDs, user text and historical runs.
+      Verification target synchronization must finish before preparing test-case coverage mappings.
+      Reuse valid smoke evidence; execute only a missing or outdated representative smoke as required.
+      Stay in this single workflow and conversation; do not start separate child workflows.
+      Exit only after ALL stages of BOTH phases have been accepted. Any Exit instructions below
+      refer to the end of the entire combined workflow, never the transition between phases.

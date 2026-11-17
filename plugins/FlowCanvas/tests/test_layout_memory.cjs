@@ -4,14 +4,15 @@ const source=fs.readFileSync(path.join(__dirname,'../src/flowcanvas/web/app.js')
 const core=source.slice(source.indexOf('const workspace='),source.indexOf('/** Collapse the project column'));
 function fixture(storage=new Map()){
   const classes=new Set(),styles=new Map();
-  const workspace={clientWidth:1414,style:{setProperty:(k,v)=>styles.set(k,v),getPropertyValue:k=>styles.get(k)||'',removeProperty:k=>styles.delete(k)},classList:{contains:k=>classes.has(k),add:k=>classes.add(k),remove:k=>classes.delete(k),toggle(k,on){if(on)classes.add(k);else classes.delete(k);}}};
-  const splitters=[0,1].map(i=>({dataset:{split:String(i)},setAttribute(){},setPointerCapture(){}}));
+  const workspace={clientWidth:1414,getBoundingClientRect:()=>({right:1414,width:1414}),style:{setProperty:(k,v)=>styles.set(k,v),getPropertyValue:k=>styles.get(k)||'',removeProperty:k=>styles.delete(k)},classList:{contains:k=>classes.has(k),add:k=>classes.add(k),remove:k=>classes.delete(k),toggle(k,on){if(on)classes.add(k);else classes.delete(k);}}};
+  const splitters=[0,1].map(i=>({dataset:{split:String(i)},getBoundingClientRect:()=>({right:(parseFloat(styles.get('--project-track'))||400)+7}),setAttribute(){},setPointerCapture(){}}));
   const left={getBoundingClientRect:()=>({width:Number.parseFloat(styles.get('--project-track'))||400})};
   const chat={getBoundingClientRect:()=>({width:650})},detail={getBoundingClientRect:()=>({width:350})};
   workspace.querySelectorAll=()=>[left,chat,detail];
   const button={setAttribute(){}};
-  const document={querySelector:q=>q==='.workspace'?workspace:q==='.project-pane'?left:q==='.detail-pane'?detail:splitters[1],querySelectorAll:()=>splitters,getElementById:()=>button,body:{classList:workspace.classList}};
-  const context={document,localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},setTimeout:()=>1,clearTimeout(){}};
+  const document={dispatchEvent(){},querySelector:q=>q==='.workspace'?workspace:q==='.project-pane'?left:q==='.detail-pane'?detail:q==='.splitter[data-split="0"]'?splitters[0]:splitters[1],querySelectorAll:()=>splitters,getElementById:()=>button,body:{classList:workspace.classList}};
+  const context={document,CustomEvent:class {constructor(type,options){this.type=type;this.detail=options?.detail;}},localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},setTimeout:()=>1,clearTimeout(){}};
+  context.window=context;
   vm.createContext(context);vm.runInContext(core,context);
   return {context,storage,styles,classes,splitters};
 }

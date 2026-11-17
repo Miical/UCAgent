@@ -11,7 +11,7 @@
   bottom.querySelector('.composer').prepend(context);pane.append(top,divider,bottom);
   const toggle=document.getElementById('detail-toggle').cloneNode(true);toggle.id='case-chat-toggle';toggle.classList.add('case-chat-toggle');
   bottom.id='case-dedicated-chat';toggle.setAttribute('aria-controls',bottom.id);
-  let current=null,view={},ratio=.6,chatCollapsed=false,motionTimer;
+  let current=null,view={},ratio=.6,chatCollapsed=true;
   const opened=new Map();
   let savedProject=null,restoreKey=null;
   /** Persist identities and tab order per project; source and detail data are always reloaded. */
@@ -52,14 +52,13 @@
   /** Reuse the same sidebar boundary while swapping only its visible content. */
   function syncSidebar(){
     const wave=!!current&&view.tab==='wave'&&(!current.testcase.entity_type||current.testcase.entity_type==='case'),key=wave?current.project.id+':'+current.testcase.id+':'+(view.run_id||''):null;
-    if(key&&key!==sidebarWaveKey){sidebarWaveKey=key;sidebarMode='analysis';if(chatCollapsed)collapseChat(false);}
+    if(key&&key!==sidebarWaveKey){sidebarWaveKey=key;sidebarMode='analysis';}
     if(!wave){sidebarWaveKey=null;sidebarMode='chat';}
     waveNav.querySelector('.workspace-dedicated-name').textContent=dedicatedName.textContent;
     waveNav.hidden=!wave||chatCollapsed;dedicated.hidden=wave;chatSurface.hidden=wave&&sidebarMode==='analysis';analysisPane.hidden=!wave||sidebarMode!=='analysis';
     for(const button of waveNav.children){const active=button.dataset.mode===sidebarMode;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;}
     if(wave){const content=waveAnalyses.get(current.project.id+':'+current.testcase.id);if(content){if(analysisPane.firstChild!==content)analysisPane.replaceChildren(content);}else if(analysisPane.firstChild?.dataset.placeholder!=='true'){const empty=document.createElement('p');empty.className='case-detail-empty';empty.dataset.placeholder='true';empty.textContent='正在读取波形解读…';analysisPane.replaceChildren(empty);}}
   }
-  const projectSwitch=document.createElement('div');projectSwitch.className='workspace-project-switch';projectSwitch.append(document.getElementById('project-open'));
   tabActions.append(sidebarNav,dedicated,waveNav,document.getElementById('detail-toggle'),toggle);sidebarHeader.remove();tabs.append(tabActions);
   const tabBoundary=document.createElement('span');tabBoundary.className='workspace-tab-boundary';tabBoundary.setAttribute('aria-hidden','true');tabs.append(tabBoundary);
   document.body.prepend(tabs);
@@ -77,16 +76,15 @@
     observer.observe(document.querySelector('.project-pane'));observer.observe(pane);observer.observe(document.querySelector('.detail-pane'));observer.observe(bottom);
   }else window.addEventListener('resize',alignTabStart);
   alignTabStart();
-  try{chatCollapsed=localStorage.getItem('flowcanvas.caseChatCollapsed')==='true';}catch{}
   /** Collapse the dedicated conversation without changing its session or saved split width. */
   function collapseChat(value,persist=false){
     chatCollapsed=value;pane.classList.toggle('case-chat-collapsed',value);
     bottom.inert=value&&!!current;divider.tabIndex=value?-1:0;
     toggle.title=(value?'展开':'收起')+(view.tab==='wave'?'右侧栏':current?.testcase.entity_type==='module'?'设计对话':current?.testcase.entity_type==='target'?'目标对话':current?.testcase.entity_type==='coverage'?'覆盖率对话':current?.testcase.entity_type==='bug'?'Bug 对话':'用例对话');toggle.setAttribute('aria-label',toggle.title);toggle.setAttribute('aria-expanded',String(!value));
-    if(persist)try{localStorage.setItem('flowcanvas.caseChatCollapsed',String(value));}catch{}
+    if(persist)window.FlowCanvasSidebarState?.save(value);
     syncSidebar();
   }
-  toggle.onclick=()=>{clearTimeout(motionTimer);pane.classList.add('case-chat-motion');collapseChat(!chatCollapsed,true);motionTimer=setTimeout(()=>pane.classList.remove('case-chat-motion'),500);};collapseChat(chatCollapsed);
+  toggle.onclick=()=>{globalThis.FlowCanvasSidebarMotion?.(pane,bottom,'case-chat-motion','case-chat-collapsed',!chatCollapsed);collapseChat(!chatCollapsed,true);};collapseChat(chatCollapsed);
 
   /** Keep the two regions usable and remember only explicit resize preferences. */
   function resize(value,persist=false){const available=Math.max(1,pane.clientWidth-7),width=window.FlowCanvasSidebarLayout.resize(available*(1-value),persist);ratio=1-width/available;divider.setAttribute('aria-valuenow',String(Math.round(ratio*100)));}
@@ -110,7 +108,7 @@
       projectToggle.innerHTML=document.getElementById('detail-toggle').innerHTML;
       const projectCollapsed=pane.closest('.workspace').classList.contains('project-collapsed');projectToggle.setAttribute('aria-expanded',String(!projectCollapsed));projectToggle.title=projectToggle.ariaLabel=projectCollapsed?'展开左侧栏':'收起左侧栏';
       projectToggle.onclick=()=>toggleProject(!pane.closest('.workspace').classList.contains('project-collapsed'));
-      brand.append(projectToggle,projectSwitch);tabs.prepend(brand,main,list);
+      brand.append(projectToggle);tabs.prepend(brand,main,list);
     }
     main.setAttribute('aria-selected',String(!current));main.tabIndex=current?-1:0;
     for(const wrapper of [...list.children])if(!opened.has(wrapper.dataset.key))wrapper.remove();
@@ -180,6 +178,7 @@
         }
       }
       const changed=current?.testcase.id!==testcase.id||current?.project.id!==project.id;
+      const sidebarState=window.FlowCanvasSidebarState?.enter('tab:'+(testcase.entity_type||'case')+':'+testcase.id,project.id);if(sidebarState)chatCollapsed=sidebarState.rightCollapsed;
       restoreKey=null;current={project,testcase};opened.set(key,{project,testcase,preview:existing?existing.preview:true});
       dedicatedName.textContent=testcase.entity_type==='coverage'?testcase.title.split(' · ')[0]:testcase.title||testcase.name;dedicated.title='专属对话 · '+dedicatedName.textContent;for(const detail of top.querySelectorAll('.testcase-detail-pane'))detail.hidden=detail.dataset.entityId!==testcase.id;pane.classList.add('case-workspace-open');collapseChat(chatCollapsed);top.hidden=divider.hidden=context.hidden=false;
       if(changed||testcase.entity_type==='module')view=initialView||{tab:'overview'};publish(true);ratio=1-window.FlowCanvasSidebarLayout.width/Math.max(1,pane.clientWidth-7);divider.setAttribute('aria-valuenow',String(Math.round(ratio*100)));paintTabs();

@@ -6,6 +6,7 @@ import json
 import re
 from pathlib import Path
 import time
+import threading
 import uuid
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -100,91 +101,131 @@ class ChatService:
         self.backends = {name: cls(workspace, lambda event: None) for name, cls in BACKENDS.items()}
         self.workspace = workspace
         self.flusher = None
+        self.persistence_lock=threading.RLock()
+        self.session_paths = {}
         for path in self.root.glob('*.json'):
-            session = json.loads(path.read_text())
-            if session['status'] == 'completed' and RETRY_NOTICE.fullmatch(session.get('error') or ''):
-                # Old snapshots predate explicit transient-error tagging.
-                session['error'] = ''
-            if session['status'] in ACTIVE:
-                session.update(status='interrupted', error='Server restarted during the previous turn.')
-            for card in session.get('workflow_runs', []):
-                if card['status'] != 'completed':
-                    card.update(status='paused', alive=False, pause_reason='工作台已重启，请恢复工作流')
-            for card in session.get('workflow_runs', []):
-                card['auto_continue'] = False
-            session.update(children_running=0, children_pending=False, delegation_stopped=True)
-            session['queue_paused'] = True  # Restart never silently executes persisted requests.
-            self.sessions[session['id']] = session
-            # Import pre-card-history records, including the retired worker storage.
-            # This reads historical data only; it never creates or starts a worker.
-            legacy = [session.get('workflow_run')]
-            for worker_path in (self.root / 'workflow_workers' / session['id']).glob('*.json'):
-                try:
-                    legacy.append(json.loads(worker_path.read_text()).get('workflow_run'))
-                except (OSError, ValueError):
-                    continue
-            cards = session.setdefault('workflow_runs', [])
-            existing = {card['id'] for card in cards}
-            migrated = False
-            for record in legacy:
-                if not record or not record.get('id') or not record.get('workspace') or record['id'] in existing:
-                    continue
-                card = dict(record)
-                card.pop('output', None)
-                root = Path(record['workspace']).parent
-                card.update(conversation_id=session['id'], root=str(root), alive=False,
-                            workflow_id=(session.get('attachment') or {}).get('workflow_id', 'rtl-summary'),
-                            stages=[], current_stage='', historical=True)
-                if record.get('status') != 'completed':
-                    card.update(status='paused', pause_reason='历史 MCP 服务已停止')
-                try:
-                    progress = json.loads((root / 'progress.json').read_text())
-                    card.update(stages=progress.get('stages', []), current_stage=progress.get('current_stage', ''))
-                except (OSError, ValueError):
-                    pass
-                cards.append(card)
-                existing.add(card['id'])
+            self.load_session(path)
+        self.projects.on_activate=self.load_project
+        for project in self.projects.state.get('recent',[]):
+            self.load_project(project)
+        if self.projects.current:self.load_project(self.projects.current)
+
+    def load_session(self, path):
+        """Load a durable conversation once without replacing an already active in-memory session."""
+        session = json.loads(path.read_text())
+        if session['id'] in self.sessions:return
+        self.session_paths[session['id']]=path
+        if session['status'] == 'completed' and RETRY_NOTICE.fullmatch(session.get('error') or ''):
+            # Old snapshots predate explicit transient-error tagging.
+            session['error'] = ''
+        if session['status'] in ACTIVE:
+            session.update(status='interrupted', error='Server restarted during the previous turn.')
+        for card in session.get('workflow_runs', []):
+            if card['status'] != 'completed':
+                card.update(status='paused', alive=False, pause_reason='工作台已重启，请恢复工作流')
+        for card in session.get('workflow_runs', []):
+            card['auto_continue'] = False
+        session.update(children_running=0, children_pending=False, delegation_stopped=True)
+        session['queue_paused'] = True  # Restart never silently executes persisted requests.
+        self.sessions[session['id']] = session
+        # Import pre-card-history records, including the retired worker storage.
+        # This reads historical data only; it never creates or starts a worker.
+        legacy = [session.get('workflow_run')]
+        for worker_path in (self.root / 'workflow_workers' / session['id']).glob('*.json'):
+            try:
+                legacy.append(json.loads(worker_path.read_text()).get('workflow_run'))
+            except (OSError, ValueError):
+                continue
+        cards = session.setdefault('workflow_runs', [])
+        existing = {card['id'] for card in cards}
+        migrated = False
+        for record in legacy:
+            if not record or not record.get('id') or not record.get('workspace') or record['id'] in existing:
+                continue
+            card = dict(record)
+            card.pop('output', None)
+            root = Path(record['workspace']).parent
+            card.update(conversation_id=session['id'], root=str(root), alive=False,
+                        workflow_id=(session.get('attachment') or {}).get('workflow_id', 'rtl-summary'),
+                        stages=[], current_stage='', historical=True)
+            if record.get('status') != 'completed':
+                card.update(status='paused', pause_reason='历史 MCP 服务已停止')
+            try:
+                progress = json.loads((root / 'progress.json').read_text())
+                card.update(stages=progress.get('stages', []), current_stage=progress.get('current_stage', ''))
+            except (OSError, ValueError):
+                pass
+            cards.append(card)
+            existing.add(card['id'])
+            migrated = True
+        from .workflow_runtime import project_startup_stage
+        for card in cards:
+            project_startup_stage(card)
+            if 'output' in card:
+                card.pop('output')
                 migrated = True
-            from .workflow_runtime import project_startup_stage
-            for card in cards:
-                project_startup_stage(card)
-                if 'output' in card:
-                    card.pop('output')
-                    migrated = True
-            if isinstance(session.get('workflow_run'), dict) and 'output' in session['workflow_run']:
-                session['workflow_run'].pop('output')
-                migrated = True
-            if migrated:
-                self.save(session)
+        if isinstance(session.get('workflow_run'), dict) and 'output' in session['workflow_run']:
+            session['workflow_run'].pop('output')
+            migrated = True
+        if migrated:
+            self.save(session)
+
+    def session_path(self, session):
+        """Resolve immutable conversation ownership independently of the project currently on screen."""
+        identity=session['id']
+        if identity not in self.session_paths:
+            root=Path(session['project_root'])/'.flowcanvas/conversations' if session.get('project_root') else self.root
+            self.session_paths[identity]=root/(identity+'.json')
+        return self.session_paths[identity]
+
+    def load_project(self, project):
+        """Load only the opened project folder history, without copying global conversations."""
+        with self.persistence_lock:
+            if not project:return
+            root=Path(project['path']).resolve()
+            if not (root/'.flowcanvas/project.json').is_file():return
+            folder=root/'.flowcanvas/conversations'
+            for path in folder.glob('*.json'):
+                self.load_session(path)
+
+
+    def in_current_scope(self, session):
+        """Keep global and project histories disjoint, including recreated projects at the same path."""
+        project=self.projects.current or {}
+        return session.get('project_root')==project.get('path') and (
+            not session.get('project_id') or session['project_id']==project.get('id'))
 
     def save(self, session):
         """Atomically persist the UI projection without rewriting native model history."""
-        if self.sessions.get(session['id']) is not session:
-            return
-        if session.get('ended_at') and session['status'] in {'completed', 'interrupted', 'error', 'failed'}:
-            if ((session.get('attachment') or {}).get('task_only') and session.get('task_attachment_started')
-                    and not execution_active(session)):
-                session.pop('attachment', None)
-                session.pop('task_attachment_started', None)
-            for item in reversed(session['items']):
-                if item['kind'] == 'user' and not item.get('steered'):
-                    if item.get('task_card'):
-                        item['task_run'] = {'status': session['status'], 'started_at': session.get('started_at'), 'ended_at': session['ended_at']}
-                    break
-        if session['status'] == 'completed':
-            for item in reversed(session['items']):
-                if item['kind'] == 'user' and not item.get('steered'):
-                    break
-                if item['kind'] == 'text':
-                    item['turn_completion'] = {'started_at': session.get('started_at'),
-                                               'ended_at': session.get('ended_at')}
-                    break
-        target = self.root / (session['id'] + '.json')
-        temporary = target.with_suffix('.tmp')
-        temporary.write_text(json.dumps(session, ensure_ascii=False))
-        temporary.chmod(0o600)
-        temporary.replace(target)
-        self.dirty.discard(session['id'])
+        with self.persistence_lock:
+            if self.sessions.get(session['id']) is not session:
+                return
+            if session.get('ended_at') and session['status'] in {'completed', 'interrupted', 'error', 'failed'}:
+                if ((session.get('attachment') or {}).get('task_only') and session.get('task_attachment_started')
+                        and not execution_active(session)):
+                    session.pop('attachment', None)
+                    session.pop('task_attachment_started', None)
+                for item in reversed(session['items']):
+                    if item['kind'] == 'user' and not item.get('steered'):
+                        if item.get('task_card'):
+                            item['task_run'] = {'status': session['status'], 'started_at': session.get('started_at'), 'ended_at': session['ended_at']}
+                        break
+            if session['status'] == 'completed':
+                for item in reversed(session['items']):
+                    if item['kind'] == 'user' and not item.get('steered'):
+                        break
+                    if item['kind'] == 'text':
+                        item['turn_completion'] = {'started_at': session.get('started_at'),
+                                                   'ended_at': session.get('ended_at')}
+                        break
+            target = self.session_path(session)
+            target.parent.mkdir(parents=True,exist_ok=True)
+            temporary = target.with_suffix('.tmp')
+            temporary.write_text(json.dumps(session, ensure_ascii=False))
+            temporary.chmod(0o600)
+            temporary.replace(target)
+            self.dirty.discard(session['id'])
+
 
     async def flush(self):
         """Bound streaming disk writes while retaining partial replies across restarts."""
@@ -237,6 +278,26 @@ class ChatService:
                    if not (Path(card['root']) / 'complete.json').is_file()]
         if not pending:
             return False
+        # Attempts belong to durable workflow cards; resumed hosts must not reset the budget.
+        for card in pending:
+            if 'auto_continue_attempts' not in card:
+                card['auto_continue_attempts']=sum(item.get('kind')=='user' and
+                    item.get('workflow_label')=='自动继续工作流' and card['id'] in item.get('text','')
+                    for item in session.get('items',[]))
+        if any(card.get('auto_continue_attempts',0)>=10 for card in pending):
+            reason='工作流自动恢复已达 10 次上限，已停止自动执行。请检查问题后手动处理。'
+            for card in pending:
+                card.update(auto_continue=False,status='paused',pause_reason=reason)
+            session.update(queue_paused=True,delegation_stopped=True,status='interrupted',error=reason)
+            bridge=self.workflow_bridges.get(identity)
+            if bridge:
+                job=asyncio.create_task(bridge.runtime.pause())
+                self.jobs.add(job);job.add_done_callback(self.jobs.discard)
+            self.changed(session);self.save(session)
+            return False
+        for card in pending:
+            card['auto_continue_attempts']=card.get('auto_continue_attempts',0)+1
+        self.changed(session)
         card_ids = [card['id'] for card in pending]
         message = Message(
             text=('自动继续尚未完成的工作流。原卡片 ID：' + json.dumps(card_ids) +
@@ -331,7 +392,7 @@ class ChatService:
                    'turn': None, 'status': 'idle', 'items': [], 'model': '', 'effort': '',
                    'revision': 0, 'updated': time.time(), 'error': '', 'usage': None,
                    'permission_mode': 'workspace' if backend == 'codex' else 'full',
-                   'project_root': project.get('path'),
+                   'project_root': project.get('path'), 'project_id': project.get('id'),
                    'workspace': project.get('path', str(self.workspace))}
         if case_binding:session['case_binding']=case_binding
         self.sessions[session['id']] = session
@@ -608,8 +669,8 @@ def routes(service):
         return sorted([{**card, 'conversation_id': owner['id'],
                         'conversation_title': owner.get('title') or '新对话',
                         'model': owner.get('model'), 'effort': owner.get('effort'), 'backend': owner.get('backend')}
-                       for owner in service.sessions.values()
-                       if owner.get('project_root') == (service.projects.current or {}).get('path')
+                       for owner in list(service.sessions.values())
+                       if service.in_current_scope(owner)
                        for card in owner.get('workflow_runs', [])],
                       key=lambda card: card.get('started_at', 0), reverse=True)
 
@@ -632,8 +693,8 @@ def routes(service):
         """List lightweight session summaries without loading all messages."""
         return [{**{k: s[k] for k in ('id', 'title', 'status', 'updated', 'backend')},
                  'archived': s.get('archived', False), 'pinned': s.get('pinned', False), 'case_binding': s.get('case_binding')}
-                for s in sorted(service.sessions.values(), key=lambda s: s['updated'], reverse=True)
-                if s.get('project_root') == (service.projects.current or {}).get('path')]
+                for s in sorted(list(service.sessions.values()), key=lambda s: s['updated'], reverse=True)
+                if service.in_current_scope(s)]
 
     @router.post('/sessions')
     async def create(value: NewSession):
@@ -680,7 +741,8 @@ def routes(service):
         """Permanently delete FlowCanvas history, leaving native backend storage untouched."""
         session = service.get(identity)
         async with service.reconfigure(session, workflow=True, deleting=True):
-            (service.root / (identity + '.json')).unlink(missing_ok=True)
+            service.session_path(session).unlink(missing_ok=True)
+            service.session_paths.pop(identity,None)
             service.dirty.discard(identity)
             del service.sessions[identity]
         return {'deleted': identity}

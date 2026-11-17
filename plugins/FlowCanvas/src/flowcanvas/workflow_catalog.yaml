@@ -1,5 +1,10 @@
 # Curated menu entries, displayed in file order. Execution lives in workflow YAML.
 workflows:
+  - id: import-project
+    name: 导入项目
+    description: 先同步验证目标，再同步测试用例，复用已有内容与有效冒烟结果，只补缺失和必要修复。
+    workflow: flowcanvas:import-project
+    enabled: true
   - id: import-testcases
     name: 同步测试用例
     description: 核对项目测试用例，仅补缺失项，保留未变化的内容与运行配置；复用有效冒烟结果。

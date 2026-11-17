@@ -2040,7 +2040,6 @@ body>.workspace{grid-column:2;grid-row:2;min-height:0;grid-template-rows:minmax(
 /* A small white heading identifies the currently selected navigation page. */
 .project-page-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;flex:none;min-height:32px;padding:0 10px 0 14px;background:var(--surface)}
 .project-page-heading>h2{margin:0;font-size:11px;line-height:18px;font-weight:500;color:var(--text-dim)}
-.no-project>.project-page-heading{display:none}
 /* Project selection shares the top rail with the page tabs and sidebar controls. */
 .workspace-project-switch{display:flex;align-items:center;justify-content:flex-end;flex:none;width:100px;margin:0 2px 0 auto}
 .workspace-project-switch>.nav-button{width:28px;height:28px;padding:5px;border-radius:6px}
@@ -2151,7 +2150,7 @@ body:has(.workspace>.case-workspace-open) .workspace-tab-actions>#case-chat-togg
 .target-goal-pane .verification-title-list .goal-row-heading>.target-card-head{flex:1;max-width:none;height:32px;padding:5px 9px;gap:6px;background:transparent;font:500 12px/18px system-ui,sans-serif}
 .target-goal-pane .verification-title-list .target-header .target-title{font:500 12px/18px system-ui,sans-serif;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .target-goal-pane .verification-title-list .verification-group>.target-header .target-title{font-weight:650}
-.verification-title-list .verification-children{margin:0;padding:0 0 0 18px;border:0;background:transparent}
+.verification-title-list .verification-children{margin:0;padding:0;border:0;background:transparent}
 .target-goal-pane .verification-title-list .target-chevron{width:12px;height:16px;color:var(--text-dim)}
 .target-goal-pane .verification-title-list .target-chevron svg{width:10px;height:10px;fill:none;stroke:currentColor;stroke-width:1.5;transition:transform .15s}
 .target-goal-pane .verification-title-list .verification-item>.target-header:hover{background:color-mix(in srgb,var(--text) 4%,var(--surface))}
@@ -2168,7 +2167,7 @@ body:has(.workspace>.case-workspace-open) .workspace-tab-actions>#case-chat-togg
 .goal-detail-pane .case-detail-title{position:relative}
 
 .target-goal-pane .verification-title-list .verification-item>.target-header:has(>.target-header-actions){display:flex;gap:2px}
-.target-goal-pane .verification-title-list .verification-item>.target-header>.goal-row-heading{flex:1;min-width:0}
+.target-goal-pane .verification-title-list .verification-item>.target-header>.goal-row-heading{box-sizing:border-box;flex:1;min-width:0;padding-left:calc(var(--goal-depth,0)*18px)}
 .target-goal-pane .verification-title-list .target-header>.target-header-actions{width:auto;margin-right:5px;gap:2px}
 .target-goal-pane .verification-title-list .target-header-actions .target-icon-action{width:24px;height:24px;border-radius:4px}
 
@@ -2284,7 +2283,7 @@ body:has(.workspace>.case-workspace-open:not(.case-chat-collapsed)) .workspace-d
 /* Persisted target mutations animate individual list rows, never their descendants. */
 .target-goal-pane .verification-item>.target-header{position:relative;isolation:isolate;overflow:hidden}
 .target-goal-pane .verification-item[data-lifecycle="creating"]>.target-header:not(.is-selected){background:color-mix(in srgb,var(--accent) 3%,var(--surface))}
-.target-goal-pane .verification-item.case-operation-active>.target-header::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(100deg,transparent 20%,#9865e814 50%,transparent 80%);background-size:240% 100%;animation:case-operation-shimmer 2.6s ease-in-out infinite;animation-delay:var(--operation-phase,0ms)}
+.target-goal-pane .verification-item.case-operation-active>.target-header::after{content:"";position:absolute;inset:2px 0;border-radius:4px;z-index:1;pointer-events:none;background:linear-gradient(100deg,transparent 20%,#9865e814 50%,transparent 80%);background-size:240% 100%;animation:case-operation-shimmer 2.6s ease-in-out infinite;animation-delay:var(--operation-phase,0ms)}
 .target-goal-pane .verification-item.case-operation-active>.target-header .target-title,.target-goal-pane .verification-item.case-operation-active>.target-header>.target-coverage-score{opacity:.55}
 .target-goal-pane .verification-item .case-operation-label{flex:none;font-size:10px;line-height:16px}
 .target-goal-pane .verification-item.case-operation-active>.target-header .case-operation-label::before{content:"";display:inline-block;width:4px;height:4px;margin:0 5px 1px 0;border-radius:50%;background:#9865e8;animation:fc-breathe 2s ease-in-out infinite}
@@ -2398,3 +2397,100 @@ body:has(.workspace>.case-workspace-open:not(.case-chat-collapsed)) .workspace-d
 .case-result-badge[data-status="running"]::before{animation:case-result-breathe 1.6s ease-in-out infinite}
 @keyframes case-result-breathe{0%,100%{opacity:.4;box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 0%,transparent)}50%{opacity:1;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent)}}
 @media(prefers-reduced-motion:reduce){.case-result-badge[data-status="running"]::before{animation:none}}
+
+.case-result-badge[data-status="neutral"]{color:color-mix(in srgb,var(--text-dim) 40%,var(--surface))}
+
+/* One quiet starting action for folders containing an RTL design. */
+.project-empty-actions{align-items:center;width:min(260px,calc(100% - 36px));gap:0;text-align:center}
+.project-empty-icon{display:grid;place-items:center;width:44px;height:44px;margin-bottom:16px;border-radius:12px;background:color-mix(in srgb,var(--accent) 6%,var(--surface));color:var(--text-dim)}
+.project-empty-icon svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.project-empty-actions h2{margin:0;color:var(--text);font-size:15px;font-weight:600;line-height:1.5}
+.project-empty-actions p{max-width:230px;margin:10px 0 22px;font-size:12px;line-height:1.8;color:var(--text-dim)}
+.project-empty-actions button{display:inline-flex;align-items:center;justify-content:center;gap:9px;width:auto;min-height:34px;padding:7px 18px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:12px;font-weight:500}
+.project-empty-actions button svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.project-empty-actions button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+#project-actions{margin:10px 0 14px}
+#project-actions #project-without{padding:0;background:none;color:var(--text-dim);font-size:11px}
+
+.workspace-project-switch:has(>.project-leave:not([hidden])){width:124px;gap:2px}
+.workspace-project-switch>.project-leave{display:grid;place-items:center;flex:none;width:22px;height:24px;padding:4px;border:0;border-radius:5px;background:transparent;color:var(--text-dim)}
+.workspace-project-switch>.project-leave[hidden]{display:none}
+.workspace-project-switch>.project-leave svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round}
+
+.project-empty-buttons{display:flex;flex-direction:column;gap:9px;width:170px}
+.project-empty-buttons>button{width:100%}
+
+/* Familiar folder navigation: clickable breadcrumbs, a list and an optional address field. */
+.project-dialog{width:min(640px,calc(100vw - 40px));max-height:88vh;overflow:auto;border-radius:12px;padding:20px}
+.project-folder-toolbar{display:flex;align-items:center;gap:5px;margin:12px 0 10px;min-width:0}
+.project-dialog .project-folder-toolbar>button{flex:none;padding:5px 8px;background:transparent;color:var(--text-dim);font-size:11px}
+.project-dialog .project-folder-toolbar>button:hover{background:var(--surface2);color:var(--text)}
+.project-folder-toolbar #project-parent{margin:0;width:28px;font-size:16px}
+#project-breadcrumbs{display:flex;align-items:center;flex:1;min-width:0;overflow:auto;scrollbar-width:none}
+.project-dialog #project-breadcrumbs button{flex:none;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 7px;background:transparent;border-radius:4px;font-size:11px;color:var(--text-dim)}
+#project-breadcrumbs button+button::before{content:"/";margin-right:10px;opacity:.4}
+.project-dialog #project-breadcrumbs button[aria-current]{color:var(--text);font-weight:500}
+.project-dialog #project-breadcrumbs button:hover{background:var(--surface2)}
+#project-path-form[hidden]{display:none}
+#project-path-form{margin-bottom:10px}
+#project-folders{height:210px;min-height:0;max-height:30vh;margin:8px 0 0;gap:2px;padding:4px 0;scrollbar-width:thin;border-bottom:1px solid var(--border)}
+.project-dialog #project-folders .project-folder-row{display:flex;align-items:center;gap:9px;flex:none;min-height:30px;padding:5px 9px;border-radius:4px;font-size:12px;color:var(--text)}
+.project-folder-row svg{flex:none;width:16px;height:16px;fill:none;stroke:var(--text-dim);stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
+.project-folder-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-folder-row small{color:var(--text-dim);font-size:10px}
+.project-folder-arrow{color:var(--text-dim);font-size:16px}
+.project-folder-row:focus-visible{outline:1px solid var(--accent);outline-offset:-1px}
+.project-dialog .project-folder-selection{margin:9px 0 0;font-size:11px;line-height:1.6;color:var(--text-dim)}
+.project-dialog .project-folders-empty{margin:auto;text-align:center;font-size:11px}
+.project-dialog #project-recents{max-height:120px}
+
+#project-recents[hidden]{display:none}
+
+/* Animate the clipping boundary while content retains its expanded geometry. */
+.sidebar-content-fixed{overflow:hidden}
+.sidebar-content-fixed>*{box-sizing:border-box;width:var(--sidebar-content-width)!important;min-width:var(--sidebar-content-width)!important;max-width:var(--sidebar-content-width)!important;align-self:flex-start}
+
+/* Distinct navigation buttons and one address field that edits directly in place. */
+.project-folder-toolbar{gap:8px}
+.project-dialog .project-folder-toolbar>button{height:30px;min-width:30px;padding:5px 10px;border:1px solid var(--border);border-radius:5px;background:var(--surface);color:var(--text)}
+.project-folder-toolbar #project-parent{display:grid;place-items:center;width:30px;padding:6px;font-size:12px}
+.project-folder-toolbar #project-parent svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.project-folder-toolbar>button:disabled{opacity:.35;cursor:default}
+.project-address{display:flex;align-items:center;flex:1;min-width:0;height:30px;border:1px solid var(--border);border-radius:5px;background:var(--surface);cursor:text}
+.project-address:focus-visible,.project-address:focus-within{outline:0;border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 9%,transparent)}
+.project-address #project-breadcrumbs{height:100%;padding:0 5px;gap:0}
+#project-breadcrumbs[hidden]{display:none}
+.project-dialog #project-breadcrumbs button{max-width:160px;padding:3px 6px;font-size:11px}
+#project-breadcrumbs button+button::before{content:"›";margin-right:9px;opacity:.5}
+.project-address #project-path-form{flex:1;min-width:0;margin:0;gap:0;width:100%}
+.project-dialog .project-address #project-path{height:28px;padding:4px 9px;border:0;border-radius:5px;background:transparent;font-size:11px;outline:none;box-shadow:none}
+
+/* Main conversation uses a centered reading column rather than the whole workspace. */
+.chat-pane:not(.case-workspace-open){--main-chat-width:min(800px,50vw)}
+.chat-pane:not(.case-workspace-open) #conversation{box-sizing:border-box;padding:22px 24px 16px;scrollbar-gutter:stable both-edges}
+.chat-pane:not(.case-workspace-open) #conversation>*{box-sizing:border-box;width:100%;max-width:var(--main-chat-width);margin-left:auto;margin-right:auto}
+.chat-pane:not(.case-workspace-open) #conversation>.message.user{width:fit-content;max-width:min(88%,var(--main-chat-width));margin-left:auto;margin-right:max(0px,calc((100% - var(--main-chat-width))/2))}
+.chat-pane:not(.case-workspace-open) .case-chat-surface>.composer{box-sizing:border-box;align-self:center;width:min(var(--main-chat-width),calc(100% - 48px));margin:10px auto 12px}
+.chat-pane:not(.case-workspace-open) .case-chat-surface>:is(.workflow-run,.composer-hint,#chat-error,#message-queue,#reconnect-notice){box-sizing:border-box;max-width:var(--main-chat-width);width:calc(100% - 48px);margin-left:auto;margin-right:auto}
+@media(max-width:1000px){.chat-pane:not(.case-workspace-open){--main-chat-width:800px}}
+.chat-pane:not(.case-workspace-open) #conversation>.chat-welcome{width:fit-content;max-width:min(430px,var(--main-chat-width),100%);align-items:center;text-align:center;margin-inline:auto}
+
+/* Compact spacing with a comfortable two-line draft area. */
+.composer{padding:11px 14px 9px;border-radius:26px}
+.composer textarea{font-size:14px;min-height:44px;line-height:1.6}
+.composer-footer{margin-top:6px}
+.composer .model-trigger{padding:6px 8px}
+.composer .send-button{width:34px;height:34px;font-size:24px}
+.composer .send-button.is-stop{font-size:12px}
+
+.composer textarea::placeholder{opacity:.6}
+html[data-theme="light"] .composer-footer>.composer-selectors>.model-picker>.model-trigger{color:#111}
+html[data-theme="light"] .composer-footer .model-trigger>.picker-chevron{color:inherit;opacity:1}
+
+/* Three floating starters for the global welcome screen. */
+.welcome-prompts{display:flex;flex-direction:column;align-items:flex-start;gap:10px;width:max-content;max-width:100%;margin:22px auto 0;align-self:center}
+.welcome-prompt{padding:7px 13px;border:1px solid color-mix(in srgb,var(--border) 55%,transparent);border-radius:12px;background:var(--surface);color:var(--text-dim);font-size:11px;line-height:1.4;text-align:left;box-shadow:0 2px 7px #00000003;animation:welcome-float 6s ease-in-out infinite;transition:color .15s,border-color .15s,box-shadow .15s}
+.welcome-prompt:nth-child(2){animation-delay:-2s}.welcome-prompt:nth-child(3){animation-delay:-4s}
+.welcome-prompt:hover,.welcome-prompt:focus-visible{color:var(--text);border-color:color-mix(in srgb,var(--accent) 35%,var(--border));box-shadow:0 3px 10px #00000008;animation-play-state:paused}
+@keyframes welcome-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@media(prefers-reduced-motion:reduce){.welcome-prompt{animation:none}}
