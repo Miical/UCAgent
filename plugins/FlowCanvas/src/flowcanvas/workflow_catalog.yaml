@@ -1,13 +1,13 @@
 # Curated menu entries, displayed in file order. Execution lives in workflow YAML.
 workflows:
   - id: import-testcases
-    name: 导入测试用例
-    description: 导入已有测试，配置运行命令、共享覆盖数据库与面板提取，并创建短冒烟用例，完整检查启动和覆盖率提取。
+    name: 同步测试用例
+    description: 核对项目测试用例，仅补缺失项，保留未变化的内容与运行配置；复用有效冒烟结果。
     workflow: flowcanvas:import-testcases
     enabled: true
   - id: import-targets
-    name: 导入验证目标
-    description: 读取已有验证文档与源码，生成中文验证目标卡片并核对源码绑定，不运行仿真。
+    name: 同步验证目标
+    description: 同步项目覆盖定义，首次导入、后续补缺；保留已有目标，仅修复源码变化或已有问题。
     workflow: flowcanvas:import-targets
     enabled: true
   - id: plan-goals

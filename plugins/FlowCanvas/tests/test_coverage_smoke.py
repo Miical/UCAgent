@@ -68,6 +68,17 @@ async def test_complete_smoke_checks_coverage_and_keeps_accumulation(tmp_path):
         assert not (tmp_path/'output/flowcanvas/coverage/database').exists()
         plan['smoke_run_id']=row['id'];path.write_text(json.dumps(plan))
         assert checker.do_check()[0],checker.do_check()
+        # A second synchronization reuses the same receipt and does not mutate cases or runs.
+        request_path=path.parents[1].parent/'request.json'
+        request=json.loads(request_path.read_text())
+        request.update(testcase_baseline=[card.id for card in Cases(tmp_path).read().targets],
+                       testcase_snapshot=[card.model_dump() for card in Cases(tmp_path).read().targets])
+        request_path.write_text(json.dumps(request))
+        unchanged=Cases(tmp_path).path.read_bytes()
+        previous_runs=sorted((tmp_path/'output/flowcanvas/test-runs').glob('*.json'))
+        assert checker.do_check()[0],checker.do_check()
+        assert Cases(tmp_path).path.read_bytes()==unchanged
+        assert sorted((tmp_path/'output/flowcanvas/test-runs').glob('*.json'))==previous_runs
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
         from types import SimpleNamespace

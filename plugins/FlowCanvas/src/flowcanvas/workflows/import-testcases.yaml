@@ -1,4 +1,4 @@
-# Import existing tests and validate one complete, isolated coverage smoke.
+# Synchronize existing tests and reuse current isolated coverage-smoke evidence.
 template: null
 guide_doc:
   enable: false
@@ -6,10 +6,23 @@ skill:
   use_skill: false
   general_skill_list: []
 mission:
-  name: 导入测试用例
+  name: 同步测试用例
   prompt:
     system: |
-      Import existing tests from project {PROJECT_ROOT}, scoped to DUT {DUT}, into FlowCanvas.
+      Synchronize existing tests from project {PROJECT_ROOT}, scoped to DUT {DUT}, into FlowCanvas.
+      This workflow is repeatable. Inspect existing cases before allocating IDs. Match runnable entry,
+      configuration/selector and stable source bindings; titles alone are not identity. Add only missing
+      cases. Reuse existing IDs, history and dedicated conversations. Unchanged healthy cases are
+      read-only: never begin_modify, rename, rewrite descriptions/overview/timeline, rebind sources,
+      regenerate markers or reconfigure runners merely because synchronization ran again.
+      Repair only actual source/configuration changes or concrete errors, using the smallest update.
+      Preserve all unaffected fields and record each existing-case repair in case-import.json repairs
+      as {id,reason} with actual source/configuration evidence. Do not automatically delete old cases
+      or modify transactions owned by other conversations; report unresolved entries instead.
+      Inspect and reuse valid shared coverage/build/mapping configuration without rewriting it.
+      Reuse an existing current completed coverage-smoke receipt without launching a new run. Find
+      previous smoke/reference IDs and receipts in managed output/flowcanvas/test-runs metadata.
+      Only a missing or stale receipt requires one complete smoke; a no-change sync is read-only.
       Read documentation, test sources and actual build/run configuration. UVM configurations using
       one base test with different sequences may be separate cases; do not register environment-only
       base classes. Python cases use explicit pytest entries. Select existing runnable scenarios.
@@ -34,10 +47,9 @@ mission:
       sequencers, agents, environments, base tests, generic scoreboards, coverage collectors, fixtures,
       RTL and build/run scripts are not case bindings merely because the test uses them. An exception
       must identify indispensable case-specific behavior and be justified in the import notes; never
-      attach an entire shared component for a small case-specific branch. Re-import reuses IDs and
-      retains strong existing bindings, but prunes previous infrastructure-only or overly broad
-      bindings from the replacement list. Do not delete source or change unrelated cases.
-      Create one dedicated short smoke case using an imported case's existing build, runner, fixtures
+      attach an entire shared component for a small case-specific branch. Synchronization preserves unchanged bindings. Only an evidenced incorrect or overly broad
+      binding may be repaired and recorded in repairs; do not routinely replace existing bindings. Do not delete source or change unrelated cases.
+      Only when no valid smoke exists, create or repair one dedicated short smoke case using an imported case's existing build, runner, fixtures
       and coverage instrumentation. Run that smoke to natural completion and validate actual line
       and functional coverage extraction. Do not run the whole imported suite. Smoke uses a private
       database and never publishes cumulative coverage; it proves the selected execution path only.
@@ -54,20 +66,20 @@ stage:
     desc: 确认测试用例与运行入口
     task:
       - "Read actual test entrypoints, scripts and test configuration. Select runnable scenarios in the requested module and exclude unrelated suites and base classes."
-      - "Write {OUT}/case-import.json with files (project-relative test implementation files), card_ids=[]. Record concise scope/exclusion notes as needed."
+      - "Write {OUT}/case-import.json with files (project-relative test implementation files), card_ids=[], repairs=[]. Record concise scope/exclusion notes as needed. Track all reused, added and repaired case IDs."
     checker:
       - name: scope
         clss: flowcanvas.case_import_workflow.CaseImportChecker
         args: {mode: scope}
   - name: import_testcases
-    desc: 导入测试用例
+    desc: 同步测试用例
     task:
-      - "Create source-backed cards, configure their real execution commands, then configure shared coverage through the three child stages. Keep card modifications open until each card has its runner; never invent a placeholder command to finish a card early."
+      - "Reuse unchanged source-backed cards without writes; add missing cards and repair only evidenced issues, then inspect shared coverage through the three child stages. Keep card modifications open until each card has its runner; never invent a placeholder command to finish a card early."
     stage:
       - name: import_testcase_cards
         desc: 创建卡片并绑定源码
         task:
-          - "Inspect existing cards, reuse matching entries, and apply only the needed new IDs. Begin modifications before writing each batch. Fill readable Chinese title/description, actual entry name and focused line-range bindings for the entry and concrete scenario sequence. Review existing bindings and remove infrastructure-only attachments from these imported cards. Leave new cards in creating/updating state until the next child stage configures their runners."
+          - "Inspect existing cards, reuse matching entries, and apply only the needed new IDs. Do not begin modifications on unchanged cards; begin modifications only for added or justified repaired cards. Fill readable Chinese title/description, actual entry name and focused line-range bindings for the entry and concrete scenario sequence. Preserve valid existing bindings; repair infrastructure-only attachments only as a documented issue. Leave new cards in creating/updating state until the next child stage configures their runners."
           - "Choose the existing project script's test selector as name for UVM configuration-driven tests. Python name is test_function or TestClass::test_method."
           - "Record all imported/reused IDs in card_ids. Do not add placeholder commands or finish incomplete cards merely to pass this stage."
         checker:
@@ -77,7 +89,7 @@ stage:
       - name: configure_testcase_runners
         desc: 配置运行命令
         task:
-          - "Configure each imported card's runner={command,description} from actual project scripts and dependencies. Continue its existing modification or begin_modify if necessary; then end_modify after configuring a real runnable entry."
+          - "Inspect each card's runner={command,description}; preserve valid unchanged runners exactly. Configure only missing or evidenced broken/outdated runners from actual project scripts and dependencies. Continue its existing modification or begin_modify if necessary; then end_modify after configuring a real runnable entry."
           - "The runner expands {case} once and shell-quotes it; do not prepend another directory. Keep outputs under {run_dir}. Pass {coverage_db} and {coverage_name} through the project runner for shared coverage; complete native coverage setup in the next child stage."
           - "Include {wave_dir} in every imported runner and connect it to real waveform generation. Inspect existing compile/debug requirements and runtime dump controls. Output only the primary {wave_dir}/waves.vcd directly, without VPD or conversion steps. Record actual format, tool and any unverified prerequisites in runner.description; do not claim generation was verified without an authorized run."
         checker:
@@ -90,8 +102,8 @@ stage:
           - "Use FlowCanvas's native VCS provider for VCS projects; do not write project-specific URG parsers, extraction scripts or extract/build shell commands. The platform owns native extraction and database monitoring. Runners only write {coverage_db} with unique {coverage_name}; normal runs use output/flowcanvas/coverage/database/coverage.vdb and coverage smoke uses a private database."
           - "Enable native line, toggle and functional coverage through the existing build flow. If design metadata lives in a separate compile database, copy or symlink it at output/flowcanvas/coverage/database/compile.vdb, preserving its matching compiled design. Configure output/flowcanvas/coverage/config.json as {provider: vcs, dut_instance: actual native DUT hierarchy, urg_executable: installed URG path when not on PATH}. Top module and RTL files come from the existing FlowCanvas project configuration."
           - "Write output/flowcanvas/coverage/build.json as {inputs: [project-relative compiled binary and compiled design-metadata paths]}. Include all real compiled inputs needed to detect a rebuild; never include runtime testdata or derive identity solely from current source. The platform calculates build identity and rejects mixing builds until accumulated coverage is cleared."
-          - "Create or reuse declarative output/flowcanvas/coverage/targets.json mappings. Each entry has target_id, selector={type, optional instance, optional point, optional bin}, file (project-relative coverage definition), sha256 of its compiled source, and frozen binding_fingerprints. Use native Source File metadata and exact instance selectors; never infer elaborated type suffixes as source declarations. Ignored/default excluded bins are marked excluded=true on the selector and are not fabricated hits. Do not change RTL or test checks to fit a mapping."
-          - "Call test_case_runs configure with latest revision and coverage={provider: vcs, tool: vcs-urg, description: actual collection setup}. No database path, extract_command, merge_command or build_id_command is needed. The platform validates and refreshes line/toggle details and functional card observations. Test the real chain in the complete coverage smoke stage; static setup alone cannot finish import. For non-VCS tools retain their explicit supported provider integration rather than pretending their format is VCS."
+          - "Inspect and reuse unchanged declarative output/flowcanvas/coverage/targets.json mappings without rewriting; add only missing mappings or repair evidenced stale entries. Each entry has target_id, selector={type, optional instance, optional point, optional bin}, file (project-relative coverage definition), sha256 of its compiled source, and frozen binding_fingerprints. Use native Source File metadata and exact instance selectors; never infer elaborated type suffixes as source declarations. Ignored/default excluded bins are marked excluded=true on the selector and are not fabricated hits. Do not change RTL or test checks to fit a mapping."
+          - "Only when shared configuration is missing or actually changed, call test_case_runs configure with latest revision and coverage={provider: vcs, tool: vcs-urg, description: actual collection setup}. No database path, extract_command, merge_command or build_id_command is needed. The platform validates and refreshes line/toggle details and functional card observations. Test the real chain in the complete coverage smoke stage; static setup alone cannot finish import. For non-VCS tools retain their explicit supported provider integration rather than pretending their format is VCS."
         checker:
           - name: coverage_configuration
             clss: flowcanvas.case_import_workflow.CaseImportChecker
@@ -101,9 +113,9 @@ stage:
         clss: flowcanvas.case_import_workflow.CaseImportChecker
         args: {mode: coverage}
   - name: validate_coverage_smoke
-    desc: 创建并完整运行覆盖率冒烟用例
+    desc: 复核冒烟凭证，缺失或失效时验证
     task:
-      - "Create or reuse one dedicated short smoke case through test_cases. Reuse an imported case's actual build path, runner template, DUT fixture, environment and instrumentation; reduce only scenario length using supported project parameters or a small derived sequence. Do not replace the simulator, mock the DUT, bypass real checks, disable coverage or fake readiness/output."
+      - "First find and validate an existing completed coverage-smoke receipt with the current smoke/reference cases, commands, source fingerprints, compiled build and coverage configuration. Record its IDs in case-import.json and skip creating/updating cases and launching tests when it remains valid. Otherwise create or repair one dedicated short smoke case through test_cases. Reuse an imported case's actual build path, runner template, DUT fixture, environment and instrumentation; reduce only scenario length using supported project parameters or a small derived sequence. Do not replace the simulator, mock the DUT, bypass real checks, disable coverage or fake readiness/output."
       - "Register a readable smoke card with source bindings and copy its reference card's runner unchanged (only {case} selects the new short scenario). Record smoke_case_id, smoke_reference_case_id and include the new ID in card_ids. Add smoke source files to files. Reuse an existing matching smoke card when re-importing. Prepare the matching compiled build and coverage mappings before launch."
       - "Call test_case_runs(start,case_id=smoke_case_id,mode=coverage_smoke,ready_pattern=actual_test_execution_pattern,startup_timeout=120). The deadline covers the entire simulation; raise up to 600 only when required. Shorten the dedicated scenario instead of truncating execution or running every imported case. Save run.id as smoke_run_id in case-import.json."
       - "Read logs until the run ends. Require natural exit code 0, no framework errors, smoke_status=passed and coverage_status=validated, waveform_status=validated and a waveform_receipt for waveforms/waves.vcd. The runner invokes the project's configured extractor on a private native database and requires measured line coverage plus functional observations bound to panel IDs. Zero hits are valid; missing data or extraction failures are not. The primary VCD must have real signals, readable values and advancing timestamps; missing, empty or malformed output fails smoke acceptance. The formal cumulative database and panels remain unchanged."
@@ -116,7 +128,7 @@ stage:
     desc: 核对导入与覆盖率冒烟结果
     task:
       - "This stage is a read-only review of existing evidence. Do not start tests, run startup checks for imported cases, or repeat a passed smoke. If the dedicated smoke receipt is invalid, return to validate_coverage_smoke and repair only that smoke. Inspect the final cards, commands, source bindings and smoke logs. All imported cards need valid commands and focused scenario bindings. Verify the source list explains the entry and concrete sequence without attaching shared verification infrastructure; return to import_testcase_cards if bindings are too broad. The dedicated smoke needs a current completed coverage receipt; changes to its command, source or coverage configuration require a new smoke."
-      - "Report imported cases, exclusions and the completed representative coverage smoke. Explicitly state that the remaining imported cases were not executed. Explain unresolved issues. Complete and Exit only after final acceptance."
+      - "Report separate added, repaired and unchanged case counts, exclusions and whether the current representative smoke was reused or newly executed. No changes is a successful synchronization result. Explicitly state that the remaining imported cases were not executed. Explain unresolved issues. Complete and Exit only after final acceptance."
     checker:
       - name: final_coverage_configuration
         clss: flowcanvas.case_import_workflow.CaseImportChecker

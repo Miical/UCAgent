@@ -38,6 +38,19 @@ class CaseImportChecker(Checker):
             data=store.read();cards={c.id:c for c in data.targets};reports=store.status()['reports']
             if set(cards)-set(request.get('testcase_baseline',[]))-set(ids):
                 raise ValueError('Account for all newly allocated cards or remove unused drafts')
+            snapshots={row['id']:row for row in request.get('testcase_snapshot',[])}
+            if set(snapshots)-set(cards):
+                raise ValueError('Synchronization must preserve existing cases and historical runs; report missing source instead of deleting cases')
+            repairs=scope.get('repairs',[])
+            if not isinstance(repairs,list) or any(not isinstance(row,dict) or row.get('id') not in snapshots or
+                    not isinstance(row.get('reason'),str) or not row['reason'].strip() for row in repairs):
+                raise ValueError('repairs must identify an existing case and a concrete source/configuration reason')
+            repair_ids={row['id'] for row in repairs}
+            fields=('name','title','description','timeline','overview','runner','bindings')
+            for identity,before in snapshots.items():
+                after=cards[identity].model_dump()
+                if any(before.get(key)!=after.get(key) for key in fields) and identity not in repair_ids:
+                    raise ValueError('Preserve existing case content unless a concrete repair is recorded: '+identity)
             if self.mode=='coverage':
                 config=data.coverage
                 if config is None or config.mode!='shared':

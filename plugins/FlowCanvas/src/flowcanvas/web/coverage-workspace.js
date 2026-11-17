@@ -6,7 +6,7 @@ window.FlowCanvasCoverageCode={
     const names={line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率',assert:'断言'};
     let metric=localStorage.getItem('flowcanvas.design.coverage.'+project.id)||'line';if(!names[metric])metric='line';
     let selection=null,revision='',generation=0,loading=false,disposed=false,started=false;
-    const tools=el('div','coverage-code-tools'),metrics=el('select','case-detail-select'),files=el('select','case-detail-select'),legend=el('div','coverage-code-legend'),locationLabel=el('div','coverage-code-location'),body=el('div','case-detail-body coverage-code-body');
+    const tools=el('div','coverage-code-tools'),metrics=el('select','case-detail-select coverage-metric-select'),files=el('select','case-detail-select coverage-file-select'),legend=el('div','coverage-code-legend'),locationLabel=el('div','coverage-code-location'),body=el('div','case-detail-body coverage-code-body');
     metrics.ariaLabel='覆盖率指标';files.ariaLabel='构建源码文件';for(const [key,name] of Object.entries(names)){const option=el('option','',name);option.value=key;metrics.append(option);}metrics.value=metric;
     for(const [kind,label] of [['covered','已覆盖'],['partial','部分覆盖'],['missed','未覆盖']])legend.append(el('span',kind,label));tools.append(metrics,files,legend);host.append(tools,locationLabel,body);files.hidden=true;
     /** Send only visible coverage selection, retaining the current design-instance binding. */

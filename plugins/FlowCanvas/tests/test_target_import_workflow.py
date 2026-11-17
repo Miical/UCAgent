@@ -115,3 +115,56 @@ class ImportHostTests(unittest.IsolatedAsyncioTestCase):
                 assert not (project/'verification').exists()
             finally:
                 await runtime.close()
+
+
+def test_synchronization_preserves_existing_content_and_adds_missing(tmp_path):
+    """Repeat synchronization without writes, add a point, and require reasons for existing repairs."""
+    project=tmp_path/'project';project.mkdir()
+    source=project/'coverage.sv';source.write_text('covergroup cg;\ncp: coverpoint value;\nendgroup\n')
+    work=tmp_path/'workspace';(work/'summary').mkdir(parents=True)
+    store=Targets(project)
+    def call(operation,**kwargs):
+        """Apply a real target transaction with the current revision."""
+        return execute(project,{'operation':operation,'expected_revision':store.read().revision,**kwargs},'ai')
+    group=call('apply',count=1)['ids'][0]
+    call('begin_modify',ids=[group])
+    call('update',cards=[dict(id=group,kind='group',name='已有名称',description='保留说明',bindings=[dict(file='coverage.sv',line=1,line_count=3)])])
+    call('end_modify',ids=[group])
+    snapshot=[row.model_dump() for row in store.read().targets]
+    (tmp_path/'request.json').write_text(json.dumps(dict(project_root=str(project),target_baseline=[group],target_snapshot=snapshot)))
+    scope=work/'summary/import-scope.json'
+    scope.write_text(json.dumps(dict(files=['coverage.sv'],card_ids=[group],repairs=[])))
+    checker=TargetImportChecker(final=True);checker.workspace=str(work)
+    before=store.path.read_bytes()
+    assert checker.do_check()[0],checker.do_check()
+    assert checker.do_check()[0]
+    assert store.path.read_bytes()==before
+    point=call('apply',count=1)['ids'][0]
+    line=next(index+1 for index,text in enumerate(source.read_text().splitlines()) if text.startswith('cp:'))
+    call('begin_modify',ids=[point])
+    call('update',cards=[dict(id=point,kind='point',parent=group,name='新增功能点',description='已有覆盖定义',bindings=[dict(file='coverage.sv',line=line,line_count=1)])])
+    call('end_modify',ids=[point])
+    scope.write_text(json.dumps(dict(files=['coverage.sv'],card_ids=[group,point],repairs=[])))
+    assert checker.do_check()[0],checker.do_check()
+    call('begin_modify',ids=[group])
+    call('update',cards=[dict(id=group,name='被重写的名称')])
+    call('end_modify',ids=[group])
+    assert not checker.do_check()[0]
+    assert 'Preserve existing' in checker.do_check()[1]['error']
+    scope.write_text(json.dumps(dict(files=['coverage.sv'],card_ids=[group,point],repairs=[dict(id=group,reason='Correct a verified naming error in the existing metadata')])) )
+    assert checker.do_check()[0],checker.do_check()
+    call('begin_modify',ids=[group],action='delete',cascade=True)
+    call('end_modify',ids=[group,point])
+    scope.write_text(json.dumps(dict(files=['coverage.sv'],card_ids=[],repairs=[])))
+    assert not checker.do_check()[0]
+    assert 'preserve existing targets' in checker.do_check()[1]['error']
+
+
+def test_synchronization_accepts_scope_without_coverage(tmp_path):
+    """An empty eligible scope is a successful no-op rather than a demand for invented targets."""
+    project=tmp_path/'project';project.mkdir();(project/'checks.sv').write_text('assert property (valid);\n')
+    work=tmp_path/'workspace';(work/'summary').mkdir(parents=True)
+    (tmp_path/'request.json').write_text(json.dumps(dict(project_root=str(project),target_baseline=[],target_snapshot=[])))
+    (work/'summary/import-scope.json').write_text(json.dumps(dict(files=['checks.sv'],card_ids=[],repairs=[],exclusions=[dict(file='checks.sv',reason='Assertions are outside coverage target synchronization')])) )
+    checker=TargetImportChecker(final=True);checker.workspace=str(work)
+    assert checker.do_check()[0],checker.do_check()

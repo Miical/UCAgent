@@ -253,6 +253,6 @@ they do not count as assertion successes.
 
 功能点详情按功能说明、验证思路、测试点分解、实现与检查、关联用例及覆盖情况组织；测试点详情按验证意图、触发条件、预期结果、实现与检查、关联用例及覆盖情况组织。未生成内容显示明确的待补充状态，保留原有 description 作为简介。
 
-简介标题旁的 AI 按钮打开说明生成任务卡，任务发送到当前目标专属对话。模型先通过 verification_targets(inspect) 阅读 [说明规范](../src/flowcanvas/guides/target-explanation-guide.md) 和 JSON Schema，再通过 begin_modify/update/end_modify 保存 explanation，不直接修改管理 JSON 或测试代码。导入工作流也遵循此规范。
+简介标题旁的 AI 按钮打开说明生成任务卡，任务发送到当前目标专属对话。模型先通过 verification_targets(inspect) 阅读 [说明规范](../src/flowcanvas/guides/target-explanation-guide.md) 和 JSON Schema，再通过 begin_modify/update/end_modify 保存 explanation，不直接修改管理 JSON 或测试代码。“同步验证目标”工作流也遵循此规范。同步仅接收已有 `covergroup`、`coverpoint`、`cross` 和普通 `bins`，排除断言、scoreboard 及 ignore/illegal bins。首次运行导入，重复运行按稳定绑定和声明归属核对：只新增缺失定义，保留已有 ID、标题、说明和绑定；没有变化时不写目标数据。源码变化或确有问题时才最小修复，并在同步清单记录具体原因。源码消失的目标保留并报告，不自动删除；此流程不运行仿真或生成覆盖率结果。
 
 关键实现引用使用实际文件与行号，保存时校验代码片段和关联用例 ID；源码变化后显示说明待核对提示。只有覆盖采样时明确标注缺少独立正确性检查，覆盖数字继续使用平台实际采集的数据，不由模型填写。

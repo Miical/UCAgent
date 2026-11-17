@@ -242,12 +242,17 @@ class WorkflowRuntime:
                     request.update(project_root=str(project_root), conversation_id=self.session['id'])
                 if identity == 'import-targets':
                     from .targets import Targets
+                    baseline=Targets(project_root).read().targets
                     request.update(project_root=str(project_root), conversation_id=self.session['id'],
-                                   target_baseline=[row.id for row in Targets(project_root).read().targets])
+                                   target_baseline=[row.id for row in baseline],
+                                   target_snapshot=[row.model_dump() for row in baseline])
                 if identity in {'generate-testcase','import-testcases'}:
                     from .testcases import Cases
+                    baseline=Cases(project_root).read().targets
                     request.update(project_root=str(project_root), conversation_id=self.session['id'],
-                                   testcase_baseline=[row.id for row in Cases(project_root).read().targets])
+                                   testcase_baseline=[row.id for row in baseline])
+                    if identity=='import-testcases':
+                        request['testcase_snapshot']=[row.model_dump() for row in baseline]
                 if report:
                     request.update(project_root=str(project_root), report_file=str(report))
                 (root / 'request.json').write_text(json.dumps(request))

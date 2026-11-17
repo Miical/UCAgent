@@ -37,13 +37,26 @@ class TargetImportChecker(Checker):
             if not self.final:
                 return True, {'files':len(files)}
             ids=scope.get('card_ids')
-            if not isinstance(ids,list) or not ids or any(not isinstance(i,str) for i in ids) or len(set(ids))!=len(ids):
+            if not isinstance(ids,list) or any(not isinstance(i,str) for i in ids) or len(set(ids))!=len(ids):
                 raise ValueError('card_ids must list the unique imported or reused card IDs')
             report=store.status()
             cards={t.id:t for t in store.read().targets}
             baseline=set(request.get('target_baseline',[]))
             if set(cards)-baseline-set(ids):
                 raise ValueError('Include every card allocated by this import in card_ids or remove unused drafts')
+            snapshots={row['id']:row for row in request.get('target_snapshot',[])}
+            if set(snapshots)-set(cards):
+                raise ValueError('Synchronization must preserve existing targets; report removed source instead of deleting targets')
+            repairs=scope.get('repairs',[])
+            if not isinstance(repairs,list) or any(not isinstance(row,dict) or row.get('id') not in snapshots or
+                    not isinstance(row.get('reason'),str) or not row['reason'].strip() for row in repairs):
+                raise ValueError('repairs must identify an existing target and a concrete source-backed reason')
+            repair_ids={row['id'] for row in repairs}
+            fields=('kind','parent','name','description','explanation','bindings')
+            for identity,before in snapshots.items():
+                after=cards[identity].model_dump()
+                if any(before.get(key)!=after.get(key) for key in fields) and identity not in repair_ids:
+                    raise ValueError('Preserve existing target content unless a concrete repair is recorded: '+identity)
             for identity in ids:
                 card=cards.get(identity)
                 if card is None or card.kind is None or card.lifecycle!='ready':

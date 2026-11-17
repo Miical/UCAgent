@@ -25,7 +25,7 @@ window.FlowCanvasCaseDetails=function(host,project){
   const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
   let selected=null,report=null,tab='overview',runId=null,sourceId=null,revision='',generation=0,offset=0,polling=false;
   let wavePanel=null,waveExplanation=null;
-  let runs=[],log=null,runCommand=null,runSelect=null,wavePath='',waveRevision='',wavePolling=false;
+  let runs=[],log=null,resultNote=null,runCommand=null,runSelect=null,wavePath='',waveRevision='',wavePolling=false;
   const positions=new Map(),tabPrefix='case-detail-'+Math.random().toString(36).slice(2)+'-';
   const names={overview:'概览',source:'源码',runs:'运行记录',wave:'波形'};
   const statusNames={starting:'启动中',running:'运行中',completed:'已结束',failed:'运行失败',interrupted:'已中断'};
@@ -150,6 +150,7 @@ window.FlowCanvasCaseDetails=function(host,project){
     if(token!==generation)return;
     const row=data.run;
     runCommand.textContent=row.command||'';
+    if(resultNote){const result=row.test_result,status=({passed:'通过',failed:'失败',running:'运行中'})[result?.status];resultNote.textContent=(status?status+' · ':'')+(result?.reason||'');resultNote.dataset.status=result?.status||'';}
     const follow=body.scrollHeight-body.scrollTop-body.clientHeight<40;
     if(data.text)log.append(document.createTextNode(data.text));offset=data.offset;if(log.textContent.length>2000000)log.textContent='[较早输出已省略；完整日志保存在本次运行目录]\n'+log.textContent.slice(-1500000);if(follow&&log.parentElement.open)body.scrollTop=body.scrollHeight;
   }
@@ -177,7 +178,7 @@ window.FlowCanvasCaseDetails=function(host,project){
       const catalogUrl=analysisUrl.replace('/waveform-analysis?','/waveform-signals?');
       wavePanel=window.FlowCanvasWavePanel(viewer,{source,analysisUrl,catalogUrl,runSelect:runSelect.closest('.case-run-picker'),analysis:saved.analysis,onSelection:()=>{for(const button of waveExplanation?.querySelectorAll('.case-wave-point-title')||[])button.setAttribute('aria-pressed','false');}});
       const explanation=section('AI 解读');explanation.classList.add('case-wave-explanation');explanation.querySelector('.module-section-heading').append(actions);
-      if(!saved.analysis){explanation.append(el('p','case-detail-empty',saved.status==='stale'?'波形已更新，请重新解读。':'点击右侧 AI 按钮生成解读。'));return;}
+      if(!saved.analysis){explanation.append(el('p','case-detail-empty',saved.status==='stale'?'波形已更新，请重新解读。':'点击“解读波形”生成分析。'));return;}
       for(const [index,point] of saved.analysis.points.entries()){
         const entry=el('article','case-wave-point'),jump=el('button','case-wave-point-title',(index+1)+'. '+point.title);jump.type='button';
         jump.setAttribute('aria-pressed',String(index===0));jump.title='查看对应信号和时间窗口';
@@ -189,11 +190,11 @@ window.FlowCanvasCaseDetails=function(host,project){
     }
     field('开始时间',new Date(run.started*1000).toLocaleString());
     runCommand=el('pre','case-section-code');section('执行命令').append(runCommand);
-    log=el('pre','case-detail-log');log.tabIndex=0;log.ariaLabel='所选运行的日志';section('执行结果').append(log);await output(token);
+    log=el('pre','case-detail-log');log.tabIndex=0;log.ariaLabel='所选运行的日志';const resultSection=section('执行结果');resultNote=el('p','case-result-note');resultSection.append(resultNote,log);await output(token);
   }
   /** Replace only the active tab when selection changes, guarding stale asynchronous responses. */
   function render(){
-    const token=++generation;wavePanel?.dispose();wavePanel=null;waveExplanation=null;if(selected)window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,null);offset=0;log=null;wavePath='';body.onscroll=null;body.replaceChildren();body.dataset.tab=tab;title.replaceChildren();
+    const token=++generation;wavePanel?.dispose();wavePanel=null;waveExplanation=null;if(selected)window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,null);offset=0;log=null;resultNote=null;wavePath='';body.onscroll=null;body.replaceChildren();body.dataset.tab=tab;title.replaceChildren();
     for(const button of tabs.children){const active=button.id===tabPrefix+tab;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;}
     body.setAttribute('role','tabpanel');body.setAttribute('aria-labelledby',tabPrefix+tab);
     if(!selected){title.append(el('strong','','测试用例详情'));body.append(el('p','case-detail-empty','在左侧选择测试用例'));return;}

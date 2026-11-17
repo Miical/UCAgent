@@ -20,6 +20,7 @@ class TestRuns:
     def __init__(self):
         self.tasks = {}
         self.processes = {}
+        self.result_cache = {}
         self.lock = asyncio.Lock()
 
     def folder(self, root):
@@ -37,6 +38,19 @@ class TestRuns:
             rows.append(row)
         return sorted(rows,key=lambda r:r['started'],reverse=True)
 
+    def result(self, root, row):
+        """Cache log-derived outcomes by run metadata and log identity without rewriting history."""
+        from .run_results import test_result
+        log=self.folder(root)/(row['id']+'.log')
+        stat=log.stat() if log.exists() else None
+        key=(str(self.folder(root)),row['id'],row['status'],row.get('exit_code'),row.get('mode'),
+             stat.st_mtime_ns if stat else None,stat.st_size if stat else None)
+        if key not in self.result_cache:
+            text=log.read_text(errors='replace') if stat and row['status'] not in {'starting','running'} else ''
+            self.result_cache[key]=test_result(row,text)
+            if len(self.result_cache)>1000:self.result_cache={key:self.result_cache[key]}
+        return self.result_cache[key]
+
     def output(self, root, run_id, offset=0):
         """Read a bounded UTF-8 log chunk belonging to this project run."""
         if not re.fullmatch('[0-9a-f]{32}', run_id) or offset < 0:
@@ -52,6 +66,7 @@ class TestRuns:
             decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
             text = decoder.decode(chunk, final=row['status'] not in {'starting', 'running'})
             next_offset += len(chunk) - len(decoder.getstate()[0])
+        row['test_result']=self.result(root,row)
         return dict(run=row, text=text, offset=next_offset)
 
     async def stop(self, root, run_id):
@@ -106,6 +121,8 @@ class TestRuns:
             row=dict(id=run_id,case_id=case_id,name=case.title or case.name,entry=entry,command=command,
                      cwd=str(store.root),description=template.description,status='starting',started=time.time(),
                      ended=None,exit_code=None,source_fingerprint=node['fingerprint'])
+            from .smoke_runs import case_identity
+            row['case_identity']=case_identity(case)
             row['run_dir']=str(run_dir)
             row['wave_dir']=str(wave_dir)
             row['coverage_db']=str(database)
@@ -259,9 +276,17 @@ def routes(projects,runner):
     @router.get('/{identity}/test-runs')
     def runs(identity:str,case_id:str|None=None,include_smoke:bool=False):
         """Return execution records, optionally scoped to a case including its isolated smoke runs."""
-        return [run for run in runner.list(root(identity))
-                if (not case_id or run.get('case_id')==case_id)
-                and (include_smoke or run.get('mode') not in {'startup_smoke','coverage_smoke'})]
+        from .smoke_runs import case_identity
+        project=root(identity);store=Cases(project);cards={card.id:card for card in store.read().targets}
+        reports=store.status()['reports'];rows=[]
+        for run in runner.list(project):
+            if case_id and run.get('case_id')!=case_id:continue
+            if not include_smoke and run.get('mode') in {'startup_smoke','coverage_smoke'}:continue
+            run['test_result']=runner.result(project,run)
+            card=cards.get(run.get('case_id'))
+            run['result_current']=bool(card and reports[card.id]['status']=='bound' and run.get('case_identity')==case_identity(card))
+            rows.append(run)
+        return rows
     @router.post('/{identity}/test-runs')
     async def start(identity:str,request:RunRequest):
         try:return await runner.start(root(identity),request.case_id)

@@ -25,7 +25,7 @@ Hierarchy: group -> point -> testpoint. Titles (name) and descriptions are conci
 referencing verification documentation when available and checked against source; otherwise derive
 from source. Do not confuse a plan, a valid binding, coverage hits and passing verification.
 
-Import existing definitions by reading source, not by relying on syntax parsing. For project import, accept ONLY SystemVerilog covergroups
+Import existing definitions by reading source, not by relying on syntax parsing. Project synchronization is repeatable: reuse stable IDs and markers, add only missing definitions, and leave unchanged healthy targets untouched. Repair existing targets only for concrete source changes or errors; preserve user text and unaffected bindings. Record repairs with an id and source-backed reason in the synchronization scope. Do not automatically delete old targets. For project import, accept ONLY SystemVerilog covergroups
 (group), coverpoints/crosses (point), and explicit normal bins (testpoint). Each imported card needs
 a definition-role binding beginning at its actual coverage declaration. Do not create imported targets
 from assertions/properties, cover property, scoreboard comparisons, sequences, Python checks or

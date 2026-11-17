@@ -854,7 +854,7 @@ window.FlowCanvasAI={
   async startCase({text,current=true,project,requirements,design=null}){
     await globalConversation();
     const model=$('model').value,effort=$('effort').value;
-    const taskTitle=design?.kind==='import-testcases'?'从项目导入测试用例':design?.kind==='plan-goals'?'规划验证目标':design?.kind==='import-goals'?'从项目导入验证目标':design?.kind==='add-goal'?'新增验证目标':design?.kind==='delete-goal'?'删除验证目标':design?.kind==='functional-coverage'?'分析功能覆盖率':design?.kind==='run-testcase'?'运行测试用例':design?.kind==='delete-testcase'?'删除测试用例':design?.kind==='line-coverage'?'分析'+(({line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率'})[design.metric]||'行覆盖率'):design?'解释设计':'新增测试用例';
+    const taskTitle=design?.kind==='import-testcases'?'同步测试用例':design?.kind==='plan-goals'?'规划验证目标':design?.kind==='import-goals'?'同步验证目标':design?.kind==='add-goal'?'新增验证目标':design?.kind==='delete-goal'?'删除验证目标':design?.kind==='functional-coverage'?'分析功能覆盖率':design?.kind==='run-testcase'?'运行测试用例':design?.kind==='delete-testcase'?'删除测试用例':design?.kind==='line-coverage'?'分析'+(({line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率'})[design.metric]||'行覆盖率'):design?'解释设计':'新增测试用例';
     if(!model)throw Error('请先选择可用模型');
     let owner=session;
     if(current){
@@ -868,7 +868,7 @@ window.FlowCanvasAI={
     }
     if(current&&!owner.id)owner=await ensureSession();
     if(!design||design.kind==='plan-goals'||design.kind==='import-goals'||design.kind==='import-testcases')await request('/sessions/'+owner.id+'/attachment',{workflow_id:design?.kind==='import-testcases'?'import-testcases':design?.kind==='import-goals'?'import-targets':design?.kind==='plan-goals'?'plan-goals':'generate-testcase',task_only:true,rtl_file:project.rtl?.top_file?project.path+'/'+project.rtl.top_file:'',dut:project.rtl?.top||'RTL'});
-    const result=await request('/sessions/'+owner.id+'/messages',{text,model,effort,speed:speedMode,task_card:{title:taskTitle,workflow:design?.kind==='import-testcases'?'导入测试用例':design?.kind==='import-goals'?'导入验证目标':design?.kind==='plan-goals'?'规划验证目标':design?'':'新增测试用例',project:project.name,requirements:design?(design.instance||'')+(requirements?'\n'+requirements:''):requirements||''}});
+    const result=await request('/sessions/'+owner.id+'/messages',{text,model,effort,speed:speedMode,task_card:{title:taskTitle,workflow:design?.kind==='import-testcases'?'同步测试用例':design?.kind==='import-goals'?'同步验证目标':design?.kind==='plan-goals'?'规划验证目标':design?'':'新增测试用例',project:project.name,requirements:design?(design.instance||'')+(requirements?'\n'+requirements:''):requirements||''}});
     await list();await choose(owner.id);
     return result;
   }

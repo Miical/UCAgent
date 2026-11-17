@@ -142,3 +142,34 @@ def test_card_stage_does_not_require_runner_but_runner_stage_does(tmp_path):
     call('update',cards=[dict(id=identity,runner=dict(command='FLOWCANVAS_WAVE_DIR={wave_dir} python -m pytest {case}',description='Real entry'))])
     call('end_modify',ids=[identity])
     assert runners.do_check()[0],runners.do_check()
+
+
+@pytest.mark.parametrize('field,value',[
+    ('title','Changed title'),
+    ('description','Changed description'),
+    ('runner',dict(command='python test_start.py {case} {wave_dir}',description='Changed runner')),
+    ('overview',dict(purpose='Changed overview')),
+])
+def test_case_sync_preserves_existing_fields_and_requires_repair(tmp_path,field,value):
+    """No-op case sync is read-only; existing metadata requires an explicit repair reason."""
+    identity,call=make_case(tmp_path,'def test_start():\n    pass\n')
+    store=Cases(tmp_path);snapshot=[row.model_dump() for row in store.read().targets]
+    work=tmp_path/'task/workspace';(work/'summary').mkdir(parents=True)
+    (work.parent/'request.json').write_text(json.dumps(dict(project_root=str(tmp_path),testcase_baseline=[identity],testcase_snapshot=snapshot)))
+    scope=work/'summary/case-import.json';plan=dict(files=['test_start.py'],card_ids=[identity],repairs=[]);scope.write_text(json.dumps(plan))
+    checker=CaseImportChecker(mode='cards');checker.workspace=str(work)
+    before=store.path.read_bytes()
+    assert checker.do_check()[0],checker.do_check()
+    assert checker.do_check()[0]
+    assert store.path.read_bytes()==before
+    call('begin_modify',ids=[identity])
+    call('update',cards=[dict(id=identity,**{field:value})])
+    call('end_modify',ids=[identity])
+    assert not checker.do_check()[0]
+    assert 'Preserve existing case' in checker.do_check()[1]['error']
+    plan['repairs']=[dict(id=identity,reason='Correct a verified source/configuration mismatch')];scope.write_text(json.dumps(plan))
+    assert checker.do_check()[0],checker.do_check()
+    call('begin_modify',ids=[identity],action='delete')
+    call('end_modify',ids=[identity])
+    assert not checker.do_check()[0]
+    assert 'preserve existing cases' in checker.do_check()[1]['error']

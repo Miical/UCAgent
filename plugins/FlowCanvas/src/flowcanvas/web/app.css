@@ -2374,3 +2374,27 @@ body:has(.workspace>.case-workspace-open:not(.case-chat-collapsed)) .workspace-d
 .wave-panel-toolbar .case-run-select{width:195px;font-size:11px}
 .wave-panel-toolbar .case-run-status{display:none}
 @container(max-width:560px){.wave-panel-toolbar .case-run-select{width:130px}.case-run-picker{gap:7px;padding-inline:7px}.case-run-picker-label{gap:6px}.case-run-picker .case-run-select{max-width:48vw}.case-run-status{padding-left:7px}}
+
+/* Keep coverage metric and source selection on a compact, shared control row. */
+.module-coverage-panel .coverage-code-tools{gap:8px 12px;padding:10px 16px}
+.module-coverage-panel .coverage-code-tools select{box-sizing:border-box;flex:none;width:auto;max-width:100%;height:30px;min-height:30px;margin:0;padding:4px 29px 4px 10px;border:1px solid var(--border);border-radius:6px;appearance:none;background-color:var(--surface);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m3 4.5 3 3 3-3' fill='none' stroke='%2364748b' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-position:right 9px center;background-repeat:no-repeat;color:var(--text);font:12px/20px system-ui,sans-serif;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.module-coverage-panel .coverage-code-tools .coverage-metric-select{width:132px}
+.module-coverage-panel .coverage-code-tools .coverage-file-select{flex:0 1 340px;min-width:140px;width:340px;font-family:ui-monospace,monospace;font-size:11px;text-overflow:ellipsis}
+.module-coverage-panel .coverage-code-tools select:hover{border-color:color-mix(in srgb,var(--text-dim) 50%,var(--border))}
+.module-coverage-panel .coverage-code-tools select:focus-visible{outline:0;border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 10%,transparent)}
+.module-coverage-panel .coverage-code-legend{align-items:center;font-size:10px;gap:10px}
+
+.case-result-badge{display:inline-flex;flex:none;align-items:center;gap:5px;margin-left:auto;font-size:10px;font-weight:500;white-space:nowrap;color:var(--text-dim)}
+.case-result-badge[hidden]{display:none}
+.case-result-badge::before{content:"";width:5px;height:5px;border-radius:50%;background:currentColor}
+.case-result-badge[data-status="passed"],.case-result-note[data-status="passed"]{color:#239b68}
+.case-result-badge[data-status="failed"],.case-result-note[data-status="failed"]{color:#c45b56}
+.case-result-badge[data-status="running"],.case-result-note[data-status="running"]{color:var(--accent)}
+.case-result-note{font-size:11px;line-height:1.7;color:var(--text-dim);overflow-wrap:anywhere}
+
+/* Status stays a quiet dot; only an executing test breathes. */
+.case-result-badge{justify-content:center;width:7px;height:14px;gap:0;margin-left:0}
+.case-result-badge::before{width:3px;height:3px}
+.case-result-badge[data-status="running"]::before{animation:case-result-breathe 1.6s ease-in-out infinite}
+@keyframes case-result-breathe{0%,100%{opacity:.4;box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 0%,transparent)}50%{opacity:1;box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent)}}
+@media(prefers-reduced-motion:reduce){.case-result-badge[data-status="running"]::before{animation:none}}
