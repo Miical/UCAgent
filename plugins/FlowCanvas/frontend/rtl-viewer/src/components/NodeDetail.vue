@@ -5,7 +5,6 @@
       <div v-if="hasOpenable" class="open-target-row">
         <button type="button" class="open-target" :title="'查看源码 · ' + absoluteTargetText" @click="openSource">{{ openTargetText }}</button>
       </div>
-      <button class="detail-ai-explain" type="button" :aria-label="'AI 解释设计 '+node.module" title="AI 解释设计" @mouseenter="explainDesign(node,$event,'preview')" @mouseleave="explainDesign(node,$event,'leave')" @click.stop="explainDesign(node,$event,'pin')" @dblclick.stop @keydown.stop><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6M7 9h4M7 13h8M7 17h5"/><path class="design-ai-spark" d="m18 1 1.4 4.6L24 7l-4.6 1.4L18 13l-1.4-4.6L12 7l4.6-1.4Z"/></svg></button>
     </div>
     <div v-if="node.module !== node.id.split('.').at(-1)" class="node-module-caption" :title="'模块：' + node.module">{{ node.module }}</div>
     <dl>
@@ -156,14 +155,6 @@ import { bpLevel, heatRampColor } from '../palette.js'
 import { areaOf, physScope, powerOf } from '../overlays/phys.js'
 import { themeVersion } from '../theme.js'
 import { formatBandwidth as fmtBps } from '../format.js'
-
-/** Ask the host to compose a task using this exact instance and source location. */
-function explainDesign(row,event,action){
-  const rect=event.currentTarget.getBoundingClientRect(),node=store.nodesById.get(row.id)
-  // Pinia source records are reactive proxies; postMessage cannot clone them.
-  const source=node?.source ? JSON.parse(JSON.stringify(node.source)) : null
-  window.parent.postMessage({type:'flowcanvas-explain-design',action,instance:row.id,module:row.module,source,rect:{left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}},location.origin)
-}
 
 const store = useViewerStore()
 const node = computed(() => store.selectedNode)
@@ -785,11 +776,4 @@ function openSource(){
 </style>
 
 <style scoped>
-.node-summary .detail-ai-explain{order:2;display:grid;place-items:center;flex:0 0 24px;width:24px;height:24px;margin-left:auto;padding:4px;border:0;border-radius:6px;background:transparent;color:var(--fg-muted);cursor:pointer}
-.detail-ai-explain svg{display:block;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;overflow:visible}
-.detail-ai-explain .design-ai-spark{fill:#9466e8;stroke:#6e83f4;stroke-width:.7;transform-box:fill-box;transform-origin:center;transition:transform .25s}
-.detail-ai-explain:hover{color:var(--accent);background:color-mix(in srgb,var(--fg) 5%,var(--panel))}
-.detail-ai-explain:hover .design-ai-spark{transform:rotate(10deg) scale(1.1)}
-.detail-ai-explain:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-@media(prefers-reduced-motion:reduce){.detail-ai-explain .design-ai-spark{transition:none}}
 </style>

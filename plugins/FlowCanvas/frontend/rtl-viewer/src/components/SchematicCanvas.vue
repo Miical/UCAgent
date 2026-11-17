@@ -1,6 +1,5 @@
 <template>
   <main class="schematic-canvas">
-    <CoverageToolbar />
     <div class="canvas-control-bar">
     <div class="canvas-tabs">
       <button
@@ -345,8 +344,6 @@
 // on that computed plus a re-run, with no change to the draw path.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useViewerStore } from '../store.js'
-import CoverageToolbar from './CoverageToolbar.vue'
-import { paintProjectCoverage } from '../projectCoverageTint.js'
 import { usePanZoom } from '../composables/usePanZoom.js'
 import { registerSvgProvider, unregisterSvgProvider } from '../capture.js'
 import { token, themeVersion } from '../theme.js'
@@ -697,6 +694,7 @@ function nodeFromEvent(e) {
 }
 
 function onClick(e) {
+  if (panZoom.dragged) return
   // The ▾/▸ affordance is a control, not part of the block: it folds
   // without touching selection or scope.
   const toggle = e.target.closest('[data-collapse-toggle]')
@@ -708,6 +706,7 @@ function onClick(e) {
   const hit = nodeFromEvent(e)
   if (hit) {
     store.select(hit.id)
+    window.parent.postMessage({type:'flowcanvas-open-module',instance:hit.id,pin:false},location.origin)
     return
   }
   // Background click clears, exactly as in the hier/flow canvas.
@@ -830,11 +829,6 @@ watch(
 // The capture module reads the live SVG through a getter (see
 // GraphCanvas): the element identity moves when the canvas
 // re-renders, and a function dodges that staleness.
-watch(
-  () => [model.value, store.projectCoverageMode, store.projectCoverageInstances, store.projectFunctionalCoverage],
-  () => paintProjectCoverage(svgEl.value, store.projectCoverageMode, store.projectCoverageInstances, store.projectFunctionalCoverage, store.graph?.top),
-  { flush: 'post' },
-)
 const _captureSvgProvider = () => svgEl.value
 
 onMounted(() => {
@@ -1292,6 +1286,6 @@ onBeforeUnmount(() => {
   border-color: #c5d6fa;
 }
 .canvas-control-bar .scope-breadcrumb { font-size: 10px; color: #657184; }
-.svg-host { height: calc(100% - 60px); margin-bottom: 60px; }
+.svg-host { height: calc(100% - 32px); margin-bottom: 32px; }
 
 </style>

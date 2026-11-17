@@ -822,14 +822,19 @@ async function globalConversation(){
 /** Page actions reuse the normal conversation execution and permission endpoints. */
 window.FlowCanvasAI={
   open:async id=>{await list();await choose(id);},
-  /** Send a scoped AI task to the selected case conversation, creating it lazily. */
-  async runCaseTask({text,project,testcase,requirements,taskTitle,caseView=null}){
+  /** Send a scoped task to the current or a newly created conversation bound to the same page. */
+  async runCaseTask({text,project,testcase,current=true,requirements,taskTitle,caseView=null}){
     await caseReady;
     if(caseSwitching||caseContext?.project.id!==project.id||caseContext?.testcase.id!==testcase.id)throw Error('请先打开对应的用例对话');
     if(testcase.entity_type==='module'&&caseContext.testcase.instance!==testcase.instance)throw Error('当前模块已切换，请重新打开任务卡');
     const model=$('model').value,effort=$('effort').value,view={...(caseView||caseContext.view)};
     if(!model)throw Error('请先选择可用模型');
+    if(!current){
+      if(busy)throw Error('对话正在切换或发送，请稍后重试');
+      await create();
+    }
     if(!session?.id)await ensureSession();
+    if(caseSwitching||caseContext?.project.id!==project.id||caseContext?.testcase.id!==testcase.id||(testcase.entity_type==='module'&&caseContext.testcase.instance!==testcase.instance))throw Error('当前页面已切换，请重新打开任务卡');
     if(session.case_binding?.project_id!==project.id||session.case_binding?.case_id!==testcase.id)throw Error('用例对话已切换，请重试');
     const id=session.id;
     const result=await request('/sessions/'+id+'/messages',{text,case_view:view,model,effort,speed:speedMode,task_card:{title:taskTitle,workflow:'',project:project.name,requirements:(testcase.title||testcase.name)+(requirements?'\n'+requirements:'')}});

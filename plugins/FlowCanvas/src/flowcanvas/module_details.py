@@ -40,7 +40,19 @@ def module_record(service, project_id, identity='', instance=''):
                     card.overview=entry
             except (ValueError,OSError):
                 pass
-        return project,card,dict(file=str(path.relative_to(root)),line=start,end_line=end,content='\n'.join(content.splitlines()[start-1:end]),file_content=content)
+        result=dict(file=str(path.relative_to(root)),line=start,end_line=end,content='\n'.join(content.splitlines()[start-1:end]),file_content=content)
+        site=node.get('instance_source') or {}
+        if site.get('file'):
+            site_path=Path(site['file']);site_path=(site_path if site_path.is_absolute() else root/site_path).resolve()
+            if site_path.is_relative_to(root) and site_path.is_file():
+                with site_path.open('rb') as stream:site_raw=stream.read(2*1024*1024+1)
+                if len(site_raw)>2*1024*1024:raise HTTPException(413,'Instantiation source exceeds 2 MB')
+                site_start=site.get('start_line',1);site_end=site.get('end_line',site_start)
+                site_lines=site_raw.decode('utf-8').splitlines();display_start=max(1,site_start-6);display_end=min(len(site_lines),site_end+6)
+                result['instantiation']=dict(file=str(site_path.relative_to(root)),line=site_start,end_line=site_end,
+                                             display_line=display_start,display_end_line=display_end,
+                                             content='\n'.join(site_lines[display_start-1:display_end]))
+        return project,card,result
     raise HTTPException(404,'Module instance not found')
 
 

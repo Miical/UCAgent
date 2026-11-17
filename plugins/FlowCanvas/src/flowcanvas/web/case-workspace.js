@@ -140,7 +140,7 @@
     ready,
     /** Read saved tab identity without treating its cached metadata as source evidence. */
     tab(projectId,id){return opened.get(projectId+':'+id)?.testcase||(id.startsWith('coverage_')?[...opened.values()].find(item=>item.project.id===projectId&&item.testcase.entity_type==='coverage'&&item.testcase.coverage_metric===id.slice(9))?.testcase:undefined);},
-    mount(detail){top.append(detail);},
+    mount(detail){detail.hidden=!current||detail.dataset.entityId!==current.testcase.id;top.append(detail);},
     reconcile(project,cases,entity='case'){
       let changed=false;
       for(const [key,item] of opened){

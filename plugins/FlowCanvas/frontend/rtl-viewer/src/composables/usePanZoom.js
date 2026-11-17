@@ -35,7 +35,7 @@ const BUTTON_FACTOR = 1.2
  */
 export function usePanZoom({ hostEl, getRoot, getContentBox }) {
   const transform = ref({ x: 0, y: 0, scale: 1 })
-  let dragStart = null
+  let dragStart = null, dragged = false
   let viewportFitter = null
 
   function apply() {
@@ -73,6 +73,7 @@ export function usePanZoom({ hostEl, getRoot, getContentBox }) {
 
   function onMouseDown(e) {
     if (e.button !== 0) return
+    dragged = false
     dragStart = {
       x: e.clientX,
       y: e.clientY,
@@ -83,6 +84,7 @@ export function usePanZoom({ hostEl, getRoot, getContentBox }) {
 
   function onMouseMove(e) {
     if (!dragStart) return
+    if (Math.hypot(e.clientX-dragStart.x,e.clientY-dragStart.y)>4) dragged=true
     transform.value = {
       ...transform.value,
       x: dragStart.tx + (e.clientX - dragStart.x),
@@ -202,6 +204,8 @@ export function usePanZoom({ hostEl, getRoot, getContentBox }) {
   })
 
   return {
+    /** Let canvas click handlers ignore the click generated after a pan gesture. */
+    get dragged() { return dragged },
     transform,
     requestFit() { if (viewportFitter) viewportFitter.request(); else fit() },
     apply,

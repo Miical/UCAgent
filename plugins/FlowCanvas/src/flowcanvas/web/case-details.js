@@ -3,13 +3,22 @@ let flowCanvasTaskIconSequence=0;
 window.FlowCanvasCaseTaskButton=function(kind,label,scope){
   const el=(tag,cls)=>{const node=document.createElement(tag);if(cls)node.className=cls;return node;};
   const gradientId='case-task-spark-'+(++flowCanvasTaskIconSequence);
-  const task=el('button','ai-case-add');task.type='button';task.title='AI '+label;task.setAttribute('aria-label','AI '+label);
+  const task=el('button','ai-case-add detail-ai-task');task.type='button';task.title='AI '+label;task.setAttribute('aria-label','AI '+label);
   task.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="'+gradientId+'" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#4285ff"/><stop offset=".55" stop-color="#9164ec"/><stop offset="1" stop-color="#df77ba"/></linearGradient></defs><path d="M12 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6M8 10h3M8 14h8M8 18h5"/><path class="ai-colored-spark" d="M18 2l1.2 3.8L23 7l-3.8 1.2L18 12l-1.2-3.8L13 7l3.8-1.2Z" fill="url(#'+gradientId+')" stroke="url(#'+gradientId+')"/></svg>';
+  const caption=el('span');caption.textContent=label;task.append(caption);
   const open=preview=>{if(!task.disabled)document.dispatchEvent(new CustomEvent('flowcanvas-case-task',{detail:{...scope,anchor:task,preview}}));};
   let timer;task.onmouseenter=()=>{clearTimeout(timer);timer=setTimeout(()=>{if(task.isConnected&&task.matches(':hover'))open(true);},220);};task.onmouseleave=()=>clearTimeout(timer);
-  task.onclick=()=>{clearTimeout(timer);open(false);};return task;
+  task.onclick=event=>{event.stopPropagation();event.preventDefault();clearTimeout(timer);open(false);};return task;
 };
 
+
+/** Build continuous document sections and remember collapse state for each inspector. */
+window.FlowCanvasDetailSection=function(owner,label,key=label){
+  const states=owner.flowCanvasSections||(owner.flowCanvasSections=new Map());
+  const section=document.createElement('details'),heading=document.createElement('summary'),caption=document.createElement('span');
+  section.className='case-section module-section detail-section';heading.className='module-section-heading';caption.textContent=label;heading.append(caption);section.append(heading);
+  section.open=states.get(key)!==false;section.ontoggle=()=>states.set(key,section.open);return section;
+};
 
 /** Selected-case inspector with independently selected source bindings and real execution records. */
 window.FlowCanvasCaseDetails=function(host,project){
@@ -38,7 +47,7 @@ window.FlowCanvasCaseDetails=function(host,project){
   /** Build a project-scoped URL from the current immutable selection. */
   function base(){return '/api/chat/projects/'+encodeURIComponent(project().id);}
   /** Create the shared flat section used throughout case details. */
-  function section(label){const node=el('section','case-section');node.append(el('h4','case-section-title',label));body.append(node);return node;}
+  function section(label){const node=label==='波形'?el('section','case-section'):window.FlowCanvasDetailSection(host,label,selected.id+':'+tab+':'+label);if(label==='波形')node.append(el('h4','module-section-heading',label));body.append(node);return node;}
   /** Render a labeled value using the shared section layout. */
   function field(label,value,code=false){section(label).append(el(code?'pre':'p','',value||'尚未填写'));}
   function overviewBlock(data){
@@ -123,7 +132,7 @@ window.FlowCanvasCaseDetails=function(host,project){
     (full?data.file_content:data.content).split('\n').forEach((text,index)=>{const line=start+index,row=el('div',line>=data.line&&line<=data.end_line?'is-bound':'');row.dataset.line=String(line);row.append(el('span','',String(line)),el('code','',text||' '));if(line===data.line)row.dataset.start='true';pre.append(row);});
     publish();
     let scrollTimer;
-    pre.onscroll=()=>{clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>{if(token!==generation)return;const bounds=pre.getBoundingClientRect();const row=[...pre.children].find(node=>node.getBoundingClientRect().bottom>bounds.top);if(row)publish({line:Number(row.dataset.line)});},150);};
+    body.onscroll=()=>{clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>{if(token!==generation)return;const bounds=body.getBoundingClientRect();const row=[...pre.children].find(node=>node.getBoundingClientRect().bottom>bounds.top);if(row)publish({line:Number(row.dataset.line)});},150);};
     pre.onmouseup=()=>{const selection=window.getSelection();if(!selection?.toString()||!pre.contains(selection.anchorNode)||!pre.contains(selection.focusNode))return;const first=selection.anchorNode.parentElement.closest('[data-line]'),last=selection.focusNode.parentElement.closest('[data-line]');if(first&&last){const lines=[Number(first.dataset.line),Number(last.dataset.line)];publish({line:Math.min(...lines),end_line:Math.max(...lines)});}};
     const sourceSection=section('源码');sourceSection.classList.add('case-section-source');sourceSection.append(pre);requestAnimationFrame(()=>{if(token===generation){const row=pre.querySelector('[data-start]');if(row)pre.scrollTop=Math.max(0,row.offsetTop-pre.offsetTop-70);}});
   }
@@ -133,8 +142,8 @@ window.FlowCanvasCaseDetails=function(host,project){
     if(token!==generation)return;
     const row=data.run;
     runCommand.textContent=row.command||'';
-    const follow=log.scrollHeight-log.scrollTop-log.clientHeight<40;
-    if(data.text)log.append(document.createTextNode(data.text));offset=data.offset;if(log.textContent.length>2000000)log.textContent='[较早输出已省略；完整日志保存在本次运行目录]\n'+log.textContent.slice(-1500000);if(follow)log.scrollTop=log.scrollHeight;
+    const follow=body.scrollHeight-body.scrollTop-body.clientHeight<40;
+    if(data.text)log.append(document.createTextNode(data.text));offset=data.offset;if(log.textContent.length>2000000)log.textContent='[较早输出已省略；完整日志保存在本次运行目录]\n'+log.textContent.slice(-1500000);if(follow&&log.parentElement.open)body.scrollTop=body.scrollHeight;
   }
   /** Present only files discovered inside this execution's managed directory. */
   async function execution(token){
@@ -144,17 +153,17 @@ window.FlowCanvasCaseDetails=function(host,project){
     if(tab==='wave'){
       const result=await json(base()+'/test-runs/'+encodeURIComponent(runId)+'/waveforms');if(token!==generation)return;
       if(!result.files.length){
-        const viewer=section('波形'),actions=el('div','case-overview-actions'),task=taskButton('case-waveform','解读波形');task.disabled=true;task.title='本次运行尚无波形文件';actions.append(task);viewer.querySelector('h4').remove();
-        viewer.append(el('p','case-detail-empty','本次运行尚无波形文件'));const explanation=section('AI 解读');explanation.classList.add('case-wave-explanation');explanation.querySelector('h4').append(actions);explanation.append(el('p','case-detail-empty','生成波形后可进行解读。'));return;
+        const viewer=section('波形'),actions=el('div','case-overview-actions'),task=taskButton('case-waveform','解读波形');task.disabled=true;task.title='本次运行尚无波形文件';actions.append(task);viewer.querySelector('.module-section-heading').remove();
+        viewer.append(el('p','case-detail-empty','本次运行尚无波形文件'));const explanation=section('AI 解读');explanation.classList.add('case-wave-explanation');explanation.querySelector('.module-section-heading').append(actions);explanation.append(el('p','case-detail-empty','生成波形后可进行解读。'));return;
       }
       const viewer=section('波形');viewer.classList.add('case-section-wave');
       const file=result.files.find(file=>file.path==='waveforms/waves.vcd')||result.files.find(file=>/\.(vcd|fst)$/i.test(file.path));
-      if(!file){viewer.querySelector('h4').remove();viewer.append(el('p','case-detail-empty','本次运行没有可查看的 VCD/FST 波形'));return;}
+      if(!file){viewer.querySelector('.module-section-heading').remove();viewer.append(el('p','case-detail-empty','本次运行没有可查看的 VCD/FST 波形'));return;}
       const path=file.path;wavePath=path;publish({waveform:path});
       const analysisUrl=base()+'/test-runs/'+encodeURIComponent(runId)+'/waveform-analysis?case_id='+encodeURIComponent(selected.id)+'&waveform='+encodeURIComponent(path);
       const saved=await json(analysisUrl);if(token!==generation)return;
       waveRevision=JSON.stringify([saved.revision,saved.status]);
-      const actions=el('div','case-overview-actions');actions.append(taskButton('case-waveform','解读波形',{run_id:runId,waveform:path}));viewer.querySelector('h4').remove();
+      const actions=el('div','case-overview-actions');actions.append(taskButton('case-waveform','解读波形',{run_id:runId,waveform:path}));viewer.querySelector('.module-section-heading').remove();
       const source=base()+'/test-runs/'+encodeURIComponent(runId)+'/waveform-view/'+path.split('/').map(encodeURIComponent).join('/');
       const frame=el('iframe','case-wave-viewer');frame.title='Surfer 波形查看器';frame.allow='cross-origin-isolated';
       const url=new URL('/surfer/',location.origin);url.searchParams.set('load_url',new URL(source,location.origin).href);
@@ -162,7 +171,7 @@ window.FlowCanvasCaseDetails=function(host,project){
         url.searchParams.set('analysis_url',analysisUrl);url.searchParams.set('startup_commands','run_command_file_from_url '+location.origin+'/surfer/ucagent-wave-ready.sucl');
       }
       frame.src=url.href;viewer.append(frame);
-      const explanation=section('AI 解读');explanation.classList.add('case-wave-explanation');explanation.querySelector('h4').append(actions);
+      const explanation=section('AI 解读');explanation.classList.add('case-wave-explanation');explanation.querySelector('.module-section-heading').append(actions);
       if(!saved.analysis){explanation.append(el('p','case-detail-empty',saved.status==='stale'?'波形已更新，请重新解读。':'点击右侧 AI 按钮生成解读。'));return;}
       for(const [index,point] of saved.analysis.points.entries()){
         const entry=el('article','case-wave-point'),jump=el('button','case-wave-point-title',(index+1)+'. '+point.title);jump.type='button';
@@ -179,16 +188,15 @@ window.FlowCanvasCaseDetails=function(host,project){
   }
   /** Replace only the active tab when selection changes, guarding stale asynchronous responses. */
   function render(){
-    const token=++generation;offset=0;log=null;wavePath='';body.replaceChildren();body.dataset.tab=tab;title.replaceChildren();
+    const token=++generation;offset=0;log=null;wavePath='';body.onscroll=null;body.replaceChildren();body.dataset.tab=tab;title.replaceChildren();
     for(const button of tabs.children){const active=button.id===tabPrefix+tab;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;}
     body.setAttribute('role','tabpanel');body.setAttribute('aria-labelledby',tabPrefix+tab);
     if(!selected){title.append(el('strong','','测试用例详情'));body.append(el('p','case-detail-empty','在左侧选择测试用例'));return;}
     publish();
     title.append(el('strong','',selected.title||selected.name),el('code','',selected.name));
     if(tab==='overview'){
-      const actions=el('div','case-overview-actions');actions.append(taskButton('case-overview','生成用例概览'));
+      const actions=el('div','detail-overview-toolbar');actions.append(taskButton('case-overview','生成用例概览'));body.append(actions);
       overviewBlock(selected.overview||{});
-      body.querySelector('.case-section-title').append(actions);
       timeline();
       return;
     }

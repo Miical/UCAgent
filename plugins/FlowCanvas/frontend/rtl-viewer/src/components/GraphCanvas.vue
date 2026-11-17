@@ -1,6 +1,5 @@
 <template>
   <main class="graph-canvas" ref="canvasEl">
-    <CoverageToolbar />
     <div class="canvas-control-bar">
     <div class="canvas-tabs">
       <button
@@ -86,8 +85,6 @@
 import { computed, onMounted, ref, watch, onBeforeUnmount } from 'vue'
 import { createViewportFitter } from '../layout/canvasViewport.js'
 import { useViewerStore } from '../store.js'
-import CoverageToolbar from './CoverageToolbar.vue'
-import { paintProjectCoverage } from '../projectCoverageTint.js'
 import { leafName } from '../instancePath.js'
 import { layoutGraph, layoutDot, clusterIdFor, hasEmbeddedDot } from '../layout/viz.js'
 import { buildBlockFlowDot } from '../layout/blockFlow.js'
@@ -591,7 +588,6 @@ function repaintOverlays() {
   const context = overlayContext()
   applyOverlays(_svgEl, graph.value, store.enabledOverlays, context)
   coverageLiveOverlay.apply(_svgEl, graph.value, store.covEnabled, context)
-  paintProjectCoverage(_svgEl, store.projectCoverageMode, store.projectCoverageInstances, store.projectFunctionalCoverage, store.graph?.top)
 }
 watch(
   () => [store.waveValuesByKey, store.hubSignalSelected],
@@ -618,7 +614,7 @@ watch(
 // paint usually happens before it arrives. Re-run the overlay layer
 // on arrival and on every toggle — no viz.js re-layout, just fills.
 watch(
-  () => [store.covEnabled, store.covByModule, store.projectCoverageMode, store.projectCoverageInstances, store.projectFunctionalCoverage],
+  () => [store.covEnabled, store.covByModule],
   () => {
     if (_svgEl && graph.value) {
       repaintOverlays()
@@ -856,13 +852,14 @@ function panToElement(el) {
 }
 
 function onClick(e) {
+  if (dragMoved) return
   // Block-flow mode click contract — matches hier-view: click =
   // focus, button = navigate. Descending into a block is owned by
   // NodeDetail's "Descend" button (which routes through
   // store.descend(id), view-mode-aware).
   //   - port cell  → pan view to the peer + highlight the
   //                  connecting edge(s) for that port
-  //   - centre     → select the block (populates NodeDetail)
+  //   - centre     → select the block and open its module workspace
   // ``HREF`` on the HTML-table cell makes viz.js wrap the cell in
   // an ``<a>`` with a relative href — without preventDefault the
   // browser would try to navigate to ``bf-in:...``.
@@ -874,7 +871,7 @@ function onClick(e) {
     e.preventDefault()
     if (bfHit.kind === 'block_center') {
       store.select(bfHit.nodeId)
-      const node = store.nodesById.get(bfHit.nodeId)
+      window.parent.postMessage({type:'flowcanvas-open-module',instance:bfHit.nodeId,pin:false},location.origin)
       return
     }
     highlightEdgesForPort(bfHit.nodeId, bfHit.portName)
@@ -894,10 +891,11 @@ function onClick(e) {
     }
     return
   }
-  // Hier-view contract: node selects, edge selects.
+  // Module clicks open the same workspace as hierarchy rows; edges only select.
   const nodeHit = nodeFromEvent(e)
   if (nodeHit) {
     store.select(nodeHit.id)
+    window.parent.postMessage({type:'flowcanvas-open-module',instance:nodeHit.id,pin:false},location.origin)
     return
   }
   const edgeHit = edgeFromEvent(e)
@@ -924,7 +922,7 @@ function onContextMenu(e) {
 // HTML is tight; viz.js + vue + pinia already dominate. Wheel
 // zooms about the cursor; click-drag pans.
 
-let dragStart = null
+let dragStart = null, dragMoved = false
 
 function onWheel(e) {
   e.preventDefault()
@@ -945,6 +943,7 @@ function onWheel(e) {
 
 function onMouseDown(e) {
   if (e.button !== 0) return
+  dragMoved = false
   dragStart = {
     x: e.clientX,
     y: e.clientY,
@@ -955,6 +954,7 @@ function onMouseDown(e) {
 
 function onMouseMove(e) {
   if (!dragStart) return
+  if (Math.hypot(e.clientX-dragStart.x,e.clientY-dragStart.y)>4) dragMoved=true
   transform.value = {
     ...transform.value,
     x: dragStart.tx + (e.clientX - dragStart.x),
@@ -1433,6 +1433,6 @@ onBeforeUnmount(() => {
   border-color: #c5d6fa;
 }
 .canvas-control-bar .scope-breadcrumb { font-size: 10px; color: #657184; }
-.svg-host { height: calc(100% - 60px); margin-bottom: 60px; }
+.svg-host { height: calc(100% - 32px); margin-bottom: 32px; }
 
 </style>
