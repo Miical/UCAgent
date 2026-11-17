@@ -2275,3 +2275,14 @@ body:has(.workspace>.case-workspace-open:not(.case-chat-collapsed)) .workspace-d
 .testcase-detail-pane .detail-ai-task:disabled{opacity:.4;cursor:default}
 .detail-section>.module-section-heading>.case-overview-actions{margin-left:12px}
 .case-workspace-open .case-detail-body[data-tab="source"]>.case-section-source{display:block;flex:none}
+.target-goal-pane .targets-toolbar .targets-search,.testcase-workbench .targets-toolbar .targets-search,.bug-workbench .targets-toolbar .targets-search{box-sizing:border-box;height:22px;min-width:0;padding:3px 6px;border-radius:4px;font-size:11px;line-height:14px}
+
+/* Persisted target mutations animate individual list rows, never their descendants. */
+.target-goal-pane .verification-item>.target-header{position:relative;isolation:isolate;overflow:hidden}
+.target-goal-pane .verification-item[data-lifecycle="creating"]>.target-header:not(.is-selected){background:color-mix(in srgb,var(--accent) 3%,var(--surface))}
+.target-goal-pane .verification-item.case-operation-active>.target-header::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;background:linear-gradient(100deg,transparent 20%,#9865e814 50%,transparent 80%);background-size:240% 100%;animation:case-operation-shimmer 2.6s ease-in-out infinite;animation-delay:var(--operation-phase,0ms)}
+.target-goal-pane .verification-item.case-operation-active>.target-header .target-title,.target-goal-pane .verification-item.case-operation-active>.target-header>.target-coverage-score{opacity:.55}
+.target-goal-pane .verification-item .case-operation-label{flex:none;font-size:10px;line-height:16px}
+.target-goal-pane .verification-item.case-operation-active>.target-header .case-operation-label::before{content:"";display:inline-block;width:4px;height:4px;margin:0 5px 1px 0;border-radius:50%;background:#9865e8;animation:fc-breathe 2s ease-in-out infinite}
+.target-goal-pane .verification-item.is-removing{overflow:hidden;pointer-events:none}
+@media(prefers-reduced-motion:reduce){.target-goal-pane .verification-item.case-operation-active>.target-header::after,.target-goal-pane .verification-item.case-operation-active>.target-header .case-operation-label::before{animation:none}}

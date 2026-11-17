@@ -736,7 +736,7 @@ async function switchCase(context){
   if(same&&(!context.activate||ownsSelected)){caseContext=context;return;}
   if(busy){error('消息正在提交，请稍后切换用例');return;}
   const token=++caseSwitch;caseSwitching=true;
-  saveDraft();saveQuote();if(!caseContext)ordinarySession=selected;
+  saveDraft();saveQuote();if(!caseContext)ordinarySession=session?.case_binding?null:selected;
   ++switchNumber;unsubscribe?.();unsubscribe=null;selected=null;caseContext=context;
   $('message').value=drafts.get(draftKey())||'';quoteDraft=quotes.get(draftKey())||[];paintQuote();resizeDraft();
   render({id:null,backend:backendChoice,status:'idle',items:[],queue:[],permission_mode:backendChoice==='codex'?'workspace':'full',title:context.testcase.title,attachment:null,case_binding:{project_id:context.project.id,case_id:context.testcase.id}});
@@ -815,7 +815,17 @@ document.addEventListener('flowcanvas-home',async()=>{
 
 /** Route attachments and task cards to ordinary chat, preserving the case discussion draft. */
 async function globalConversation(){
+  await caseReady;
   if(caseContext){document.dispatchEvent(new CustomEvent('flowcanvas-case-ordinary'));await caseReady;}
+  if(caseContext||caseSwitching||busy)throw Error('对话正在切换或发送，请稍后重试');
+  // Shared history may show a scoped session even on the main tab after a reload
+  // or manual selection. Project tasks must use an ordinary conversation.
+  if(session?.case_binding){
+    await list();
+    if(caseContext||caseSwitching||busy)throw Error('当前页面已切换，请重新打开任务卡');
+    const ordinary=sessionRows.find(row=>!row.archived&&!row.case_binding);
+    if(ordinary)await choose(ordinary.id,true);else{session=null;await create();}
+  }
   if(caseContext||caseSwitching||session?.case_binding)throw Error('全局对话尚未就绪，请稍后重试');
 }
 

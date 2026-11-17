@@ -50,15 +50,32 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     return api({operation:'end_modify',expected_revision:updated.revision,ids:[id],...(!caseMode?{planned:true}:{})});
   }
   function fail(error){panel.querySelector('.targets-error').textContent=error.message;}
+  /** Resume text highlights across list refreshes without replaying a completed animation. */
+  function paintTextHighlights(wrapper,node){
+      for(const label of wrapper.querySelectorAll('[data-text-field]')){
+        if(label.closest('[data-target-id]')!==wrapper)continue;
+        const id=node.id+':'+label.dataset.textField,started=textHighlights.get(id);
+        if(started===undefined)continue;
+        const elapsed=performance.now()-started;
+        if(elapsed>=2200){textHighlights.delete(id);continue;}
+        label.classList.add('ai-text-updated');label.style.setProperty('--text-update-phase',-elapsed+'ms');
+        // Remove the animation even while this panel is hidden: display toggles
+        // otherwise restart a completed CSS animation on the retained node.
+        setTimeout(()=>{
+          label.classList.remove('ai-text-updated');label.style.removeProperty('--text-update-phase');
+          if(textHighlights.get(id)===started)textHighlights.delete(id);
+        },Math.max(0,2200-elapsed));
+      }
+  }
   async function animateRemovedCards(next){
     if(!data||!active||document.hidden||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
     const remaining=new Set(next.targets.map(node=>node.id));
     const removed=new Set(data.targets.filter(node=>!remaining.has(node.id)).map(node=>node.id));
     if(!removed.size)return;
-    const cards=[...panel.querySelectorAll('.target-card[data-target-id]')].filter(card=>{
+    const cards=[...panel.querySelectorAll('.target-card[data-target-id],.verification-item[data-target-id]')].filter(card=>{
       if(!removed.has(card.dataset.targetId))return false;
-      let ancestor=card.parentElement.closest('.target-card');
-      while(ancestor){if(removed.has(ancestor.dataset.targetId))return false;ancestor=ancestor.parentElement.closest('.target-card');}
+      let ancestor=card.parentElement.closest('.target-card,.verification-item');
+      while(ancestor){if(removed.has(ancestor.dataset.targetId))return false;ancestor=ancestor.parentElement.closest('.target-card,.verification-item');}
       return card.getBoundingClientRect().height>0;
     });
     await Promise.all(cards.map(async card=>{
@@ -333,8 +350,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       const introduction=textSection(testpoint?'验证意图':'功能说明',explanation.summary||node.description,testpoint?'验证意图待补充':'功能说明待补充');
       const generate=el('div','case-overview-actions');generate.append(window.FlowCanvasCaseTaskButton('target-explanation',testpoint?'生成测试点说明':'生成功能点说明',{project,testcase:card,kind:'target-explanation'}));generate.className='detail-overview-toolbar';overview.prepend(generate);
       if(testpoint){textSection('触发条件',explanation.conditions,'触发条件与采样前提待补充');textSection('预期结果',explanation.expected,'预期行为与判定标准待补充');}else textSection('验证思路',explanation.approach,'正常、边界与异常场景的验证思路待补充');
-      const metadata=el('p','goal-detail-status',kinds[node.kind]?.[1]+' · '+(labels[report.status]||report.status)+(node.lifecycle&&node.lifecycle!=='ready'?' · '+({creating:'创建',updating:'修改',deleting:'删除'})[node.lifecycle]+(node.operation_status==='running'?'中':'已暂停'):''));overview.prepend(metadata);
-      if(report.explanation_status==='stale')metadata.after(el('p','goal-explanation-stale','说明引用的源码已变化，请重新生成并核对。'));
+      if(report.explanation_status==='stale')overview.prepend(el('p','goal-explanation-stale','说明引用的源码已变化，请重新生成并核对。'));
       const children=data.targets.filter(item=>item.parent===node.id&&item.lifecycle!=='draft');
       if(!testpoint){const part=section('测试点分解');if(children.length){const list=el('ul','module-child-list');for(const child of children){const item=el('li');item.append(button(child.name,()=>{selectedTarget=child.id;goalDetail(child);renderGoals();},'goal-detail-child'),el('p','goal-child-summary',child.explanation?.summary||child.description||'此测试点的验证意图待补充'));list.append(item);}part.append(list);}else part.append(el('p','case-detail-empty','当前功能点还没有拆分测试点'));}
       /** Cite concrete implementation with the same source viewer used by testcase explanations. */
@@ -349,13 +365,25 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       const rows=[];for(const member of members){const c=coverageFor(member);if(c.status!=='available')continue;for(const observation of c.rows){if(observation.bins?.length){for(const bin of observation.bins)rows.push([member.name,observation.source_path||'—',bin.name,bin.hits,bin.goal,bin.hits>=bin.goal?'已达标':'未达标']);}else rows.push([member.name,observation.source_path||'—','原生汇总','—','—',observation.covered+' / '+observation.total]);}}
       if(rows.length){const scroll=el('div','goal-bin-table'),table=el('table','module-port-table'),head=el('thead'),heading=el('tr'),body=el('tbody');for(const label of ['目标','覆盖点','bin','命中','目标次数','状态'])heading.append(el('th','',label));head.append(heading);for(const values of rows){const row=el('tr');for(const value of values)row.append(el('td','',String(value)));body.append(row);}table.append(head,body);scroll.append(table);coverage.append(scroll);}
       inspector.host.replaceChildren(title,tabs,overview,sourceBody);
-      const buttons={};let loadedBinding;
-      /** Select a validated source binding in this inspector without opening a modal. */
+      const buttons={};let sourcesLoaded=false;const sourceSections=new Map();
+      /** Expand all source bindings as document sections, without a source-selection dropdown. */
       function activateTab(){
         overview.hidden=inspector.tab!=='overview';sourceBody.hidden=inspector.tab!=='source';for(const [key,b] of Object.entries(buttons)){b.setAttribute('aria-selected',String(key===inspector.tab));b.tabIndex=key===inspector.tab?0:-1;}
         if(inspector.tab==='source'){
           if(!report.bindings.some(item=>item.id===inspector.binding))inspector.binding=report.bindings[0]?.id||null;
-          if(loadedBinding!==inspector.binding){loadedBinding=inspector.binding;sourceBody.replaceChildren();if(inspector.binding){const binding=inspector.binding,picker=el('select','case-detail-select'),pre=el('pre','case-detail-source');picker.ariaLabel='源码绑定';for(const item of report.bindings){const option=el('option','',item.file+(item.line?':'+item.line:''));option.value=item.id;option.selected=item.id===binding;picker.append(option);}picker.onchange=()=>{inspector.binding=picker.value;activateTab();};pre.textContent='正在读取…';pre.tabIndex=0;sourceBody.append(picker);const sourceSection=window.FlowCanvasDetailSection(inspector.host,'源码',node.id+':source');sourceSection.append(pre);sourceBody.append(sourceSection);api({operation:'inspect',binding_id:binding}).then(result=>{if(token!==inspector.generation||loadedBinding!==binding)return;const source=result.source;pre.replaceChildren();source.file_content.split('\n').forEach((text,index)=>{const row=el('div',index+1>=source.line&&index+1<=source.end_line?'is-bound':'');row.dataset.line=index+1;row.append(el('span','',String(index+1)),el('code','',text||' '));pre.append(row);});requestAnimationFrame(()=>{const row=pre.children[source.line-1];if(row)pre.scrollTop=Math.max(0,row.offsetTop-pre.offsetTop-50);});}).catch(error=>{if(token===inspector.generation&&loadedBinding===binding)pre.textContent=error.message;});}else sourceBody.append(el('p','case-detail-empty','尚无源码绑定'));}
+          if(!sourcesLoaded){
+            sourcesLoaded=true;sourceBody.replaceChildren();
+            if(!report.bindings.length)sourceBody.append(el('p','case-detail-empty','尚无源码绑定'));
+            for(const binding of report.bindings){
+              const part=window.FlowCanvasDetailSection(inspector.host,report.bindings.length>1?'源码 '+(sourceSections.size+1):'源码',node.id+':source:'+binding.id),pre=el('pre','case-detail-source');
+              part.querySelector('summary').append(el('code','',binding.file+(binding.line?':'+binding.line:'')));pre.textContent='正在读取…';pre.tabIndex=0;pre.ariaLabel='验证目标源码';part.append(pre);sourceBody.append(part);sourceSections.set(binding.id,part);
+              api({operation:'inspect',binding_id:binding.id}).then(result=>{
+                if(token!==inspector.generation)return;const source=result.source;pre.replaceChildren();
+                source.file_content.split('\n').forEach((text,index)=>{const row=el('div',index+1>=source.line&&index+1<=source.end_line?'is-bound':'');row.dataset.line=index+1;row.append(el('span','',String(index+1)),el('code','',text||' '));pre.append(row);});
+              }).catch(error=>{if(token===inspector.generation)pre.textContent=error.message;});
+            }
+          }
+          const selected=sourceSections.get(inspector.binding);if(selected)selected.open=true;
         }
         document.dispatchEvent(new CustomEvent('flowcanvas-case-view',{detail:{case_id:node.id,view:{tab:inspector.tab,...(inspector.tab==='source'&&inspector.binding?{binding_id:inspector.binding}:{})}}}));
       }
@@ -377,24 +405,32 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     /** Render plain hierarchical list items without inheriting legacy card surfaces. */
     const appendItems=(parent,container,depth=0)=>{for(const node of data.targets.filter(item=>item.parent===parent&&visible.has(item.id))){
       const children=data.targets.filter(item=>item.parent===node.id&&visible.has(item.id)),expanded=!goalCollapsed.has(node.id),wrapper=el('div','verification-item verification-'+node.kind),header=el('div','target-header'),heading=el('div','goal-row-heading');wrapper.dataset.targetId=node.id;
+      const pending=node.lifecycle&&node.lifecycle!=='ready';
+      let inheritedDeletion=false;
+      if(node.lifecycle==='deleting'){let ancestor=data.targets.find(item=>item.id===node.parent);while(ancestor){if(ancestor.lifecycle==='deleting'){inheritedDeletion=true;break;}ancestor=data.targets.find(item=>item.id===ancestor.parent);}}
+      if(pending){wrapper.dataset.lifecycle=node.lifecycle;wrapper.classList.add('case-in-progress');header.setAttribute('aria-busy',String(node.operation_status==='running'));}
+      if(pending&&node.operation_status==='running'&&!inheritedDeletion){
+        if(!operationAnimationStart.has(node.id))operationAnimationStart.set(node.id,performance.now());
+        wrapper.classList.add('case-operation-active');wrapper.style.setProperty('--operation-phase',(-((performance.now()-operationAnimationStart.get(node.id))%2600))+'ms');
+      }else operationAnimationStart.delete(node.id);
       const focus=id=>list.querySelector('.target-card-head[data-target-id="'+id+'"]')?.focus();
       const open=()=>{if(node.kind==='group'){if(children.length)toggle();return;}selectedTarget=node.id;goalDetail(node);for(const item of list.querySelectorAll('.target-card-head')){const selected=item.dataset.targetId===node.id;item.setAttribute('aria-selected',String(selected));item.closest('.target-header').classList.toggle('is-selected',selected);}};
       const head=button('',event=>{if(node.kind==='group'&&event.detail>1)return;open();},'target-card-head');head.dataset.targetId=node.id;head.setAttribute('role','treeitem');head.setAttribute('aria-level',String(depth+1));const selected=window.FlowCanvasCaseWorkspace.context()?.testcase.id===node.id;head.setAttribute('aria-selected',String(selected));header.classList.toggle('is-selected',selected);if(children.length)head.setAttribute('aria-expanded',String(expanded));head.title=node.kind==='group'?'点击展开或收起功能组':'单击预览，双击固定标签';
       const toggle=()=>{if(expanded)goalCollapsed.add(node.id);else goalCollapsed.delete(node.id);renderGoals();focus(node.id);};
       const chevron=el('span','target-chevron'+(expanded&&children.length?' is-expanded':''));
       if(children.length){const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 16 16');svg.setAttribute('aria-hidden','true');const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d','m6 4 4 4-4 4');svg.append(path);chevron.append(svg);chevron.title=(expanded?'折叠':'展开')+'子目标';chevron.onclick=event=>{event.stopPropagation();if(event.detail<2)toggle();};chevron.ondblclick=event=>event.stopPropagation();}
-      const title=el('span','target-title',node.name);head.append(chevron,title);head.ondblclick=event=>{if(node.kind==='group'){event.preventDefault();return;}window.FlowCanvasCaseWorkspace.pin(project.id,node.id);};
+      const title=el('span','target-title',node.name);title.dataset.textField='name';head.append(chevron,title);if(pending&&!inheritedDeletion)head.append(el('span','case-operation-label',({creating:'创建',updating:'修改',deleting:'删除'})[node.lifecycle]+(node.operation_status==='running'?'中':'已暂停')));head.ondblclick=event=>{if(node.kind==='group'){event.preventDefault();return;}window.FlowCanvasCaseWorkspace.pin(project.id,node.id);};
       head.onkeydown=event=>{const index=ordered.indexOf(node);if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){event.preventDefault();const next=event.key==='Home'?ordered[0]:event.key==='End'?ordered.at(-1):ordered[Math.max(0,Math.min(ordered.length-1,index+(event.key==='ArrowDown'?1:-1)))];if(next)focus(next.id);}else if(event.key==='ArrowRight'){event.preventDefault();if(children.length&&!expanded)toggle();else if(children.length)focus(children[0].id);}else if(event.key==='ArrowLeft'){event.preventDefault();if(children.length&&expanded)toggle();else if(node.parent)focus(node.parent);}else if(event.key==='F2'&&node.lifecycle==='ready'){event.preventDefault();editCaseText(node,'name',title);}};
       header.onclick=event=>{if(!event.target.closest('button'))head.click();};heading.append(head);header.append(heading);
       if(!node.lifecycle||node.lifecycle==='ready'){const controls=el('div','target-actions target-header-actions');controls.append(goalAction(node,'functional-coverage','AI 分析功能覆盖率','M4 17V9m5 8V5m5 12v-5M3 21h16'));if(node.kind!=='testpoint')controls.append(goalAction(node,'add-goal','AI 新增'+(node.kind==='group'?'功能点':'测试点'),'M10 5v14M3 12h14'));controls.append(goalAction(node,'delete-goal','AI 删除验证目标','M4 7h12M6 7v13h9V7M8 7V4h5M9 10v7m3-7v7'));header.append(controls);}
       if(['group','point','testpoint'].includes(node.kind)){
         const coverage=coverageFor(node),valid=coverage.status==='available'&&coverage.total>0,score=el('div','target-coverage-score'+(valid?' has-data':'')),meter=el('span','goal-coverage-meter');
         const percent=valid?Math.min(100,100*coverage.covered/coverage.total):0;
-        score.append(el('span','goal-coverage-percent',valid?percent.toFixed(1)+'%':coverage.status==='stale'?'待更新':coverage.status==='conflict'?'冲突':'无数据'));
+        score.append(el('span','goal-coverage-percent',valid?percent.toFixed(1)+'%':coverage.status==='stale'?'待更新':coverage.status==='conflict'?'冲突':'—'));
         score.title=valid?coverage.covered+' / '+coverage.total+' 个 bin 达标；覆盖命中不代表正确性检查通过':coverage.status==='stale'?'源码已变化，请更新覆盖率':coverage.status==='conflict'?'覆盖率实例映射冲突':'尚无实际覆盖率数据';
         meter.style.setProperty('--coverage',percent+'%');if(valid){meter.setAttribute('role','progressbar');meter.setAttribute('aria-label',(kinds[node.kind]?.[1]||'验证目标')+'覆盖率');meter.setAttribute('aria-valuemin','0');meter.setAttribute('aria-valuemax','100');meter.setAttribute('aria-valuenow',String(percent));}else meter.setAttribute('aria-hidden','true');score.append(meter);header.append(score);
       }
-      wrapper.append(header);container.append(wrapper);
+      wrapper.append(header);paintTextHighlights(wrapper,node);container.append(wrapper);
       if(children.length&&expanded){const body=el('div','verification-children');body.setAttribute('role','group');appendItems(node.id,body,depth+1);wrapper.append(body);}
     }};appendItems(null,list);
     list.classList.toggle('verification-title-list',ordered.length>0);
@@ -489,7 +525,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       }
       if(!caseMode&&!bugMode){
         const c=coverageFor(node);
-        const text=c.status==='conflict'?'多实例冲突':c.status==='stale'?'数据已过期':c.total?((c.covered/c.total*100).toFixed(1)+'% · '+c.covered+'/'+c.total):'无数据';
+        const text=c.status==='conflict'?'多实例冲突':c.status==='stale'?'数据已过期':c.total?((c.covered/c.total*100).toFixed(1)+'% · '+c.covered+'/'+c.total):'—';
         const badge=el('span','target-coverage-score'+(c.total&&c.status!=='stale'?' has-data':''),text);
         badge.title=c.status==='conflict'?'同一定义对应多个运行实例，请拆分后重新导入':c.status==='stale'?'源码与采集时不同，请重新构建并开始新累计':'该目标唯一实例的累计 bin 命中，不代表正确性检查通过';
         if(c.status==='available'&&c.total){
@@ -629,20 +665,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         const actions=el('div','target-actions');
         if(actions.children.length)body.append(actions);for(const child of children)body.append(card(child,depth+1));wrapper.append(body);
       }else if(children.length&&(caseMode||bugMode)){head.title=children.length+' 个子目标';}
-      for(const label of wrapper.querySelectorAll('[data-text-field]')){
-        if(label.closest('[data-target-id]')!==wrapper)continue;
-        const id=node.id+':'+label.dataset.textField,started=textHighlights.get(id);
-        if(started===undefined)continue;
-        const elapsed=performance.now()-started;
-        if(elapsed>=2200){textHighlights.delete(id);continue;}
-        label.classList.add('ai-text-updated');label.style.setProperty('--text-update-phase',-elapsed+'ms');
-        // Remove the animation even while this panel is hidden: display toggles
-        // otherwise restart a completed CSS animation on the retained node.
-        setTimeout(()=>{
-          label.classList.remove('ai-text-updated');label.style.removeProperty('--text-update-phase');
-          if(textHighlights.get(id)===started)textHighlights.delete(id);
-        },Math.max(0,2200-elapsed));
-      }
+      paintTextHighlights(wrapper,node);
       return wrapper;
     }
     for(const group of data.targets.filter(n=>n.lifecycle!=='draft'&&n.kind===rootKind&&visible.has(n.id)))list.append(card(group,0));
