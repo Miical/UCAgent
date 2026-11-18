@@ -33,35 +33,52 @@ for(const group of document.querySelectorAll('[role="tablist"]')){
 const workspace=document.querySelector('.workspace');
 let widths=[25,45,30],caseTabActive=false,mainDetailCollapsed=true;
 let sidebarScope=null,sidebarPanel=null,sidebarRight=true,restoringSidebars=false;
-/** Remember independent panel choices; a first visit always opens left and folds right. */
+const rightSidebarKey='flowcanvas.right-sidebar-collapsed';
+try{sidebarRight=localStorage.getItem(rightSidebarKey)!=='false';}catch{}
+/** Share right sidebar visibility across the workspace. Left sidebar choices stay per panel. */
 window.FlowCanvasSidebarState={
   activate(projectId){const scope=projectId||'global';if(sidebarScope!==scope||!sidebarPanel)this.enter('nav:'+document.getElementById('project-heading').textContent,scope);},
   enter(panel,projectId=sidebarScope){
-    if(!projectId)return {leftCollapsed:false,rightCollapsed:true};
-    // Without a project, navigation shares the same main-chat sidebar state.
+    if(!projectId)return {leftCollapsed:false,rightCollapsed:sidebarRight};
     if(projectId==='global'&&panel.startsWith('nav:'))panel='nav:global';
     if(sidebarScope===projectId&&sidebarPanel===panel)return {leftCollapsed:workspace.classList.contains('project-collapsed'),rightCollapsed:sidebarRight};
-    sidebarScope=projectId;sidebarPanel=panel;let state={leftCollapsed:false,rightCollapsed:true};
-    try{const saved=JSON.parse(localStorage.getItem('flowcanvas.sidebar-state.v1.'+sidebarScope+'.'+panel)||'null');if(saved&&typeof saved.leftCollapsed==='boolean'&&typeof saved.rightCollapsed==='boolean')state=saved;}catch{}
-    restoringSidebars=true;sidebarRight=state.rightCollapsed;toggleProject(state.leftCollapsed,false);
-    if(panel.startsWith('nav:'))toggleDetails(state.rightCollapsed,false,false);
-    restoringSidebars=false;return state;
+    sidebarScope=projectId;sidebarPanel=panel;
+    let leftCollapsed=false;
+    try{
+      const saved=JSON.parse(localStorage.getItem('flowcanvas.sidebar-state.v1.'+sidebarScope+'.'+panel)||'null');
+      if(typeof saved?.leftCollapsed==='boolean')leftCollapsed=saved.leftCollapsed;
+    }catch{}
+    restoringSidebars=true;
+    toggleProject(leftCollapsed,false);
+    if(panel.startsWith('nav:'))toggleDetails(sidebarRight,false,false);
+    restoringSidebars=false;
+    return {leftCollapsed,rightCollapsed:sidebarRight};
   },
-  save(right=sidebarRight){
-    if(!sidebarScope||!sidebarPanel||restoringSidebars)return;sidebarRight=right;
-    try{localStorage.setItem('flowcanvas.sidebar-state.v1.'+sidebarScope+'.'+sidebarPanel,JSON.stringify({leftCollapsed:workspace.classList.contains('project-collapsed'),rightCollapsed:right}));}catch{}
+  save(right){
+    if(restoringSidebars)return;
+    if(typeof right==='boolean'){
+      sidebarRight=right;
+      try{localStorage.setItem(rightSidebarKey,String(right));}catch{}
+    }
+    if(!sidebarScope||!sidebarPanel)return;
+    try{
+      localStorage.setItem('flowcanvas.sidebar-state.v1.'+sidebarScope+'.'+sidebarPanel,
+        JSON.stringify({leftCollapsed:workspace.classList.contains('project-collapsed')}));
+    }catch{}
   }
 };
 // Keep the project width independent of the other panes' expanded/collapsed proportions.
 try{const saved=Number(localStorage.getItem('flowcanvas.projectWidth'));if(Number.isFinite(saved)&&saved>=345)workspace.style.setProperty('--project-track',saved+'px');}catch{}
 
 try{const stored=JSON.parse(localStorage.getItem('flowcanvas.layout'));if(Array.isArray(stored)&&stored.length===3&&stored.every(v=>Number.isFinite(v)&&v>0)){const total=stored.reduce((a,b)=>a+b,0);if(Number.isFinite(total))widths=stored.map(v=>v/total*100);}}catch(_){}
-let sidebarWidth=document.querySelector('.detail-pane').getBoundingClientRect().width||320;
+const minSidebarWidth=332.5;
+workspace.style.setProperty('--sidebar-min-width',minSidebarWidth+'px');
+let sidebarWidth=document.querySelector('.detail-pane').getBoundingClientRect().width||minSidebarWidth;
 try{const saved=Number(localStorage.getItem('flowcanvas.sidebarWidth'));if(Number.isFinite(saved)&&saved>=190)sidebarWidth=saved;}catch{}
 /** Share one physical sidebar width across main-chat details and dedicated conversations. */
 function resizeSidebar(value,persist=false){
   const available=workspace.getBoundingClientRect().right-document.querySelector('.splitter[data-split="0"]').getBoundingClientRect().right-7;
-  sidebarWidth=Math.max(190,Math.min(Math.max(190,available-500),value));
+  sidebarWidth=Math.max(minSidebarWidth,Math.min(available-500,value));
   workspace.style.setProperty('--shared-sidebar-width',sidebarWidth+'px');workspace.style.setProperty('--detail',sidebarWidth+'px');workspace.style.setProperty('--left-hidden-detail',sidebarWidth+'px');
   if(persist)try{localStorage.setItem('flowcanvas.sidebarWidth',String(sidebarWidth));}catch{}
   document.dispatchEvent(new CustomEvent('flowcanvas-sidebar-width',{detail:{width:sidebarWidth}}));
@@ -73,7 +90,7 @@ const collapsedKeys=['--collapsed-project','--collapsed-chat','--left-hidden-cha
 try{const saved=JSON.parse(localStorage.getItem('flowcanvas.collapsedWidths')||'{}');for(const key of collapsedKeys){const value=saved[key];if(typeof value==='number'&&Number.isFinite(value)&&value>0)workspace.style.setProperty(key,value+'fr');}}catch{}
 /** Persist expanded and collapsed layouts independently so either view survives reload. */
 function save(){try{localStorage.setItem('flowcanvas.sidebarWidth',String(sidebarWidth));const projectWidth=parseFloat(workspace.style.getPropertyValue('--project-track'));if(Number.isFinite(projectWidth)&&projectWidth>=345)localStorage.setItem('flowcanvas.projectWidth',String(projectWidth));else localStorage.removeItem('flowcanvas.projectWidth');localStorage.setItem('flowcanvas.layout',JSON.stringify(widths));const values={};for(const key of collapsedKeys){const value=parseFloat(workspace.style.getPropertyValue(key));if(Number.isFinite(value)&&value>0)values[key]=value;}localStorage.setItem('flowcanvas.collapsedWidths',JSON.stringify(values));}catch(_){}}
-function move(index,change,initial){if(index===1){const available=workspace.clientWidth-(workspace.classList.contains('project-collapsed')?7:14);resizeSidebar((initial[2]-change)/100*available,true);return;}if(workspace.classList.contains('project-collapsed')){if(index!==1)return;const available=workspace.clientWidth-7;const total=initial[1]+initial[2];const value=Math.max(500/available*100,Math.min(total-190/available*100,initial[1]+change));workspace.style.setProperty('--left-hidden-chat',value+'fr');workspace.style.setProperty('--left-hidden-detail',(total-value)+'fr');return;}if(workspace.classList.contains('detail-collapsed')){const total=initial[0]+initial[1];const available=workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14);const value=Math.max(345/available*100,Math.min(total-500/available*100,initial[0]+change));workspace.style.setProperty('--project-track',Math.round(value/100*available)+'px');workspace.style.setProperty('--collapsed-project',value+'fr');workspace.style.setProperty('--collapsed-chat',(total-value)+'fr');return;}const available=workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14);const minimum=[345,500,190].map(value=>value/available*100);const sum=initial[index]+initial[index+1];const value=Math.max(minimum[index],Math.min(sum-minimum[index+1],initial[index]+change));widths=[...initial];widths[index]=value;widths[index+1]=sum-value;workspace.style.setProperty('--project-track',Math.round(widths[0]/100*available)+'px');paint();}
+function move(index,change,initial){if(index===1){const available=workspace.clientWidth-(workspace.classList.contains('project-collapsed')?7:14);resizeSidebar((initial[2]-change)/100*available,true);return;}if(workspace.classList.contains('project-collapsed')){if(index!==1)return;const available=workspace.clientWidth-7;const total=initial[1]+initial[2];const value=Math.max(500/available*100,Math.min(total-minSidebarWidth/available*100,initial[1]+change));workspace.style.setProperty('--left-hidden-chat',value+'fr');workspace.style.setProperty('--left-hidden-detail',(total-value)+'fr');return;}if(workspace.classList.contains('detail-collapsed')){const total=initial[0]+initial[1];const available=workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14);const value=Math.max(345/available*100,Math.min(total-500/available*100,initial[0]+change));workspace.style.setProperty('--project-track',Math.round(value/100*available)+'px');workspace.style.setProperty('--collapsed-project',value+'fr');workspace.style.setProperty('--collapsed-chat',(total-value)+'fr');return;}const available=workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14);const minimum=[345,500,minSidebarWidth].map(value=>value/available*100);const sum=initial[index]+initial[index+1];const value=Math.max(minimum[index],Math.min(sum-minimum[index+1],initial[index]+change));widths=[...initial];widths[index]=value;widths[index+1]=sum-value;workspace.style.setProperty('--project-track',Math.round(widths[0]/100*available)+'px');paint();}
 for(const splitter of document.querySelectorAll('.splitter')){
   const index=Number(splitter.dataset.split);
   splitter.onpointerdown=event=>{if(event.button!==0)return;event.preventDefault();splitter.setPointerCapture(event.pointerId);const available=workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14);const initial=[...workspace.querySelectorAll(':scope > .pane')].map(pane=>pane.getBoundingClientRect().width/available*100),x=event.clientX;document.body.classList.add('resizing');splitter.onpointermove=e=>move(index,(e.clientX-x)/(workspace.clientWidth-((workspace.classList.contains('detail-collapsed')||workspace.classList.contains('project-collapsed'))?7:14))*100,initial);const finish=()=>{splitter.onpointermove=null;document.body.classList.remove('resizing');save();};splitter.onpointerup=finish;splitter.onpointercancel=finish;splitter.onlostpointercapture=finish;};
@@ -103,8 +120,8 @@ document.getElementById('detail-toggle').onclick=()=>{
   globalThis.FlowCanvasSidebarMotion?.(workspace,document.querySelector('.detail-pane'),'detail-motion','detail-collapsed',collapsed);
   toggleDetails(collapsed);
 };
-// Until project-specific state loads, use the first-visit defaults.
-toggleDetails(true,false,false);
+// Apply the shared right sidebar preference before the active tab loads.
+toggleDetails(sidebarRight,false,false);
 
 /** Collapse the project column from its active navigation icon, keeping navigation visible. */
 function toggleProject(collapsed,animate=true){
@@ -156,7 +173,7 @@ try{
   }
 }catch{}
 
-/** Main-conversation details are hidden in case tabs without changing their saved preference. */
+/** Switch the visible sidebar to the pane belonging to the current tab. */
 function caseSidebarScope(event){
   const active=event.type==='flowcanvas-case-context';
   if(caseTabActive===active)return;

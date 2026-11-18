@@ -4,10 +4,12 @@
   let folder='',parent='',candidate=null,busy=false,folderInfo=null,folderPreview=null,folderQuery='',browsing=false,browseVersion=0;
   async function api(path,body){const response=await fetch('/api/chat/projects'+path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const data=await response.json();if(!response.ok)throw Error(response.status===404?'项目服务尚未加载，请重启工作台后重试':data.detail||'操作失败');return data;}
   function error(message=''){$('project-error').hidden=!message;$('project-error').textContent=message;}
+  function setCreateDisabled(disabled){$('project-confirm').disabled=disabled;$('project-create-import').disabled=disabled;}
   function mode(importing){
     $('project-actions').hidden=importing;$('project-browse').hidden=importing;$('project-import').hidden=!importing;$('project-back').hidden=!importing;
     $('project-dialog-title').textContent=importing?'创建项目':'打开项目';$('project-dialog-hint').textContent=importing?'请选择 RTL 顶层模块':'选择项目文件夹';
-    $('project-confirm').textContent=importing?'创建并打开':'打开项目';$('project-confirm').disabled=importing;
+    $('project-create-import').hidden=!importing;
+    $('project-confirm').textContent=importing?'创建项目':'打开项目';setCreateDisabled(importing);
     if(!importing)updateFolderSelection();
   }
   const pathInput=$('project-path'),suggestions=$('project-path-suggestions');
@@ -105,19 +107,19 @@
     moduleOptions.hidden=!moduleMatches.length;topInput.setAttribute('aria-expanded',String(Boolean(moduleMatches.length)));if(moduleMatches.length)topInput.setAttribute('aria-activedescendant','project-module-0');else topInput.removeAttribute('aria-activedescendant');
   }
   async function selectModule(item){
-    const version=++rtlVersion;rtlSelection=item;rtlReady=false;$('project-confirm').disabled=true;topInput.value=item.name;moduleOptions.hidden=true;topInput.setAttribute('aria-expanded','false');topInput.removeAttribute('aria-activedescendant');
+    const version=++rtlVersion;rtlSelection=item;rtlReady=false;setCreateDisabled(true);topInput.value=item.name;moduleOptions.hidden=true;topInput.setAttribute('aria-expanded','false');topInput.removeAttribute('aria-activedescendant');
     $('project-rtl-status').textContent='正在解析依赖…';$('project-filelist').replaceChildren();
-    try{const result=await api('/dependencies',{path:candidate.path,top:item.name,top_file:item.file});if(version!==rtlVersion)return;rtlReady=result.ready;$('project-confirm').disabled=!rtlReady;
+    try{const result=await api('/dependencies',{path:candidate.path,top:item.name,top_file:item.file});if(version!==rtlVersion)return;rtlReady=result.ready;setCreateDisabled(!rtlReady);
       $('project-rtl-status').textContent=result.ready?'已找到 '+result.files.length+' 个源码文件、'+result.headers.length+' 个头文件':'依赖需要处理：'+result.issues.join('\n');
       for(const file of result.files){const row=document.createElement('div');row.textContent=file;$('project-filelist').append(row);}
     }catch(e){if(version===rtlVersion)$('project-rtl-status').textContent=e.message;}
   }
   async function loadModules(path,inventory=null){
-    const version=++rtlVersion;rtlSelection=null;rtlReady=false;$('project-confirm').disabled=true;modules=[];topInput.value='';topInput.disabled=true;moduleOptions.hidden=true;topInput.setAttribute('aria-expanded','false');$('project-filelist').replaceChildren();$('project-rtl-status').textContent='正在扫描 Verilog / SystemVerilog 模块…';
+    const version=++rtlVersion;rtlSelection=null;rtlReady=false;setCreateDisabled(true);modules=[];topInput.value='';topInput.disabled=true;moduleOptions.hidden=true;topInput.setAttribute('aria-expanded','false');$('project-filelist').replaceChildren();$('project-rtl-status').textContent='正在扫描 Verilog / SystemVerilog 模块…';
     try{const result=inventory||await api('/modules',{path});if(version!==rtlVersion)return;modules=result.modules;topInput.disabled=false;$('project-rtl-status').textContent=modules.length?'找到 '+modules.length+' 个模块，请选择顶层':'未发现模块定义；已有 RTL 可能存在解析错误';}
     catch(e){if(version===rtlVersion){topInput.disabled=false;$('project-rtl-status').textContent=e.message;}}
   }
-  topInput.oninput=()=>{rtlVersion++;rtlSelection=null;rtlReady=false;$('project-confirm').disabled=true;$('project-filelist').replaceChildren();$('project-rtl-status').textContent='请选择一个顶层模块';showModules();};
+  topInput.oninput=()=>{rtlVersion++;rtlSelection=null;rtlReady=false;setCreateDisabled(true);$('project-filelist').replaceChildren();$('project-rtl-status').textContent='请选择一个顶层模块';showModules();};
   topInput.onfocus=showModules;
   topInput.onblur=()=>{moduleOptions.hidden=true;topInput.setAttribute('aria-expanded','false');};
   topInput.onkeydown=event=>{
@@ -136,7 +138,43 @@
   $('project-close').onclick=()=>dialog.close();
   $('project-path-form').onsubmit=event=>{event.preventDefault();error();browse($('project-path').value).catch(e=>error(e.message));};
   $('project-back').onclick=()=>{rtlVersion++;candidate=null;mode(false);error();};
-  $('project-confirm').onclick=async()=>{if(busy)return;busy=true;$('project-confirm').disabled=true;error();try{if(candidate){if(!rtlSelection||!rtlReady)throw Error('请选择依赖完整的 RTL 顶层模块');await api('/initialize',{path:candidate.path,name:$('project-name').value,top:rtlSelection?.name||'',top_file:rtlSelection?.file||''});location.reload();}else await open($('project-path').value.trim()||folder);}catch(e){error(e.message);}finally{busy=false;if(candidate)$('project-confirm').disabled=!rtlReady;else updateFolderSelection();}};
+  async function confirmProject(){
+    if(busy)return;
+    busy=true;
+    setCreateDisabled(true);
+    error();
+    try{
+      if(!candidate){
+        await open($('project-path').value.trim()||folder);
+        return;
+      }
+      if(!rtlSelection||!rtlReady)throw Error('请选择依赖完整的 RTL 顶层模块');
+      const project=await api('/initialize',{
+        path:candidate.path,name:$('project-name').value,top:rtlSelection.name,top_file:rtlSelection.file
+      });
+      try{localStorage.setItem('flowcanvas.project-starters:'+project.id,'true');}catch{}
+      location.reload();
+    }catch(e){error(e.message);}
+    finally{
+      busy=false;
+      if(candidate)setCreateDisabled(!rtlReady);
+      else updateFolderSelection();
+    }
+  }
+  $('project-confirm').onclick=()=>confirmProject();
+  const importButton=$('project-create-import');let initializedImport=null;
+  importButton.onclick=async()=>{
+    if(busy||!candidate||!rtlReady||!rtlSelection)return;
+    busy=true;setCreateDisabled(true);error();importButton.querySelector('span').textContent='正在创建并导入…';
+    const draft={...candidate,name:$('project-name').value.trim()||candidate.name,rtl:{top:rtlSelection.name,top_file:rtlSelection.file}};
+    try{
+      if(!window.FlowCanvasAI?.createProjectImport)throw Error('对话服务尚未就绪，请稍后重试');
+      await window.FlowCanvasAI.createProjectImport({project:draft,initialize:async()=>{
+        if(!initializedImport||initializedImport.path!==draft.path)initializedImport=await api('/initialize',{path:draft.path,name:draft.name,top:draft.rtl.top,top_file:draft.rtl.top_file});
+        return initializedImport;
+      }});
+    }catch(e){error(e.message);}finally{busy=false;setCreateDisabled(!rtlReady);importButton.querySelector('span').textContent='创建并导入';}
+  };
   api('').then(state=>{
     window.FlowCanvasSidebarState?.activate(state.current?.id);
     const pane=document.querySelector('.project-pane');$('project-leave').hidden=!state.current;

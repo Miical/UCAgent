@@ -6,7 +6,7 @@ const handler=source.slice(start,source.indexOf('/** Load sessions independently
 /** Execute the real close handler with a minimal history/DOM transport. */
 function fixture(remembered,saved,rows){
   const listeners={},chosen=[],storage=new Map([['flowcanvas.main.session',saved]]);let created=0;
-  const context={caseContext:{testcase:{id:'case'}},caseSwitch:0,caseSwitching:false,ordinarySession:remembered,caseReady:Promise.resolve(),session:{id:'scoped'},
+  const context={caseContext:{testcase:{id:'case'}},caseSwitch:0,caseSwitching:false,pendingCaseActivation:null,ordinarySession:remembered,caseReady:Promise.resolve(),session:{id:'scoped'},
     scopedStorageKey:key=>key,localStorage:{getItem:key=>storage.get(key)},document:{addEventListener:(name,callback)=>listeners[name]=callback},saveDraft(){},saveQuote(){},controls(){},
     list:async()=>rows,choose:async(id,internal)=>chosen.push([id,internal]),create:async()=>{created++;},error:message=>{throw Error(message);}};
   vm.createContext(context);vm.runInContext(handler,context);
@@ -37,4 +37,26 @@ test('a newer tab switch prevents a delayed main restoration',async()=>{
   f.context.list=()=>new Promise(done=>resolve=done);
   const closing=f.close();f.context.caseSwitch++;resolve([{id:'main'}]);await closing;
   assert.equal(f.chosen.length,0);assert.equal(f.created,0);
+});
+
+test('waveform view updates do not cancel a pending dedicated conversation',async()=>{
+  const start=source.indexOf('let pendingCaseActivation=');
+  const listener=source.slice(start,source.indexOf("document.addEventListener('flowcanvas-case-close'",start));
+  let activate,resolve;
+  const switches=[];
+  const context={caseContext:null,caseReady:Promise.resolve(),
+    document:{addEventListener:(_,callback)=>{activate=callback;}},
+    switchCase:page=>{switches.push(page);return new Promise(done=>{resolve=done;});},
+    error:message=>{throw Error(message);}};
+  vm.runInNewContext(listener,context);
+  const page={project:{id:'project'},testcase:{id:'case'},view:{tab:'overview'}};
+  activate({detail:{...page,activate:true}});
+  const ready=context.caseReady;
+  const wave={tab:'wave',run_id:'run',waveform:'waveforms/waves.vcd'};
+  activate({detail:{...page,view:wave}});
+  assert.equal(context.caseReady,ready);
+  assert.equal(switches.length,1);
+  assert.deepEqual(switches[0].view,wave);
+  resolve();
+  await ready;
 });

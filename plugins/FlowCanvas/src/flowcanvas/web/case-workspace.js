@@ -19,8 +19,15 @@
     if(!savedProject)return;
     try{localStorage.setItem('flowcanvas.workspaceTabs:'+savedProject,JSON.stringify({
       active:restoreKey||(current?current.project.id+':'+current.testcase.id:null),
-      tabs:[...opened.values()].filter(item=>item.project.id===savedProject).map(item=>({id:item.testcase.id,title:item.testcase.title||item.testcase.name,entity_type:item.testcase.entity_type||'case',instance:item.testcase.instance,coverage_metric:item.testcase.coverage_metric,coverage_file:item.testcase.coverage_file,preview:item.preview}))
+      tabs:[...opened.values()].filter(item=>item.project.id===savedProject).map(item=>({id:item.testcase.id,title:item.testcase.title||item.testcase.name,entity_type:item.testcase.entity_type||'case',instance:item.testcase.instance,coverage_metric:item.testcase.coverage_metric,coverage_file:item.testcase.coverage_file,preview:item.preview,view:item.view,waveSidebar:item.waveSidebar}))
     }));}catch{}
+  }
+  function restoreTab(item){
+    if(!item)return;
+    const {project,testcase,view}=item;
+    document.dispatchEvent(new CustomEvent('flowcanvas-case-restore',{
+      detail:{project_id:project.id,case_id:testcase.id,module_instance:testcase.instance,view}
+    }));
   }
   /** Hydrate once, then activate the saved page only after its detail handler is ready. */
   function ready(project,entity){
@@ -30,7 +37,7 @@
         const saved=JSON.parse(localStorage.getItem('flowcanvas.workspaceTabs:'+project.id)||'null');
         for(const item of Array.isArray(saved?.tabs)?saved.tabs:[]){
           if(typeof item?.id!=='string'||!['case','module','target','bug','coverage'].includes(item.entity_type))continue;
-          opened.set(project.id+':'+item.id,{project,testcase:{id:item.id,title:String(item.title||item.id),entity_type:item.entity_type,instance:item.instance,coverage_metric:item.coverage_metric,coverage_file:item.coverage_file},preview:!!item.preview});
+          opened.set(project.id+':'+item.id,{project,testcase:{id:item.id,title:String(item.title||item.id),entity_type:item.entity_type,instance:item.instance,coverage_metric:item.coverage_metric,coverage_file:item.coverage_file},preview:!!item.preview,view:item.view,waveSidebar:item.waveSidebar});
         }
         restoreKey=typeof saved?.active==='string'&&opened.has(saved.active)?saved.active:null;
       }catch{}
@@ -38,7 +45,7 @@
     }
     const pending=opened.get(restoreKey);
     if(pending&&(pending.testcase.entity_type||'case')===entity){
-      document.dispatchEvent(new CustomEvent('flowcanvas-case-restore',{detail:{project_id:project.id,case_id:pending.testcase.id,module_instance:pending.testcase.instance}}));
+      restoreTab(pending);
     }
   }
   const tabs=document.createElement('nav');tabs.className='case-workspace-tabs';tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','工作区标签页');
@@ -48,11 +55,20 @@
   const dedicatedChip=document.createElement('span');dedicatedChip.className='workspace-dedicated-chip';dedicatedChip.innerHTML='<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="7" cy="6" r="2.5"/><path d="M2.5 16v-1.5a4.5 4.5 0 0 1 9 0V16M12 6h4v4"/><circle cx="16" cy="13" r="2"/></svg><span class="workspace-dedicated-title">专属对话</span><span class="workspace-dedicated-dot" aria-hidden="true">·</span>';
   const dedicatedName=document.createElement('span');dedicatedName.className='workspace-dedicated-name';dedicatedChip.append(dedicatedName);dedicated.append(dedicatedChip);
   const waveNav=document.createElement('nav');waveNav.className='workspace-wave-nav';waveNav.hidden=true;waveNav.setAttribute('role','tablist');waveNav.setAttribute('aria-label','波形侧边栏');
-  for(const [mode,label] of [['analysis','AI 解读'],['chat','专属对话']]){const button=document.createElement('button');button.type='button';button.textContent=label;if(mode==='chat'){button.className='workspace-dedicated-chip';button.innerHTML=dedicatedChip.innerHTML;}button.dataset.mode=mode;button.setAttribute('role','tab');button.onclick=()=>{sidebarMode=mode;syncSidebar();};button.onkeydown=event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.stopPropagation();event.preventDefault();sidebarMode=event.key==='Home'?'analysis':event.key==='End'?'chat':sidebarMode==='analysis'?'chat':'analysis';syncSidebar();waveNav.querySelector('[aria-selected="true"]').focus();}};waveNav.append(button);}
+  for(const [mode,label] of [['analysis','AI 解读'],['chat','专属对话']]){const button=document.createElement('button');button.type='button';button.textContent=label;if(mode==='chat'){button.className='workspace-dedicated-chip';button.innerHTML=dedicatedChip.innerHTML;}button.dataset.mode=mode;button.setAttribute('role','tab');button.onclick=()=>selectWaveSidebar(mode);button.onkeydown=event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.stopPropagation();event.preventDefault();selectWaveSidebar(event.key==='Home'?'analysis':event.key==='End'?'chat':sidebarMode==='analysis'?'chat':'analysis');waveNav.querySelector('[aria-selected="true"]').focus();}};waveNav.append(button);}
+  function selectWaveSidebar(mode){
+    sidebarMode=mode;
+    if(current&&view.tab==='wave'){
+      const item=opened.get(current.project.id+':'+current.testcase.id);
+      if(item)item.waveSidebar=mode;
+      saveTabs();
+    }
+    syncSidebar();
+  }
   /** Reuse the same sidebar boundary while swapping only its visible content. */
   function syncSidebar(){
     const wave=!!current&&view.tab==='wave'&&(!current.testcase.entity_type||current.testcase.entity_type==='case'),key=wave?current.project.id+':'+current.testcase.id+':'+(view.run_id||''):null;
-    if(key&&key!==sidebarWaveKey){sidebarWaveKey=key;sidebarMode='analysis';}
+    if(key&&key!==sidebarWaveKey){sidebarWaveKey=key;sidebarMode=opened.get(current.project.id+':'+current.testcase.id)?.waveSidebar==='chat'?'chat':'analysis';}
     if(!wave){sidebarWaveKey=null;sidebarMode='chat';}
     waveNav.querySelector('.workspace-dedicated-name').textContent=dedicatedName.textContent;
     waveNav.hidden=!wave||chatCollapsed;dedicated.hidden=wave;chatSurface.hidden=wave&&sidebarMode==='analysis';analysisPane.hidden=!wave||sidebarMode!=='analysis';
@@ -119,12 +135,12 @@
         wrapper=document.createElement('div');wrapper.className='case-workspace-tab-item';wrapper.dataset.key=key;
         const icon=document.createElement('span');icon.className='case-workspace-tab-icon';icon.setAttribute('aria-hidden','true');icon.innerHTML='<svg viewBox="0 0 16 16"><path d="M4 2h5l3 3v9H4zM9 2v4h3M6 9h4M6 11h3"/></svg>';
         const tab=document.createElement('button');tab.type='button';tab.className='case-workspace-tab';tab.setAttribute('role','tab');
-        tab.onclick=()=>{if(current?.project.id!==item.project.id||current?.testcase.id!==item.testcase.id)document.dispatchEvent(new CustomEvent('flowcanvas-case-restore',{detail:{project_id:item.project.id,case_id:item.testcase.id,module_instance:opened.get(key)?.testcase.instance}}));};
+        tab.onclick=()=>{if(current?.project.id!==item.project.id||current?.testcase.id!==item.testcase.id)restoreTab(opened.get(key));};
         tab.ondblclick=event=>{event.preventDefault();pinTab(key);};
         const close=document.createElement('button');close.type='button';close.className='case-workspace-tab-close';close.innerHTML='<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
         close.onclick=()=>{
           const keys=[...opened.keys()],index=keys.indexOf(key),isCurrent=current?.project.id===item.project.id&&current?.testcase.id===item.testcase.id;opened.delete(key);
-          if(isCurrent){const next=opened.get(keys[index+1])||opened.get(keys[index-1]);if(next)document.dispatchEvent(new CustomEvent('flowcanvas-case-restore',{detail:{project_id:next.project.id,case_id:next.testcase.id,module_instance:next.testcase.instance}}));else leave();}
+          if(isCurrent){const next=opened.get(keys[index+1])||opened.get(keys[index-1]);if(next)restoreTab(next);else leave();}
           document.dispatchEvent(new CustomEvent('flowcanvas-case-tab-closed',{detail:{project_id:item.project.id,case_id:item.testcase.id}}));paintTabs();
         };
         const label=document.createElement('span');label.className='case-workspace-tab-label';tab.append(icon,label);wrapper.append(tab,close);list.append(wrapper);
@@ -149,8 +165,22 @@
   paintTabs();
   document.addEventListener('flowcanvas-view',event=>{if(event.detail!=='测试用例'&&event.detail!=='设计总览'&&event.detail!=='验证目标'&&event.detail!=='Bug 管理')leave();});
   document.addEventListener('flowcanvas-case-ordinary',leave);
-  document.addEventListener('flowcanvas-case-view',event=>{if(current?.testcase.id!==event.detail.case_id)return;view=event.detail.view;syncSidebar();publish();});
-  document.addEventListener('flowcanvas-case-sidebar-chat',()=>{if(current&&view.tab==='wave'){sidebarMode='chat';collapseChat(false);syncSidebar();}});
+  document.addEventListener('flowcanvas-case-view',event=>{
+    if(current?.testcase.id!==event.detail.case_id)return;
+    view=event.detail.view;
+    const item=opened.get(current.project.id+':'+current.testcase.id);
+    if(item&&(!current.testcase.entity_type||current.testcase.entity_type==='case')){
+      const {tab,run_id,binding_id}=view;
+      const previous=item.view;
+      if(previous?.tab!==tab||previous?.run_id!==run_id||previous?.binding_id!==binding_id){
+        item.view={tab,run_id,binding_id};
+        saveTabs();
+      }
+    }
+    syncSidebar();
+    publish();
+  });
+  document.addEventListener('flowcanvas-case-sidebar-chat',()=>{if(current){selectWaveSidebar('chat');collapseChat(false,true);}});
   window.FlowCanvasCaseWorkspace={
     ready,
     /** Dock the selected case's existing explanation node without copying its callbacks or state. */
@@ -179,9 +209,11 @@
       }
       const changed=current?.testcase.id!==testcase.id||current?.project.id!==project.id;
       const sidebarState=window.FlowCanvasSidebarState?.enter('tab:'+(testcase.entity_type||'case')+':'+testcase.id,project.id);if(sidebarState)chatCollapsed=sidebarState.rightCollapsed;
-      restoreKey=null;current={project,testcase};opened.set(key,{project,testcase,preview:existing?existing.preview:true});
+      restoreKey=null;current={project,testcase};opened.set(key,{...existing,project,testcase,preview:existing?existing.preview:true});
+      if(changed||testcase.entity_type==='module')view=initialView||{tab:'overview'};
+      if(!testcase.entity_type||testcase.entity_type==='case')opened.get(key).view=view;
       dedicatedName.textContent=testcase.entity_type==='coverage'?testcase.title.split(' · ')[0]:testcase.title||testcase.name;dedicated.title='专属对话 · '+dedicatedName.textContent;for(const detail of top.querySelectorAll('.testcase-detail-pane'))detail.hidden=detail.dataset.entityId!==testcase.id;pane.classList.add('case-workspace-open');collapseChat(chatCollapsed);top.hidden=divider.hidden=context.hidden=false;
-      if(changed||testcase.entity_type==='module')view=initialView||{tab:'overview'};publish(true);ratio=1-window.FlowCanvasSidebarLayout.width/Math.max(1,pane.clientWidth-7);divider.setAttribute('aria-valuenow',String(Math.round(ratio*100)));paintTabs();
+      publish(true);ratio=1-window.FlowCanvasSidebarLayout.width/Math.max(1,pane.clientWidth-7);divider.setAttribute('aria-valuenow',String(Math.round(ratio*100)));paintTabs();
     },
     context(){return current?{...current,view:{...view}}:null;}
   };

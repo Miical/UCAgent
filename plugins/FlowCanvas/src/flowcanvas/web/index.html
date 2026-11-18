@@ -159,9 +159,11 @@
         <div id="project-module-options" role="listbox" aria-label="顶层模块候选" hidden></div>
         <p id="project-rtl-status" role="status"></p>
         <div id="project-filelist" aria-label="依赖文件清单"></div>
-      </div></div>
+      </div>
+      <p class="project-import-guidance">仅有 RTL 可直接创建项目；已有验证环境或用例，建议先备份再创建并导入。</p>
+    </div>
     <p id="project-error" role="alert" hidden></p>
-    <footer><button id="project-back" hidden>重新选择</button><button id="project-confirm">打开此文件夹</button></footer>
+    <footer><button id="project-back" hidden>重新选择</button><button id="project-confirm">打开此文件夹</button><button id="project-create-import" class="project-create-import targets-empty-ai-button case-ai-action" type="button" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 4H5v16h14v-7M8 9h4M8 13h7M8 17h5"/><path class="case-ai-spark" d="M19 1l1.2 3.8L24 6l-3.8 1.2L19 11l-1.2-3.8L14 6l3.8-1.2Z"/></svg><span>创建并导入</span></button></footer>
   </dialog>
   <script src="/assets/sidebar-motion.js"></script>
   <script src="/assets/app.js"></script>

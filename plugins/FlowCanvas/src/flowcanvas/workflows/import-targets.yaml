@@ -66,6 +66,19 @@ mission:
       never claim success by excluding reused definitions or creating no targets.
       Store only a compact import scope in {OUT}/import-scope.json; plans and descriptions belong on cards.
       Continue through all stages using SetCurrentStageJournal and Complete, then Exit after acceptance.
+
+      If inspection finds no eligible source content, do not stop, invent cards, generate a new
+      verification environment, or fabricate coverage/smoke receipts. Write an explicit absence
+      result in the phase's scope JSON: status: skipped, skip_reason: a concrete source-backed
+      explanation, inspected_files: nonempty existing project-relative source paths actually read
+      (RTL paths are valid evidence when no verification source exists), files: [], card_ids: [],
+      repairs: []. Preserve every existing card and all runs unchanged. Use this same scope result
+      to Complete each remaining stage of this phase; its checkers accept an evidenced skip.
+      Continue into the next phase in a combined import; do not Exit between phases. Report skipped
+      phases and their reasons separately from successfully synchronized content. Missing tools,
+      broken dependencies, unreadable source, malformed coverage and failed simulation are errors,
+      never absence evidence. If eligible definitions or runnable cases exist, normal acceptance
+      remains mandatory. Missing coverage definitions alone must not skip available test cases.
     tips:
       always: []
       random: []
@@ -76,6 +89,7 @@ stage:
   - name: inspect_verification_scope
     desc: 确认验证源码与文档范围
     task:
+      - "If no eligible covergroup/coverpoint/cross/normal bins exist, record the explicit skipped scope described in the system policy, Complete all target stages and continue; assertions or scoreboards alone are not targets."
       - "Read project verification entrypoints, build file lists and relevant verification documents. Follow necessary includes, but exclude unrelated DUTs, tools, logs and build products."
       - "Use verification_targets inspect(files) to read raw source with no syntax parser; identify only covergroup/coverpoint/cross/normal-bin declaration ranges yourself. Write {OUT}/import-scope.json with files (project-relative verification sources), documents (existing reference documents, or []), card_ids (initially []), repairs (initially []), instance_splits (initially []), and exclusions (initially []). No README is required."
     output_files: ["{OUT}/import-scope.json"]

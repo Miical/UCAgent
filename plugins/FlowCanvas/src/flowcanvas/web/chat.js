@@ -12,6 +12,7 @@ let sessionRows=[],showArchived=false,backendCatalogs=[],backendWorkspace=null,c
 let backendChoice=localStorage.getItem('flowcanvas.backend')||'codex';
 let caseContext=null,caseSwitch=0,caseSwitching=false,ordinarySession=null,caseReady=Promise.resolve();
 let conversationScope='global';
+let welcomePromptKind='global';
 /** Namespace browser drafts and selection by the same global/project storage scope as the server. */
 function scopedStorageKey(key){return key+'.storage-v1.'+conversationScope;}
 /** Remember the main tab independently of whichever scoped conversation is currently visible. */
@@ -79,7 +80,12 @@ let quoteDraft=[];
 const quotes=new Map();
 /** Restore only this scope's drafts; global text never enters a project draft. */
 const conversationScopeReady=request('/projects').then(state=>{
-  conversationScope=state.current?.id||'global';ordinarySession=localStorage.getItem(scopedStorageKey('flowcanvas.main.session'));
+  conversationScope=state.current?.id||'global';
+  ordinarySession=localStorage.getItem(scopedStorageKey('flowcanvas.main.session'));
+  if(state.current){
+    const showStarters=localStorage.getItem('flowcanvas.project-starters:'+conversationScope)==='true';
+    welcomePromptKind=showStarters?'project':null;
+  }
   for(const [key,map] of [['flowcanvas.drafts',drafts],['flowcanvas.annotations',quotes]]){
     try{
       const values=JSON.parse(localStorage.getItem(scopedStorageKey(key))||'{}');map.clear();
@@ -479,13 +485,17 @@ function modelSelection(){
 /** Render the selected session; other active conversations keep running independently. */
 const seenAITestRuns=new Map();
 function render(data){
+  if(welcomePromptKind==='project'&&!data.case_binding&&data.items.some(item=>item.kind==='user')){
+    welcomePromptKind=null;
+    try{localStorage.removeItem('flowcanvas.project-starters:'+conversationScope);}catch{}
+  }
   const aiRun=data.ai_test_run;
   if(seenAITestRuns.has(data.id)&&aiRun?.run?.id&&aiRun.project&&seenAITestRuns.get(data.id)!==aiRun.run.id){
     document.dispatchEvent(new CustomEvent('flowcanvas-test-run',{detail:aiRun}));
   }
   seenAITestRuns.set(data.id,aiRun?.run?.id||null);
   const changedBackend=session?.backend!==data.backend;
-  session=data;if(changedBackend)selectBackendModels(data.backend);document.dispatchEvent(new CustomEvent('flowcanvas-session',{detail:{id:data.id}}));view.render({...data,show_global_prompts:conversationScope==='global',page_context:caseContext&&data.case_binding?.project_id===caseContext.project.id&&data.case_binding?.case_id===caseContext.testcase.id?caseContext:null});controls();error(data.error);paintQueue();paintAttachments();paintWorkflowRun();
+  session=data;if(changedBackend)selectBackendModels(data.backend);document.dispatchEvent(new CustomEvent('flowcanvas-session',{detail:{id:data.id}}));view.render({...data,welcome_prompt_kind:welcomePromptKind,page_context:caseContext&&data.case_binding?.project_id===caseContext.project.id&&data.case_binding?.case_id===caseContext.testcase.id?caseContext:null});controls();error(data.error);paintQueue();paintAttachments();paintWorkflowRun();
   const option=[...$('sessions').options].find(o=>o.value===data.id);
   if(option)option.textContent=data.title||'新对话';
   $('session-label').textContent=data.title||'新对话';
@@ -776,8 +786,28 @@ async function switchCase(context){
   }catch(exc){if(token===caseSwitch)error(exc.message);}
   finally{if(token===caseSwitch){caseSwitching=false;controls();}}
 }
-document.addEventListener('flowcanvas-case-context',event=>{caseReady=switchCase(event.detail).catch(exc=>error(exc.message));});
+let pendingCaseActivation=null;
+document.addEventListener('flowcanvas-case-context',event=>{
+  const next=event.detail;
+  const samePage=context=>context?.project.id===next.project.id&&
+    context.testcase.id===next.testcase.id&&context.testcase.instance===next.testcase.instance;
+  // Waveform metadata can arrive while the conversation is still loading.
+  // Update its view without replacing the promise or cancelling that switch.
+  if(samePage(pendingCaseActivation)){
+    pendingCaseActivation.view=next.view;
+    return;
+  }
+  if(!next.activate){
+    if(samePage(caseContext))caseContext.view=next.view;
+    return;
+  }
+  pendingCaseActivation=next;
+  caseReady=switchCase(next).catch(exc=>error(exc.message)).finally(()=>{
+    if(pendingCaseActivation===next)pendingCaseActivation=null;
+  });
+});
 document.addEventListener('flowcanvas-case-close',()=>{
+  pendingCaseActivation=null;
   if(!caseContext){++caseSwitch;return;}
   const token=++caseSwitch;saveDraft();saveQuote();caseContext=null;caseSwitching=true;
   const restore=ordinarySession||localStorage.getItem(scopedStorageKey('flowcanvas.main.session'));
@@ -850,6 +880,20 @@ async function globalConversation(){
 
 /** Page actions reuse the normal conversation execution and permission endpoints. */
 window.FlowCanvasAI={
+  /** A newly created project starts its own conversation, then reloads into that scope. */
+  async createProjectImport({project,requirements,initialize}){
+    const model=$('model').value,effort=$('effort').value;
+    if(!model)throw Error('请先选择可用模型');
+    saveDraft();
+    project=await initialize();
+    const owner=await request('/sessions',{backend:backendChoice});
+    await request('/sessions/'+owner.id+'/settings',{title:'导入项目 · '+project.name});
+    await request('/sessions/'+owner.id+'/permissions',{mode:backendChoice==='opencode'?'full':'workspace'});
+    await request('/sessions/'+owner.id+'/attachment',{workflow_id:'import-project',task_only:true,rtl_file:project.path+'/'+project.rtl.top_file,dut:project.rtl.top});
+    await request('/sessions/'+owner.id+'/messages',{text:'请启动附加的 import-project 工作流，为项目 '+project.path+' 按阶段同步验证目标与测试用例，遵循工作流的源码绑定、覆盖定义拆分、运行配置与波形产物要求。只补缺失项，保留未变化内容。用户要求：'+(requirements||'完成项目导入。'),model,effort,speed:speedMode,task_card:{title:'导入项目',workflow:'导入项目',project:project.name,requirements:project.name+(requirements?.trim()?'\n'+requirements.trim():'')}});
+    for(const key of ['flowcanvas.main.session','flowcanvas.session'])localStorage.setItem(key+'.storage-v1.'+project.id,owner.id);
+    location.reload();
+  },
   open:async id=>{await list();await choose(id);},
   /** Send a scoped task to the current or a newly created conversation bound to the same page. */
   async runCaseTask({text,project,testcase,current=true,requirements,taskTitle,caseView=null}){
@@ -873,7 +917,7 @@ window.FlowCanvasAI={
   async startCase({text,current=true,project,requirements,design=null}){
     await globalConversation();
     const model=$('model').value,effort=$('effort').value;
-    const taskTitle=design?.kind==='import-testcases'?'同步测试用例':design?.kind==='plan-goals'?'规划验证目标':design?.kind==='import-goals'?'同步验证目标':design?.kind==='add-goal'?'新增验证目标':design?.kind==='delete-goal'?'删除验证目标':design?.kind==='functional-coverage'?'分析功能覆盖率':design?.kind==='run-testcase'?'运行测试用例':design?.kind==='delete-testcase'?'删除测试用例':design?.kind==='line-coverage'?'分析'+(({line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率'})[design.metric]||'行覆盖率'):design?'解释设计':'新增测试用例';
+    const taskTitle=design?.kind==='import-project'?'导入项目':design?.kind==='import-testcases'?'同步测试用例':design?.kind==='plan-goals'?'规划验证目标':design?.kind==='import-goals'?'同步验证目标':design?.kind==='add-goal'?'新增验证目标':design?.kind==='delete-goal'?'删除验证目标':design?.kind==='functional-coverage'?'分析功能覆盖率':design?.kind==='run-testcase'?'运行测试用例':design?.kind==='delete-testcase'?'删除测试用例':design?.kind==='line-coverage'?'分析'+(({line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率'})[design.metric]||'行覆盖率'):design?'解释设计':'新增测试用例';
     if(!model)throw Error('请先选择可用模型');
     let owner=session;
     if(current){
@@ -886,8 +930,8 @@ window.FlowCanvasAI={
       await request('/sessions/'+owner.id+'/permissions',{mode:backendChoice==='opencode'?'full':'workspace'});
     }
     if(current&&!owner.id)owner=await ensureSession();
-    if(!design||design.kind==='plan-goals'||design.kind==='import-goals'||design.kind==='import-testcases')await request('/sessions/'+owner.id+'/attachment',{workflow_id:design?.kind==='import-testcases'?'import-testcases':design?.kind==='import-goals'?'import-targets':design?.kind==='plan-goals'?'plan-goals':'generate-testcase',task_only:true,rtl_file:project.rtl?.top_file?project.path+'/'+project.rtl.top_file:'',dut:project.rtl?.top||'RTL'});
-    const result=await request('/sessions/'+owner.id+'/messages',{text,model,effort,speed:speedMode,task_card:{title:taskTitle,workflow:design?.kind==='import-testcases'?'同步测试用例':design?.kind==='import-goals'?'同步验证目标':design?.kind==='plan-goals'?'规划验证目标':design?'':'新增测试用例',project:project.name,requirements:design?(design.instance||'')+(requirements?'\n'+requirements:''):requirements||''}});
+    if(!design||design.kind==='plan-goals'||design.kind==='import-goals'||design.kind==='import-testcases'||design.kind==='import-project')await request('/sessions/'+owner.id+'/attachment',{workflow_id:design?.kind==='import-project'?'import-project':design?.kind==='import-testcases'?'import-testcases':design?.kind==='import-goals'?'import-targets':design?.kind==='plan-goals'?'plan-goals':'generate-testcase',task_only:true,rtl_file:project.rtl?.top_file?project.path+'/'+project.rtl.top_file:'',dut:project.rtl?.top||'RTL'});
+    const result=await request('/sessions/'+owner.id+'/messages',{text,model,effort,speed:speedMode,task_card:{title:taskTitle,workflow:design?.kind==='import-project'?'导入项目':design?.kind==='import-testcases'?'同步测试用例':design?.kind==='import-goals'?'同步验证目标':design?.kind==='plan-goals'?'规划验证目标':design?'':'新增测试用例',project:project.name,requirements:design?(design.instance||'')+(requirements?'\n'+requirements:''):requirements||''}});
     await list();await choose(owner.id);
     return result;
   }

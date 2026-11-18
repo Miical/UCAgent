@@ -55,6 +55,27 @@ mission:
       database and never publishes cumulative coverage; it proves the selected execution path only.
       Save scope and receipts in {OUT}/case-import.json, never edit card management files directly.
       Use SetCurrentStageJournal and Complete through all stages, then Exit after acceptance.
+
+      If inspection finds no eligible source content, do not stop, invent cards, generate a new
+      verification environment, or fabricate coverage/smoke receipts. Write an explicit absence
+      result in the phase's scope JSON: status: skipped, skip_reason: a concrete source-backed
+      explanation, inspected_files: nonempty existing project-relative source paths actually read
+      (RTL paths are valid evidence when no verification source exists), files: [], card_ids: [],
+      repairs: []. Preserve every existing card and all runs unchanged. Use this same scope result
+      to Complete each remaining stage of this phase; its checkers accept an evidenced skip.
+      Continue into the next phase in a combined import; do not Exit between phases. Report skipped
+      phases and their reasons separately from successfully synchronized content. Missing tools,
+      broken dependencies, unreadable source, malformed coverage and failed simulation are errors,
+      never absence evidence. If eligible definitions or runnable cases exist, normal acceptance
+      remains mandatory. Missing coverage definitions alone must not skip available test cases.
+      When runnable cases exist but no eligible functional coverage definitions or existing target
+      cards exist, import the cases and real waveform-enabled runners normally. Record in
+      case-import.json coverage_status: skipped, coverage_skip_reason: the concrete absence reason,
+      coverage_inspected_files: nonempty existing project-relative inspected sources. Complete the
+      shared coverage and coverage-smoke gates with that evidence, without generating a coverage
+      model or running a fake smoke. This does not skip card/runner validation or claim a passing
+      simulation. Existing coverage definitions or targets require normal configuration and smoke;
+      unavailable tools, failed extraction and invalid coverage mappings cannot use this skip.
     tips:
       always: []
       random: []
@@ -65,6 +86,7 @@ stage:
   - name: inspect_testcase_scope
     desc: 确认测试用例与运行入口
     task:
+      - "If no existing runnable test scenarios exist, record the explicit skipped scope described in the system policy and Complete every remaining case stage without creating cases, configuring coverage or running smoke."
       - "Read actual test entrypoints, scripts and test configuration. Select runnable scenarios in the requested module and exclude unrelated suites and base classes."
       - "Write {OUT}/case-import.json with files (project-relative test implementation files), card_ids=[], repairs=[]. Record concise scope/exclusion notes as needed. Track all reused, added and repaired case IDs."
     checker:

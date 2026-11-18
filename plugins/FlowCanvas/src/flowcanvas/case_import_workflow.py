@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from ucagent.checkers.base import Checker
+from .import_absence import skipped_import, absent_coverage
 from .smoke_runs import case_identity, coverage_identity, startup_error, validate_smoke_report
 from .testcases import Cases
 
@@ -25,6 +26,8 @@ class CaseImportChecker(Checker):
             request=json.loads((work.parent/'request.json').read_text())
             store=Cases(request['project_root'])
             scope=json.loads((work/'summary/case-import.json').read_text())
+            skipped=skipped_import(scope,request,store,'testcase')
+            if skipped is not None:return True,skipped
             files=scope.get('files')
             if not isinstance(files,list) or not files:
                 raise ValueError('List the project-relative test implementation files')
@@ -51,7 +54,8 @@ class CaseImportChecker(Checker):
                 after=cards[identity].model_dump()
                 if any(before.get(key)!=after.get(key) for key in fields) and identity not in repair_ids:
                     raise ValueError('Preserve existing case content unless a concrete repair is recorded: '+identity)
-            if self.mode=='coverage':
+            coverage_skip=absent_coverage(scope,store)
+            if self.mode=='coverage' and coverage_skip is None:
                 config=data.coverage
                 if config is None or config.mode!='shared':
                     raise ValueError('Configure shared coverage through test_case_runs before startup checks')
@@ -81,8 +85,10 @@ class CaseImportChecker(Checker):
                 entries.add(entry)
                 if self.mode!='cards' and '{wave_dir}' not in card.runner.command:
                     raise ValueError('Runner must enable VCD dumping into {wave_dir}/waves.vcd: '+identity)
-                if self.mode=='coverage' and not all(token in card.runner.command for token in ('{coverage_db}','{coverage_name}')):
+                if self.mode=='coverage' and coverage_skip is None and not all(token in card.runner.command for token in ('{coverage_db}','{coverage_name}')):
                     raise ValueError('Runner must forward shared coverage path and unique run name: '+identity)
+            if self.mode in {'coverage','smoke'} and coverage_skip is not None:
+                return True,{'cards':len(ids),'coverage_status':'skipped','reason':coverage_skip,'coverage_smoke_checked':False}
             if self.mode=='smoke':
                 identity=scope.get('smoke_case_id')
                 reference=scope.get('smoke_reference_case_id')

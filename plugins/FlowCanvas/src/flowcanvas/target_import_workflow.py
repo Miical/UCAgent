@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from ucagent.checkers.base import Checker
+from .import_absence import skipped_import
 from .targets import Targets
 from .line_bindings import read_source
 
@@ -23,6 +24,8 @@ class TargetImportChecker(Checker):
             request=json.loads((work.parent/'request.json').read_text())
             store=Targets(request['project_root'])
             scope=json.loads((work/'summary/import-scope.json').read_text())
+            skipped=skipped_import(scope,request,store,'target')
+            if skipped is not None:return True,skipped
             files=scope.get('files')
             if not isinstance(files,list) or not files or any(not isinstance(f,str) for f in files):
                 raise ValueError('files must list project-relative verification source paths')

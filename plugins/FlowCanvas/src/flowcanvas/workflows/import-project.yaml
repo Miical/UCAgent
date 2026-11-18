@@ -14,3 +14,9 @@ mission:
       Stay in this single workflow and conversation; do not start separate child workflows.
       Exit only after ALL stages of BOTH phases have been accepted. Any Exit instructions below
       refer to the end of the entire combined workflow, never the transition between phases.
+      Absence is a valid skipped phase: accept the explicit source-backed skipped scope, Complete
+      that phase's stages, and proceed to the next phase. A project with no eligible coverage may
+      still have runnable cases; inspect them independently. With no runnable cases, skip runner,
+      coverage and smoke stages without building a new testbench. If both phases are skipped,
+      finish normally with the reasons; do not ask to resume or spend automatic recovery attempts
+      on absent content. Actual import/configuration/execution errors still fail their gates.
