@@ -98,4 +98,15 @@ async def collect(runner,row,log):
 
 def public(root):
     """Return the project's published coverage batch without source-specific assumptions."""
-    return state(root)
+    from . import native_toffee
+    if native_toffee.enabled(root):
+        return native_toffee.public(root)
+    current = state(root)
+    if (current.get('report') or {}).get('provider') == 'toffee':
+        return {**current, 'provider': 'toffee'}
+    definition = Path(root) / '.flowcanvas/testcases.json'
+    if definition.is_file():
+        config = json.loads(definition.read_text()).get('coverage') or {}
+        if config.get('provider') != 'vcs' and config.get('tool') == 'verilator-toffee':
+            return {**current, 'provider': 'toffee'}
+    return current

@@ -1,4 +1,4 @@
-"""Rebuild UCAgent's pinned Surfer bundle with native collapsed bit-vector rows."""
+"""Rebuild UCAgent's pinned Surfer bundle with its local renderer changes."""
 
 import argparse
 import base64
@@ -18,6 +18,7 @@ PATCHED_SHA256 = "95ec5a20ff96d9c46bf8ce955e1a63ec4f87070b0068c27e40b88b1ea27b30
 LOCK_SHA256 = "c5ced9f5f40448b8980608201e8fb14d9b24d82ca0003185cb7b1cc5ff236441"
 VIEW_SHA256 = "dbedaaeb5e8d2a6384cf332aae7ee427ec415997abed8ca5a685344a591d115d"
 PATCHED_VIEW_SHA256 = "0026a885c0fcb0c248cedb15a373d214de416b5f2832e9a8d3029602128a8a13"
+FITTED_VIEW_SHA256 = "23ddaa16a0e6cd0c9dcada3092bd1430709b415785ee654128f0dadd65a586be"
 
 
 def main() -> None:
@@ -39,9 +40,11 @@ def main() -> None:
     source_hash = hashlib.sha256(translation.read_bytes()).hexdigest()
     if source_hash not in {SOURCE_SHA256, PATCHED_SHA256}:
         parser.error("Translation sources differ from the pinned revision/local patch")
-    view_hash = hashlib.sha256((source / "libsurfer/src/view.rs").read_bytes()).hexdigest()
+    view = source / "libsurfer/src/view.rs"
+    view_hash = hashlib.sha256(view.read_bytes()).hexdigest()
     if (source_hash, view_hash) not in {
         (SOURCE_SHA256, VIEW_SHA256), (PATCHED_SHA256, PATCHED_VIEW_SHA256),
+        (PATCHED_SHA256, FITTED_VIEW_SHA256),
     }:
         parser.error("Use a clean pinned checkout or one with the complete local patch")
     version = subprocess.check_output([args.wasm_bindgen, "--version"], text=True).strip()
@@ -49,11 +52,18 @@ def main() -> None:
         parser.error("Install wasm-bindgen-cli version " + BINDGEN_VERSION)
     index = output / "index.html"
     html = index.read_text(encoding="utf-8")
-    for name in ("surfer.js", "surfer_bg.wasm"):
-        if len(re.findall(r'href="\./' + re.escape(name) + r'"[^>]*integrity="sha384-[^"]+"', html)) != 1:
+    asset_tags = {
+        name: re.compile(r'href="\./' + re.escape(name) + r'(?:\?v=[a-f0-9]+)?("[^>]*integrity=")sha384-[^"]+"')
+        for name in ("surfer.js", "surfer_bg.wasm")
+    }
+    for name, tag in asset_tags.items():
+        if len(tag.findall(html)) != 1:
             parser.error("index.html must contain exactly one integrity preload for " + name)
     if source_hash == SOURCE_SHA256:
         subprocess.run(["patch", "--batch", "-p1", "-i", str(resources / "bit_expansion.patch")],
+                       cwd=source, check=True)
+    if view_hash != FITTED_VIEW_SHA256:
+        subprocess.run(["patch", "--batch", "-p1", "-i", str(resources / "variable_name_width.patch")],
                        cwd=source, check=True)
     shutil.copyfile(resources / "bit_expansion.rs", translation.with_name("bit_expansion.rs"))
     env = dict(os.environ, VERGEN_GIT_SHA=SURFER_REVISION,
@@ -69,15 +79,16 @@ def main() -> None:
         subprocess.run([args.wasm_bindgen, "--target", "web", "--out-name", "surfer",
                         "--out-dir", str(staging),
                         str(target / "wasm32-unknown-unknown/release/surfer.wasm")], check=True)
-        for name in ("surfer.js", "surfer_bg.wasm"):
-            digest = base64.b64encode(hashlib.sha384((staging / name).read_bytes()).digest()).decode("ascii")
-            html = re.sub(r'(href="\./' + re.escape(name) + r'"[^>]*integrity=")sha384-[^"]+',
-                          lambda match: match[1] + "sha384-" + digest, html)
+        for name, tag in asset_tags.items():
+            digest = hashlib.sha384((staging / name).read_bytes())
+            integrity = base64.b64encode(digest.digest()).decode("ascii")
+            version = digest.hexdigest()[:16]
+            html = tag.sub(lambda match: f'href="./{name}?v={version}{match[1]}sha384-{integrity}"', html)
         # Publish only after both matching assets and their integrity hashes are ready.
         for name in ("surfer.js", "surfer_bg.wasm"):
             shutil.copyfile(staging / name, output / name)
         index.write_text(html, encoding="utf-8")
-    print("Rebuilt Surfer " + SURFER_REVISION + " with collapsed bit-vector expansion")
+    print("Rebuilt Surfer " + SURFER_REVISION + " with the UCAgent renderer changes")
 
 
 if __name__ == "__main__":

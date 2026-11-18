@@ -268,10 +268,13 @@ def routes(projects,runner):
     @router.post('/{identity}/coverage/reset')
     async def clear_coverage(identity:str):
         from .coverage_runtime import reset
+        from . import native_toffee
         async with runner.lock:
             project=root(identity)
             if any(run['id'] in runner.tasks or run['status'] in {'starting','running'} for run in runner.list(project)):
                 raise HTTPException(409,'Cannot clear accumulated coverage while a test is active')
+            if native_toffee.enabled(project):
+                return native_toffee.reset(project)
             return reset(project)
     @router.get('/{identity}/test-runs')
     def runs(identity:str,case_id:str|None=None,include_smoke:bool=False):

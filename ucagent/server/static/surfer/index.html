@@ -27,8 +27,8 @@
         }
         if (deepLink) {
             try {
-                const surfer = await import('./surfer.js');
-                await surfer.default({module_or_path: './surfer_bg.wasm'});
+                const surfer = await import(document.getElementById('surfer-js').href);
+                await surfer.default({module_or_path: document.getElementById('surfer-wasm').href});
                 window.inject_message = surfer.inject_message;
                 window.id_of_name = surfer.id_of_name;
                 window.draw_text_arrow = surfer.draw_text_arrow;
@@ -82,12 +82,13 @@
         window.on_ucagent_wave_progress = on_ucagent_wave_progress;
         window.hide_ucagent_wave_progress = hide_ucagent_wave_progress;
 
-        function on_surfer_error(msg) {
-            console.log("Setting error message")
-            document.getElementById("error_message").textContent = msg
-            document.getElementById("error_container").style.display = "block"
-        }
-        window.on_surfer_error = on_surfer_error;
+        (() => {
+            function on_surfer_error(msg) {
+                document.getElementById("error_message").textContent = msg;
+                document.getElementById("error_container").style.display = "block";
+            }
+            window.on_surfer_error = on_surfer_error;
+        })();
     </script>
 
 
@@ -245,7 +246,7 @@
             transition: width 120ms linear;
         }
     </style>
-<link rel="modulepreload" href="./surfer.js" crossorigin="anonymous" integrity="sha384-4UmTHbtn/bySjoIgVu+ZCTbFcD4+b4yBRGluqBwXDoy7V5DSPvub863dPqb2fooS"><link rel="preload" href="./surfer_bg.wasm" crossorigin="anonymous" integrity="sha384-c+wicwu6dUCpb61+qr4opYVDoVmrwZ37S2dyP/JB1UUNZDTs+kfYAtQGXWktUpQ9" as="fetch" type="application/wasm"></head>
+<link rel="modulepreload" id="surfer-js" href="./surfer.js?v=39f8bf8f4726e051" crossorigin="anonymous" integrity="sha384-Ofi/j0cm4FEK9Aq7QgTeKAEGXUqqY+0pZkNcnS8ILZEOymszBIWCS6Hrx5NJpGen"><link rel="preload" id="surfer-wasm" href="./surfer_bg.wasm?v=4ad6bfc4d4f7e98a" crossorigin="anonymous" integrity="sha384-Sta/xNT36YpeweDTKCxyVp+StwRjp+DHPFvfGDZZPaN5T7X75kJLqixLmifyyq4L" as="fetch" type="application/wasm"></head>
 
 <body>
     <!-- The WASM code will resize the canvas dynamically -->

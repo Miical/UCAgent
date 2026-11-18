@@ -81,6 +81,19 @@ providers use `mode: per_run` with explicit extraction and merge commands; legac
 shared-command setups also remain readable. They are not automatically watched.
 New VCS imports use the native provider rather than generating custom scripts.
 
+### Native Picker / Toffee artifacts
+
+The verification panel reads completed runs from
+`output/flowcanvas/coverage/database/toffee/<run_id>/`. Put Verilator databases
+under `raw/` and the native Toffee JSON report under `toffee/`. Publish a
+`run.json` containing the run's `build_id` after the files are complete. The
+reader derives the active build from `verification/coverage/build-inputs.json`
+and uses `verification/coverage/flowcanvas-map.json` for target matching.
+The panel combines compatible runs on read and only shows measured DUT code
+metrics. Existing test runner commands still use their saved configuration.
+Clearing accumulation excludes the completed run IDs from the next batch
+while keeping their native coverage files and logs.
+
 `line_status` and `functional.status` are `available` or `unavailable`.
 Unavailable data has no observations. A measured zero-hit result has actual
 denominators and zero hit counts. Neither means that a test passed.

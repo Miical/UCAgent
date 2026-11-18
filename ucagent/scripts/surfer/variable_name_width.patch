@@ -1,0 +1,80 @@
+--- a/libsurfer/src/view.rs
++++ b/libsurfer/src/view.rs
+@@ -424,3 +424,24 @@
+-                SidePanel::left("variable list")
+-                    .default_width(100.)
+-                    .width_range(100.0..=max_width)
++                let available_width = ctx.available_rect().width();
++                // Reserve room for cursor values and the waveform even with long hierarchy paths.
++                let max_name_width = (available_width - 220.0).max(available_width * 0.5);
++                let min_name_width = 100.0_f32.min(max_name_width);
++                let name_width = self
++                    .variable_name_width(ctx)
++                    .clamp(min_name_width, max_name_width);
++                let panel_id = egui::Id::new("variable list");
++                let previous_width = ctx.data_mut(|data| {
++                    let width_id = panel_id.with("fit width");
++                    let previous = data.get_temp::<f32>(width_id);
++                    data.insert_temp(width_id, name_width);
++                    previous
++                });
++                // Refit when the label requirements change, leaving manual drags alone.
++                if previous_width != Some(name_width) {
++                    if let Some(mut panel) = egui::containers::panel::PanelState::load(ctx, panel_id) {
++                        panel.rect.set_width(name_width);
++                        ctx.data_mut(|data| data.insert_persisted(panel_id, panel));
++                    }
++                }
++                SidePanel::left(panel_id)
++                    .default_width(name_width)
++                    .width_range(min_name_width..=max_name_width)
+@@ -687,0 +709,49 @@
++    }
++
++    fn variable_name_width(&self, ctx: &egui::Context) -> f32 {
++        let waves = self.user.waves.as_ref().unwrap();
++        let style = ctx.style();
++        let text_size = self.user.config.layout.waveforms_text_size;
++        let has_groups = waves.items_tree.iter().any(|node| node.level > 0);
++        let group_icon = if has_groups {
++            text_size + style.spacing.item_spacing.x
++        } else {
++            0.0
++        };
++        let frame_padding = Frame::side_top_panel(&style).inner_margin.sum().x;
++        let padding = frame_padding
++            + 2.0 * style.spacing.button_padding.x
++            + style.spacing.scroll.allocated_width()
++            + 4.0;
++        ctx.fonts_mut(|fonts| {
++            waves
++                .items_tree
++                .iter_visible_extra()
++                .filter_map(|entry| {
++                    let item = waves.displayed_items.get(&entry.node.item_ref)?;
++                    let DisplayedItem::Variable(variable) = item else {
++                        return None;
++                    };
++                    let mut label = LayoutJob::default();
++                    item.add_to_layout_job(
++                        Color32::BLACK,
++                        &style,
++                        &mut label,
++                        None,
++                        &self.user.config,
++                    );
++                    let expand_icon = if matches!(variable.info, VariableInfo::Compound { .. }) {
++                        style.spacing.indent
++                    } else {
++                        0.0
++                    };
++                    Some(
++                        fonts.layout_job(label).size().x
++                            + 10.0 * f32::from(entry.node.level)
++                            + group_icon
++                            + expand_icon
++                            + padding,
++                    )
++                })
++                .fold(0.0, f32::max)
++        })

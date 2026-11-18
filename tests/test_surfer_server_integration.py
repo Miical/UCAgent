@@ -70,7 +70,7 @@ def test_surfer_adapter_and_readiness_command_are_served_before_wasm(tmp_path):
             "UCAgentSurferFstFallback.prepareWaveform"
         )
         assert page.text.index("UCAgentSurferFstFallback.prepareWaveform") < page.text.index(
-            "await import('./surfer.js')"
+            "await import(document.getElementById('surfer-js').href)"
         )
         assert "prepareLocation(window.location, window.history)" in page.text
         assert 'id="ucagent_wave_progress_bar"' in page.text

@@ -3,12 +3,12 @@ import hashlib
 import re
 from pathlib import Path
 from fastapi import HTTPException
-from .coverage_runtime import state
+from .coverage_runtime import public
 
 
 def source_snapshot(project_root, instance, metric='line', file=None):
     """Resolve a report-owned source snapshot, rejecting paths or content outside its build."""
-    data=state(project_root);report=data.get('report') or {}
+    data=public(project_root);report=data.get('report') or {}
     if metric == "line":
         row=next((n for n in report.get('instances',[]) if n['path']==instance),None)
         if not row:raise HTTPException(404,'Instance has no coverage source')

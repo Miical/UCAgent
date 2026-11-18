@@ -123,7 +123,7 @@ class Targets:
         atomic(self.path, definition.model_dump())
         return definition
 
-    def status(self):
+    def status(self, *, include_coverage=True):
         definition = self.read()
         files = {b.file for n in definition.targets for b in n.bindings}
         parsed, errors, counts = {}, {}, Counter()
@@ -167,7 +167,8 @@ class Targets:
         payload = definition.model_dump()
         if self.path.name == 'verification.json':
             from .functional_coverage import project
-            extra['coverage'] = project(self.root, definition, parsed, reports)
+            if include_coverage:
+                extra['coverage'] = project(self.root, definition, parsed, reports)
             from .target_explanations import project_explanation
             explanation_cache = {}
             for target, data in zip(definition.targets, payload['targets']):

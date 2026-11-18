@@ -81,7 +81,10 @@ def native_verilator_metrics(root, directory, module):
     metadata = root / ".flowcanvas/project.json"
     project = json.loads(metadata.read_text()) if metadata.is_file() else {}
     sources = [(root / name).resolve() for name in project.get("rtl", {}).get("files", [])]
-    hashes = {hashlib.sha256(path.read_bytes()).hexdigest() for path in sources if path.is_file()}
+    files_by_hash = {}
+    for path in sources:
+        if path.is_relative_to(root) and path.is_file():
+            files_by_hash.setdefault(hashlib.sha256(path.read_bytes()).hexdigest(), []).append(path)
     records = {}
     for database in sorted(Path(directory).rglob("*.dat")):
         if not database.resolve().is_relative_to(Path(directory).resolve()):
@@ -107,7 +110,10 @@ def native_verilator_metrics(root, directory, module):
             if not cache.is_file():
                 cache.parent.mkdir(parents=True,exist_ok=True)
                 cache.write_bytes(file.read_bytes())
-            scope = "dut" if (sha in hashes if hashes else file.stem == module) else "generated"
+            scope = "dut" if (sha in files_by_hash if files_by_hash else file.stem == module) else "generated"
+            matches = files_by_hash.get(sha, [])
+            if len(matches) == 1:
+                file = matches[0]
             key = hashlib.sha256(match[1].encode()).hexdigest()
             item = records.setdefault(key, dict(id=key,kind=kind,scope=scope,file=str(file.relative_to(root)),
                 line=int(fields["l"]),sha256=sha,hits=0,hierarchy=fields.get("h",""),
@@ -149,15 +155,15 @@ def summarize_native(items):
 def toffee_report(root, report_file, build_id, mapping_file=None, lcov=None, module=None, dat_dir=None):
     """Adapt native Toffee group/bin counts plus optional LCOV without importing a DUT."""
     root = Path(root).resolve()
-    report_path = Path(report_file)
-    if report_path.is_dir():
+    report_path = Path(report_file) if report_file is not None else None
+    if report_path is not None and report_path.is_dir():
         matches = list(report_path.rglob("toffee_report.json"))
         if len(matches) != 1:
             raise ValueError("Expected exactly one toffee_report.json in this run directory, found " + str(len(matches)))
         report_path = matches[0]
         if not report_path.resolve().is_relative_to(Path(report_file).resolve()):
             raise ValueError("Toffee report escapes the run report directory")
-    raw = json.loads(report_path.read_text())
+    raw = json.loads(report_path.read_text()) if report_path is not None else {}
     coverages = raw.get("coverages", {})
     functional = coverages.get("functional")
     observations = {}
@@ -166,7 +172,7 @@ def toffee_report(root, report_file, build_id, mapping_file=None, lcov=None, mod
             raise ValueError("Toffee functional coverage requires a label-path to target-ID map")
         mapping = json.loads(Path(mapping_file).read_text())
         store = Targets(root)
-        status = store.status()
+        status = store.status(include_coverage=False)
         targets = {row["id"]:row for row in status["targets"]}
         for group in functional["groups"]:
             for point in group["points"]:
@@ -197,11 +203,12 @@ def toffee_report(root, report_file, build_id, mapping_file=None, lcov=None, mod
     else:
         instances = lcov_instances(root, lcov, module) if lcov else []
     report = dict(schema_version=1, build_id=build_id,
-                  run_id=hashlib.sha256(str(report_path.resolve()).encode()).hexdigest(),
                   provider="toffee", instances=instances,
                   line_basis="verilator-native-line" if dat_dir else "lcov-unspecified",
                   code_metrics=metrics,
                   functional=dict(groups=[], observations=list(observations.values())))
+    if report_path is not None:
+        report["run_id"] = hashlib.sha256(str(report_path.resolve()).encode()).hexdigest()
     if dat_dir and not instances:
         report["line_reason"] = "no_instrumented_dut_lines"
     if line_info and line_info.get("error"):
@@ -212,7 +219,12 @@ def toffee_report(root, report_file, build_id, mapping_file=None, lcov=None, mod
 
 def merge_reports(paths):
     """Merge observed line and bin counts, rejecting incompatible source snapshots."""
-    reports = [validate_report(json.loads(Path(path).read_text())) for path in dict.fromkeys(paths)]
+    return merge_observations([json.loads(Path(path).read_text()) for path in dict.fromkeys(paths)])
+
+
+def merge_observations(reports):
+    """Merge validated counters from one build without requiring intermediate JSON files."""
+    reports = [validate_report(report) for report in reports]
     if not reports or len({r["build_id"] for r in reports}) != 1:
         raise ValueError("Coverage merge requires reports from one build")
     if len(reports) == 1:

@@ -72,11 +72,14 @@ window.FlowCanvasCoverageCode={
       section.open=true;window.FlowCanvasScrollToSourceLine(inspector.body,pre.children[source.line-1]);
     }catch(error){if(epoch===selection&&token===inspector.generation&&inspector.host.isConnected)inspector.body.replaceChildren(el('p','targets-error',error.message));}
   }
+  function sourceNode(metric,instance,file){
+    return {id:'cov_'+encodeURIComponent(metric+':'+instance+':'+file),entity_type:'coverage',title:names[metric]+' · '+instance.split('.').at(-1),instance,coverage_metric:metric,coverage_file:file};
+  }
+  window.FlowCanvasOpenCoverageSource=(metric,instance,file)=>open(sourceNode(metric,instance,file));
   window.addEventListener('message',event=>{
     const frame=document.querySelector('.target-line-pane iframe'),value=event.data;
     if(event.origin!==location.origin||event.source!==frame?.contentWindow||value?.type!=='flowcanvas-open-coverage-source'||!project||!names[value.metric]||typeof value.instance!=='string'||typeof value.data?.content!=='string')return;
-    const file=value.data.file||'',node={id:'cov_'+encodeURIComponent(value.metric+':'+value.instance+':'+file),entity_type:'coverage',title:names[value.metric]+' · '+value.instance.split('.').at(-1),instance:value.instance,coverage_metric:value.metric,coverage_file:file};
-    open(node,value,!!value.pin);
+    open(sourceNode(value.metric,value.instance,value.data.file||''),value,!!value.pin);
   });
   document.addEventListener('flowcanvas-case-restore',event=>{if(event.detail.project_id!==project?.id||! /^(cov_|coverage_)/.test(event.detail.case_id))return;const node=window.FlowCanvasCaseWorkspace.tab(project.id,event.detail.case_id);if(node)open(node);});
   document.addEventListener('flowcanvas-case-tab-closed',event=>{if(event.detail.project_id!==project?.id)return;const inspector=inspectors.get(event.detail.case_id);if(inspector){inspector.generation++;inspector.host.remove();inspectors.delete(event.detail.case_id);}});

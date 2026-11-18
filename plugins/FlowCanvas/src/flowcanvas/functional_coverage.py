@@ -49,6 +49,9 @@ def parse_groups(text, source):
 
 
 def revision(root):
+    from . import native_toffee
+    if native_toffee.enabled(root):
+        return native_toffee.public(root)['revision']
     path=Path(root)/'output/flowcanvas/coverage/state.json'
     if not path.exists(): return ''
     s=json.loads(path.read_text())
@@ -57,8 +60,12 @@ def revision(root):
 
 def project(root, definition, parsed, binding_reports):
     """Match stable source bindings only against the actual compiled source."""
+    from . import native_toffee
     path=Path(root)/'output/flowcanvas/coverage/state.json'
-    state=json.loads(path.read_text()) if path.exists() else {}
+    if native_toffee.enabled(root):
+        state=native_toffee.public(root)
+    else:
+        state=json.loads(path.read_text()) if path.exists() else {}
     functional=(state.get('report') or {}).get('functional', {})
     groups=functional.get('groups', [])
     from collections import Counter
@@ -117,4 +124,4 @@ def project(root, definition, parsed, binding_reports):
             instance=identity,point=identity,source_path=target.name,
             covered=observation.get('covered',sum(b['hits']>=b['goal'] for b in bins)),
             total=observation.get('total',len(bins)),bins=bins)])
-    return dict(revision=revision(root),runs=len(state.get('runs',[])),targets=targets)
+    return dict(revision=state['revision'] if 'revision' in state else revision(root),runs=len(state.get('runs',[])),targets=targets)

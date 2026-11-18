@@ -3,27 +3,10 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
   const panelView=view;
   const host=document.getElementById('project-content');
   let project=null,data=null,panel=null,active=false,query='',refreshInFlight=null,searchExpanded=true,selectedTarget=null;
-  let lineCoverage=null,inlineEditing=false,caseDetail=null;
+  let coverageSnapshot=null,coveragePanel=null,functionalPane=null,inlineEditing=false,caseDetail=null;
   let caseResults=new Map(),runCases=new Set(),pendingRun=null,runsLoaded=false,runsChecking=false;
   const opened=new Set();
   const localTextWrites=new Map(),textHighlights=new Map();
-  const coverageModes=[['functional','功能覆盖率'],['line','行覆盖率'],['toggle','翻转覆盖率'],['branch','分支覆盖率'],['cond','条件覆盖率'],['fsm','状态机覆盖率'],['assert','断言']];
-  let coverageTab='functional',functionalPane=null,linePane=null,lineFrame=null,tabBar=null;
-  function selectCoverageTab(mode,instance){
-    if(caseMode||bugMode||!tabBar)return;
-    coverageTab=coverageModes.some(([key])=>key===mode)?mode:'functional';
-    functionalPane.hidden=coverageTab!=='functional';linePane.hidden=coverageTab==='functional';
-    for(const b of tabBar.querySelectorAll('button')){b.classList.toggle('active',b.dataset.mode===coverageTab);b.setAttribute('aria-selected',String(b.dataset.mode===coverageTab));b.tabIndex=b.dataset.mode===coverageTab?0:-1;}
-    for(const card of panel.querySelectorAll('.coverage-overview-item'))card.setAttribute('aria-pressed',String(card.dataset.metric===coverageTab));
-    try{localStorage.setItem('fc-target-coverage-tab:'+project.id,coverageTab);}catch{}
-    if(coverageTab!=='functional'){
-      if(!lineFrame.src||new URL(lineFrame.src).searchParams.get('metric')!==coverageTab){
-        const view='/api/chat/projects/'+encodeURIComponent(project.id)+'/rtl-view';
-        lineFrame.src='/rtl-viewer/?coverageOnly=1&metric='+encodeURIComponent(coverageTab)+'&view='+encodeURIComponent(view)+(instance?'&focus='+encodeURIComponent(instance):'');
-      }else if(instance)lineFrame.contentWindow.postMessage({type:'flowcanvas-coverage-focus',instance},location.origin);
-    }
-  }
-
   const labels={planned:'待实现',bound:'已绑定',changed:'待核对',missing:'绑定失效',conflict:'绑定冲突',unverified:'无法校验'};
   const kinds=bugMode?{bug:['BUG','Bug']}:caseMode?{case:['TC','测试用例']}:{group:['FG','功能组'],point:['FP','功能点'],testpoint:['TP','测试点']};
   const rootKind=bugMode?'bug':caseMode?'case':'group';
@@ -116,64 +99,10 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
         }
       }
       data=results[0].value;
-      if(results.length>1)lineCoverage=results[1].status==='fulfilled'?results[1].value:null;
+      if(results.length>1)coverageSnapshot=results[1].status==='fulfilled'?results[1].value:null;
       if(first)for(const n of data.targets)if(n.kind==='group')opened.add(n.id);
       render();paintRunButtons();if(caseMode)refreshRuns();
     }catch(e){fail(e);}
-  }
-  function renderCoverageSummary(){
-    const host=panel.querySelector('.target-coverage-overview');if(!host)return;
-    const records=(data?.targets||[]).filter(n=>n.kind==='group').map(n=>data.coverage?.targets?.[n.id]);
-    const bins=[...new Map(records.flatMap(r=>r?.observations||[]).map(r=>[r.instance+'::'+r.point,r])).values()];
-    const instances=[...new Map((lineCoverage?.report?.instances||[]).map(r=>[r.path,r])).values()];
-    const kinds=lineCoverage?.report?.code_metrics||{};
-    const metrics=[
-      {mode:'functional',label:'功能覆盖率',rows:bins,valid:records.length>0&&records.every(r=>r?.status==='available'),unit:'bin'},
-      {mode:'line',label:'行覆盖率',rows:instances,valid:instances.length>0,unit:'行'},
-      ...coverageModes.slice(2).map(([mode,label])=>({
-        mode,label:mode==='assert'?'断言尝试覆盖率':label,rows:kinds[mode]?.dut?[kinds[mode].dut]:[],valid:!!kinds[mode]?.dut?.total,unit:'项'
-      }))
-    ];
-    for(const metric of metrics){
-      let card=host.querySelector('[data-metric="'+metric.mode+'"]');
-      if(!card){
-        card=button('',()=>selectCoverageTab(metric.mode),'coverage-overview-item');card.dataset.metric=metric.mode;
-        const ring=el('span','coverage-overview-ring');
-        const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 64 64');svg.setAttribute('aria-hidden','true');
-        for(const cls of ['coverage-ring-track','coverage-ring-fill']){
-          const circle=document.createElementNS(svg.namespaceURI,'circle');
-          for(const [key,value] of Object.entries({cx:32,cy:32,r:27,pathLength:100,class:cls}))circle.setAttribute(key,value);
-          svg.append(circle);
-        }
-        ring.append(svg,el('strong','coverage-metric-percent'));
-        card.append(ring,el('span','coverage-metric-label',metric.label),el('span','coverage-metric-count'));
-        host.append(card);
-      }
-      const covered=metric.rows.reduce((sum,row)=>sum+row.covered,0),total=metric.rows.reduce((sum,row)=>sum+row.total,0);
-      const available=metric.valid&&total>0,percent=available?Math.min(100,Math.max(0,100*covered/total)):0;
-      card.dataset.available=String(available);
-      card.setAttribute('aria-pressed',String(metric.mode===coverageTab));
-      card.querySelector('.coverage-ring-fill').style.strokeDashoffset=String(100-percent);
-      card.querySelector('.coverage-metric-percent').textContent=available?percent.toFixed(1)+'%':'—';
-      card.querySelector('.coverage-metric-count').textContent=available?covered+' / '+total+' '+metric.unit:'暂无数据';
-      if(metric.mode==='assert')card.title=available?'已尝试的断言比例；累计失败 '+(kinds.assert?.dut?.items||[]).reduce((sum,item)=>sum+(item.failures||0),0)+' 次，成功与失败明细请点击查看':'暂无断言数据';
-      card.setAttribute('aria-label',metric.label+'，'+(available?percent.toFixed(1)+'%，'+covered+'/'+total:'暂无有效数据')+'，点击查看明细');
-    }
-    let menu=host.querySelector('.coverage-overview-menu');
-    if(!menu){
-      menu=el('details','coverage-overview-menu');const trigger=el('summary','','⋯');trigger.title='覆盖率操作';trigger.setAttribute('aria-label','覆盖率操作');
-      const reset=button('清空累计',async()=>{
-        menu.open=false;
-        if(!confirm('清空覆盖率累计并删除共享数据库？历史运行和日志会保留。'))return;
-        try{const response=await fetch('/api/chat/projects/'+encodeURIComponent(project.id)+'/coverage/reset',{method:'POST'});if(!response.ok)throw Error(response.status===409?'测试运行中，请结束后再清空累计':'清空失败');await refresh();if(lineFrame?.src)lineFrame.contentWindow.location.reload();}catch(e){fail(e);}
-      },'coverage-menu-reset');
-      menu.append(trigger,reset);const actions=el('div','coverage-overview-actions');actions.append(el('span','coverage-shared-runs'),menu);host.prepend(actions);
-      menu.addEventListener('focusout',()=>setTimeout(()=>{if(!menu.contains(document.activeElement))menu.open=false;},0));
-      menu.addEventListener('keydown',event=>{if(event.key==='Escape'){menu.open=false;trigger.focus();}});
-    }
-    const runs=lineCoverage?.runs?.length??data?.coverage?.runs??0;
-    host.querySelector('.coverage-shared-runs').textContent='累计 '+runs+' 次';
-    menu.querySelector('button').disabled=!runs&&!lineCoverage?.build_id;
   }
   function modal(title,floating=false){const dialog=el('dialog','targets-dialog');const heading=el('header');heading.append(el('strong','',title),button('×',()=>dialog.close(),'targets-close'));const content=el('div','targets-dialog-content');dialog.append(heading,content);document.body.append(dialog);dialog.addEventListener('close',()=>dialog.remove());dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});if(floating)dialog.show();else dialog.showModal();return {dialog,content};}
   function field(parent,label,value='',multi=false){const wrapper=el('label','targets-field');wrapper.append(el('span','',label));const input=el(multi?'textarea':'input');input.value=value;if(multi)input.rows=3;wrapper.append(input);parent.append(wrapper);return input;}
@@ -504,7 +433,8 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       if(['group','point','testpoint'].includes(node.kind)){
         const coverage=coverageFor(node),valid=coverage.status==='available'&&coverage.total>0,score=el('div','target-coverage-score'+(valid?' has-data':'')),meter=el('span','goal-coverage-meter');
         const percent=valid?Math.min(100,100*coverage.covered/coverage.total):0;
-        score.append(el('span','goal-coverage-percent',valid?percent.toFixed(1)+'%':coverage.status==='stale'?'待更新':coverage.status==='conflict'?'冲突':'—'));
+        const label=valid?percent.toFixed(1)+'%':coverage.status==='stale'?'待更新':coverage.status==='conflict'?'冲突':'–';
+        score.append(el('span','goal-coverage-percent'+(label==='–'?' is-unmeasured':''),label));
         score.title=valid?coverage.covered+' / '+coverage.total+' 个 bin 达标；覆盖命中不代表正确性检查通过':coverage.status==='stale'?'源码已变化，请更新覆盖率':coverage.status==='conflict'?'覆盖率实例映射冲突':'尚无实际覆盖率数据';
         meter.style.setProperty('--coverage',percent+'%');if(valid){meter.setAttribute('role','progressbar');meter.setAttribute('aria-label',(kinds[node.kind]?.[1]||'验证目标')+'覆盖率');meter.setAttribute('aria-valuemin','0');meter.setAttribute('aria-valuemax','100');meter.setAttribute('aria-valuenow',String(percent));}else meter.setAttribute('aria-hidden','true');score.append(meter);header.append(score);
       }
@@ -663,7 +593,7 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
   function render(){
     if(inlineEditing)return;
     if(bugMode){renderBugs();return;}
-    if(!caseMode&&!bugMode){renderCoverageSummary();renderGoals();return;}
+    if(!caseMode&&!bugMode){coveragePanel.update(coverageSnapshot,data);renderGoals();return;}
     const list=panel.querySelector('.targets-tree'),summary=panel.querySelector('.targets-summary');list.replaceChildren();summary.replaceChildren();
     for(const [kind,[,label]]of Object.entries(kinds))summary.append(el('span','',data.targets.filter(n=>n.kind===kind).length+' '+label));
 
@@ -904,25 +834,10 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
     const content=[toolbar,el('div','targets-summary'),el('p','targets-error'),el('div','targets-diagnostics'),el('div','targets-tree')];
     if(!caseMode&&!bugMode){
       panel.classList.add('coverage-tabs-panel');
-      tabBar=el('nav','target-coverage-tabs');tabBar.setAttribute('role','tablist');tabBar.setAttribute('aria-label','覆盖率类型');
-      for(const [mode,label] of coverageModes){
-        const b=button(label,()=>selectCoverageTab(mode));b.dataset.mode=mode;b.setAttribute('role','tab');tabBar.append(b);
-      }
-      functionalPane=el('div','target-goal-pane');functionalPane.append(...content);
-      linePane=el('div','target-line-pane');lineFrame=el('iframe');lineFrame.title='行覆盖率明细';linePane.append(lineFrame);
-      functionalPane.setAttribute('role','tabpanel');linePane.setAttribute('role','tabpanel');
-      tabBar.addEventListener('keydown',event=>{
-        if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
-        event.preventDefault();const tabs=[...tabBar.querySelectorAll('button')],index=tabs.indexOf(document.activeElement);
-        const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
-        tabs[next].focus();selectCoverageTab(tabs[next].dataset.mode);
-      });
-      panel.append(el('div','target-coverage-overview'),tabBar,functionalPane,linePane);
+      coveragePanel=window.FlowCanvasTargetCoveragePanel({panel,project,content,refresh,fail});
+      functionalPane=coveragePanel.functionalPane;
       document.addEventListener('flowcanvas-case-restore',async event=>{if(event.detail.project_id!==project.id||! /^(vt|fg|fp|tp)_/.test(event.detail.case_id))return;if(!data)await refresh();const node=data?.targets.find(item=>item.id===event.detail.case_id);if(node){if(node.kind==='group'){goalCollapsed.delete(node.id);renderGoals();return;}selectedTarget=node.id;goalDetail(node,true,event.detail.view);renderGoals();}});
       document.addEventListener('flowcanvas-case-tab-closed',event=>{const inspector=goalInspectors.get(event.detail.case_id);if(inspector){inspector.generation++;inspector.host.remove();goalInspectors.delete(event.detail.case_id);}});
-      renderCoverageSummary();
-      try{coverageTab=localStorage.getItem('fc-target-coverage-tab:'+project.id)||'functional';}catch{}
-      selectCoverageTab(coverageTab);
     }else if(caseMode){
       panel.classList.add('testcase-workbench');
       const listPane=el('div','testcase-list-pane');listPane.append(...content);

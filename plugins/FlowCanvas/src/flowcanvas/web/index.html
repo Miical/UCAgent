@@ -177,13 +177,25 @@
       </div>
     </form>
   </dialog>
+  <dialog id="coverage-reset-dialog" class="session-dialog" aria-labelledby="coverage-reset-title" aria-describedby="coverage-reset-description">
+    <form method="dialog">
+      <h3 id="coverage-reset-title">清空覆盖率统计？</h3>
+      <p id="coverage-reset-description"></p>
+      <div class="session-dialog-actions">
+        <button value="cancel" autofocus>取消</button>
+        <button class="dialog-primary" value="reset">清空累计</button>
+      </div>
+    </form>
+  </dialog>
   <script src="/assets/sidebar-motion.js"></script>
   <script src="/assets/app.js"></script>
   <script src="/assets/projects.js"></script>
   <script type="module" src="/assets/rtl-viewer.js"></script>
+  <script src="/assets/detail-index.js"></script>
   <script src="/assets/case-workspace.js"></script>
   <script src="/assets/wave-panel.js"></script>
   <script src="/assets/case-details.js"></script>
+  <script src="/assets/target-coverage-panel.js"></script>
   <script src="/assets/targets.js"></script>
   <script src="/assets/coverage-workspace.js"></script>
   <script src="/assets/module-workspace.js"></script>

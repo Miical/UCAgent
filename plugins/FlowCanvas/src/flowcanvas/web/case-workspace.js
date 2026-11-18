@@ -5,6 +5,7 @@
   const analysisPane=document.createElement('aside');analysisPane.className='case-wave-sidebar';analysisPane.hidden=true;analysisPane.setAttribute('aria-label','波形 AI 解读');bottom.append(chatSurface,analysisPane);
   const waveAnalyses=new Map();let sidebarMode='analysis',sidebarWaveKey=null;
   const top=document.createElement('section');top.className='case-view-area';top.hidden=true;top.ariaLabel='详情查看区域';
+  window.FlowCanvasDetailIndex(top);
   const divider=document.createElement('div');divider.className='case-horizontal-divider';divider.tabIndex=0;divider.hidden=true;
   divider.setAttribute('role','separator');divider.ariaLabel='调整详情与右侧栏宽度';divider.setAttribute('aria-orientation','vertical');
   const context=document.createElement('div');context.className='case-view-context';context.hidden=true;context.setAttribute('role','status');

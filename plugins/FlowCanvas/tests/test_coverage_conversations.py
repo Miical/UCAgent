@@ -19,7 +19,7 @@ def setup(tmp_path,monkeypatch):
     sha=hashlib.sha256(content.encode()).hexdigest()
     instances=[dict(path='top.'+name,module=name,files=[dict(path='dut.sv',sha256=sha)]) for name in ('alpha','beta')]
     state=dict(build_id='build-A',report=dict(instances=instances,code_metrics=dict(toggle=dict(dut=dict(items=[dict(hierarchy=row['path'],module=row['module'],file='dut.sv',sha256=sha) for row in instances])))))
-    monkeypatch.setattr(coverage_sources,'state',lambda path:state)
+    monkeypatch.setattr(coverage_sources,'public',lambda path:state)
     def module_record(service,project_id,identity='',instance=''):
         """Reject selections outside the fixture's authoritative module hierarchy."""
         row=next((row for row in instances if row['path']==instance),None)

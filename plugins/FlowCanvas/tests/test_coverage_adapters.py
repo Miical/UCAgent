@@ -274,3 +274,59 @@ async def test_metric_source_preview_is_limited_to_reported_files(coverage_proje
         assert response.status_code==404
         response=await client.get(url,params={"instance":"Probe","metric":"unknown"})
         assert response.status_code==422
+
+
+@pytest.mark.asyncio
+async def test_native_toffee_loads_distinct_runs_without_rewriting_outputs(coverage_project):
+    from fastapi import FastAPI
+    import httpx2
+    from flowcanvas.coverage_runtime import public
+    from flowcanvas.coverage_sources import source_snapshot
+    from flowcanvas.native_toffee import BUILD_INPUTS, DATABASE, MAPPING
+    from flowcanvas.test_runner import TestRuns, routes
+
+    root, store, ids, extract = coverage_project
+    atomic(root / ".flowcanvas/project.json", {"rtl": {"top": "Probe", "files": ["Probe.v"]}})
+    atomic(root / BUILD_INPUTS, ["Probe.v", "coverage.py"])
+    atomic(root / MAPPING, json.loads((root / "map.json").read_text()))
+    build_id = identity(root, root / BUILD_INPUTS)
+    extract("first", 2)
+    extract("second", 3)
+    for name, hits in [("first", 1), ("second", 0), ("other-build", 4)]:
+        run = root / DATABASE / name
+        atomic(run / "run.json", {"build_id": build_id if name != "other-build" else "old"})
+        if name == "other-build":
+            continue
+        atomic(run / "toffee/report/toffee_report.json", json.loads((root / f"{name}.json").read_text()))
+        raw = run / "raw/coverage.dat"
+        raw.parent.mkdir()
+        raw.write_text("# SystemC::Coverage-3\n" +
+                       f"C '\x01f\x02Probe.v\x01l\x022\x01n\x021\x01page\x02v_line/Probe\x01h\x02TOP.Probe' {hits}\n")
+
+    snapshot = public(root)
+    assert snapshot["provider"] == "toffee"
+    assert [run["id"] for run in snapshot["runs"]] == ["first", "second"]
+    assert snapshot["report"]["instances"][0]["files"][0]["line_hits"] == {"2": 1}
+    assert "other-build" in snapshot["ingestion_error"]
+    assert store.status()["coverage"]["targets"][ids[-1]]["observations"][0]["bins"][0]["hits"] == 5
+    assert source_snapshot(root, "Probe")["file"] == "Probe.v"
+    assert not (root / DATABASE.parent.parent / "state.json").exists()
+
+    app = FastAPI()
+    app.include_router(routes(SimpleNamespace(state={"recent": [{"id": "project", "path": str(root)}]}),
+                              TestRuns()))
+    async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/chat/projects/project/coverage/reset")
+    assert response.status_code == 200
+    cleared = response.json()
+    assert cleared["runs"] == [] and cleared["report"] is None and not cleared["can_reset"]
+    assert cleared["revision"] != snapshot["revision"]
+    assert (root / DATABASE / "first/raw/coverage.dat").is_file()
+    assert (root / DATABASE / "second/toffee/report/toffee_report.json").is_file()
+    assert store.status()["coverage"]["targets"][ids[-1]]["status"] == "no_data"
+    third = root / DATABASE / "third"
+    atomic(third / "toffee/report/toffee_report.json", json.loads((root / "second.json").read_text()))
+    atomic(third / "run.json", {"build_id": build_id})
+    after_reset = public(root)
+    assert after_reset["runs"] == [{"id": "third"}] and after_reset["can_reset"]
+    assert store.status()["coverage"]["targets"][ids[-1]]["observations"][0]["bins"][0]["hits"] == 3
