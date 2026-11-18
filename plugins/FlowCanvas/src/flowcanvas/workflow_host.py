@@ -15,17 +15,23 @@ def main():
     overrides = {'backend.key_name': 'blank', 'template_overwrite.RTL_FILE': spec['rtl']}
     if spec.get('project_root'):
         overrides['template_overwrite.PROJECT_ROOT'] = spec['project_root']
-    if spec.get('report_file'):
+    if spec.get('report_file') and spec.get('workflow_id') != 'static-bug-analysis':
         overrides.update({'template_overwrite.PROJECT_ROOT': spec['project_root'],
                           'template_overwrite.SUMMARY_REPORT': spec['report_file']})
     if spec.get('dut_output'):
+        from .picker_build import build_inputs, reuse_candidate
+        reusable = reuse_candidate(Path(spec['dut_output']), build_inputs(spec, root))
         overrides.update({'template_overwrite.PROJECT_ROOT': spec['project_root'],
                           'template_overwrite.SOURCE_RTL': spec['source_file'],
                           'template_overwrite.PICKER_INPUTS': spec.get('picker_inputs', shlex.quote(spec['source_file'])),
-                          'template_overwrite.DUT_OUTPUT': spec['dut_output']})
+                          'template_overwrite.DUT_OUTPUT': spec['dut_output'],
+                          'template_overwrite.PICKER_REUSE_AVAILABLE': 'yes' if reusable else 'no'})
     if spec.get('workflow_id') == 'import-project':
         from .project_import_workflow import project_import_overrides
         overrides.update(project_import_overrides())
+    if spec.get('workflow_id') == 'plan-goals':
+        from .planning_compile import goal_planning_overrides
+        overrides.update(goal_planning_overrides(spec['config'], overrides))
     if spec.get('workflow_id') == 'default':
         from ucagent.util.config import get_config
         from .default_workflow import panel_stages
@@ -56,9 +62,12 @@ def main():
                            'fail_count': stage.fail_count, 'check_pass': stage.check_pass,
                            'skipped': stage.is_skipped(), 'human_check': stage.is_hmcheck_needed(),
                            'time_cost': row.get('time_cost'), 'skills': row.get('skill_list', [])})
-        if spec.get('workflow_id') == 'import-project':
-            from .project_import_workflow import show_project_import_phases
-            stages = show_project_import_phases(agent.stage_manager.root_stage.substages, stages)
+        if spec.get('workflow_id') in {'import-project', 'plan-goals'}:
+            from .project_import_workflow import show_workflow_phases
+            phases = agent.stage_manager.root_stage.substages
+            if spec['workflow_id'] == 'plan-goals':
+                phases = phases[:1]
+            stages = show_workflow_phases(phases, stages)
         stats = agent.status_info()
         tui = {'mission': task_data.get('mission_name'),
                'changed_files': [{'mtime': mtime, 'file': filename, 'path': str((Path(agent.output_dir)/filename).resolve())} for _, mtime, filename in agent.pdb.api_changed_files()[:5]],
@@ -75,7 +84,7 @@ def main():
             # Publish accepted output before the completion receipt, so UI completion
             # always implies that the project artifact is available.
             receipt = {'completed': True}
-            if spec.get('report_file'):
+            if spec.get('report_file') and spec.get('workflow_id') != 'static-bug-analysis':
                 report = Path(spec['report_file'])
                 project = Path(spec['project_root']).resolve()
                 if not report.resolve().is_relative_to(project):

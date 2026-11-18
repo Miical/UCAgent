@@ -35,10 +35,12 @@ class PickerWorkflowTests(unittest.IsolatedAsyncioTestCase):
                 card = started['card']
                 request = Path(card['root']) / 'request.json'
                 self.assertIn('tools', started, (Path(card['root']) / 'host.log').read_text()[-4500:])
+                self.assertIn('已有产物校验候选：no', started['instruction'])
                 self.assertIn('RunBashCommand', [t['name'] for t in started['tools']])
                 checker = PickerPackageChecker()
                 checker.workspace = card['workspace']
                 self.assertFalse(checker.do_check()[0])
+                self.assertFalse(checker.do_check(reuse_existing=True)[0])
                 command = ['picker', 'export', str(rtl), '--sname', 'Probe', '--sim', 'verilator',
                            '--rw', '1', '--lang', 'python', '--tdir', str(project / 'verification') + '/',
                            '-c', '-w', 'Probe.fst', '-j', '4']
@@ -65,9 +67,55 @@ class PickerWorkflowTests(unittest.IsolatedAsyncioTestCase):
                     while not (Path(card['root']) / 'complete.json').exists():
                         await asyncio.sleep(.1)
                 await runtime.invoke(card['id'], 'Exit', {})
-                # Changed inputs cannot reuse the old completion evidence.
+                reused = await runtime.run('picker-compile', str(rtl), 'Probe')
+                self.assertIn('已有产物校验候选：yes', reused['instruction'])
+                reuse_card = reused['card']
+                reuse_checker = PickerPackageChecker()
+                reuse_checker.workspace = reuse_card['workspace']
+                self.assertFalse(reuse_checker.do_check()[0])
+                await runtime.invoke(reuse_card['id'], 'SetCurrentStageJournal',
+                                     {'journal': 'Reuse existing Probe package after checking current RTL.'})
+                await runtime.invoke(reuse_card['id'], 'Complete', {'stage_args': {'reuse_existing': True}})
+                async with asyncio.timeout(10):
+                    while not (Path(reuse_card['root']) / 'complete.json').exists():
+                        await asyncio.sleep(.1)
+                evidence = json.loads((Path(reuse_card['workspace']) / 'summary/picker-result.json').read_text())
+                self.assertTrue(evidence['reused'])
+                await runtime.invoke(reuse_card['id'], 'Exit', {})
+
+                planning = await runtime.run('plan-goals', str(rtl), 'Probe')
+                plan_card = planning['card']
+                plan_workspace = Path(plan_card['workspace'])
+                self.assertFalse((plan_workspace / 'Probe/__init__.py').exists())
+                tips = await runtime.invoke(plan_card['id'], 'CurrentTips', {})
+                self.assertIn('已有产物校验候选：yes', str(tips['result']))
+                await runtime.invoke(plan_card['id'], 'SetCurrentStageJournal',
+                                     {'journal': 'Reused the verified Probe package in planning.'})
+                accepted = await runtime.invoke(plan_card['id'], 'Complete',
+                                                {'stage_args': {'reuse_existing': True}})
+                self.assertIn('planning_dut', str(accepted['result']), accepted['result'])
+                async with asyncio.timeout(10):
+                    while True:
+                        progress = json.loads((Path(plan_card['root']) / 'progress.json').read_text())
+                        if progress['current_stage'] == 'requirement_analysis_and_planning':
+                            break
+                        await asyncio.sleep(.1)
+                self.assertTrue(next(s for s in progress['stages'] if s['name'] == 'picker_compile')['completed'])
+                self.assertTrue((plan_workspace / 'Probe/__init__.py').exists())
+                self.assertTrue(json.loads((plan_workspace / 'summary/picker-result.json').read_text())['reused'])
+
+                wrapper = package / '__init__.py'
+                original = wrapper.read_bytes()
+                wrapper.write_bytes(original + b'\n# modified wrapper\n')
+                self.assertFalse(reuse_checker.do_check(reuse_existing=True)[0])
+                wrapper.write_bytes(original)
+
                 rtl.write_text(before.decode() + '// changed\n')
-                self.assertFalse(checker.do_check()[0])
+                self.assertFalse(reuse_checker.do_check(reuse_existing=True)[0])
+                changed = await runtime.run('picker-compile', str(rtl), 'Probe')
+                self.assertIn('已有产物校验候选：no', changed['instruction'])
+                reuse_checker.workspace = changed['card']['workspace']
+                self.assertFalse(reuse_checker.do_check(reuse_existing=True)[0])
             finally:
                 await runtime.close()
                 await service.close()

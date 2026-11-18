@@ -19,7 +19,7 @@ class CardRequest(BaseModel):
     action: Literal['update', 'delete'] = 'update'
     cascade: bool = False
     planned: bool = False
-    kind: Literal['group', 'point', 'testpoint', 'case'] | None = None
+    kind: Literal['group', 'point', 'testpoint', 'case', 'bug'] | None = None
     parent: str | None = None
     files: list[str] = Field(default_factory=list, max_length=100)
     binding_id: str = ''
@@ -50,7 +50,7 @@ def execute(root, request, owner='manual', store=None):
                 result['source'] = store.source(r.binding_id)
             result['instructions'] = getattr(store,'instructions',None) or SKILL.read_text()
             result['request_schema'] = CardRequest.model_json_schema()
-            if 'case' not in store.prefixes:
+            if 'group' in store.prefixes:
                 from .target_explanations import GUIDE,TargetExplanation
                 result['explanation_schema']=TargetExplanation.model_json_schema()
                 result['explanation_guide']=GUIDE.read_text(encoding='utf-8')
@@ -60,7 +60,8 @@ def execute(root, request, owner='manual', store=None):
         if r.operation == 'apply':
             if not r.count or r.cards or r.ids:
                 raise ValueError('apply requires only count and expected_revision')
-            created = [new_id('tc' if 'case' in store.prefixes else 'vt') for _ in range(r.count)]
+            prefix = 'tc' if 'case' in store.prefixes else store.prefixes.get('bug', 'vt')
+            created = [new_id(prefix) for _ in range(r.count)]
             data.targets.extend(store.target_model(id=identity, name='待完善', lifecycle='draft',
                                        operation_session=owner,
                                        origin='ai' if owner != 'manual' else 'manual')
@@ -114,6 +115,8 @@ def execute(root, request, owner='manual', store=None):
             if r.operation == 'update':
                 if any(t.lifecycle == 'deleting' for t in rows):
                     raise ValueError('Cannot update a card registered for deletion')
+                if hasattr(store, 'update_card_batch'):
+                    return store.update_card_batch(data, r)
                 return update_cards(store, data, r)
             deleting = {t.id for t in rows if t.lifecycle == 'deleting'}
             if deleting and len(deleting) != len(rows):
@@ -129,10 +132,10 @@ def execute(root, request, owner='manual', store=None):
                         store.validate_card(row)
                     if row.kind is None or not row.description.strip() or row.name == '待完善':
                         raise ValueError('Provide a readable title and description: ' + row.id)
-                    if row.bindings:
+                    if row.bindings or getattr(row, 'source_refs', None):
                         if reports[row.id]['status'] != 'bound':
                             raise ValueError('Resolve source bindings before finishing: ' + row.id)
-                    elif not r.planned or 'case' in store.prefixes:
+                    elif 'bug' not in store.prefixes and (not r.planned or 'case' in store.prefixes):
                         raise ValueError('Binding required; use planned=true only for unimplemented targets: ' + row.id)
                     row.lifecycle = 'ready'
                     row.operation_status = 'paused'

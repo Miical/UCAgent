@@ -4,6 +4,7 @@ template_overwrite:
   PROJECT_ROOT: "{WORKSPACE}"
   SOURCE_RTL: "{DUT}/{DUT}.v"
   PICKER_INPUTS: '"{SOURCE_RTL}"'
+  PICKER_REUSE_AVAILABLE: "no"
   DUT_OUTPUT: "{WORKSPACE}/{DUT}"
 guide_doc:
   enable: false
@@ -19,10 +20,10 @@ mission:
       默认命令：
       picker export {PICKER_INPUTS} --sname "{DUT}" --sim verilator --rw 1 --lang python --tdir "{PROJECT_ROOT}/verification/" -c -w "{DUT}.fst" -j 4
       项目顶层使用平台提供的 RTL 文件清单和头文件搜索路径。一般情况使用默认命令；用户有补充需求或遇到参数问题时，查询 picker export --help 后调整。
-      每次运行本工作流默认重新编译；仅当用户明确要求复用已有产物时跳过编译，调用 Complete 时传入 stage_args.reuse_existing=true，仍需通过加载验收并说明本次未编译。
+      已有产物校验候选：{PICKER_REUSE_AVAILABLE}。若为 yes，且用户未要求重新编译或自定义参数，先调用 Complete（stage_args.reuse_existing=true），验收通过则跳过编译，报告复用了已有产物。若为 no 或复用验收失败，则执行编译后再调用 Complete。使用自定义编译参数时在 Complete 传入 stage_args.cache_build=false。
       不修改原始 RTL。重新编译前保留已有 DUT 包及 README.md，不影响其他测试和报告。
       通过工作流的 RunBashCommand 执行并检查日志，timeout 设置为 1800，以便停止工作流时一并终止编译进程。
-      成功后用 SetCurrentStageJournal 记录命令和输出，调用 Complete 验收，再调用 Exit。
+      成功后用 SetCurrentStageJournal 记录命令和输出，调用 Complete 验收。全部阶段完成后调用 Exit。
       验收会实际加载并实例化 DUT。编译成功不代表功能验证通过，不自动启动默认验证工作流。
     tips:
       always: []

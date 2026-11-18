@@ -186,6 +186,46 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('"id": "rtl-summary"', sent)
             self.assertIn('RTL 功能简述', sent)
 
+    async def test_task_cards_keep_composer_attachments_pending(self):
+        """Keep the composer attachment pending and exclude it from both model prompts."""
+        owner = self.service.create('codex')
+        owner.update(attachment={'workflow_id': 'rtl-summary', 'name': 'RTL summary'},
+                     attachment_sent=False)
+        backend = SimpleNamespace(open=AsyncMock(return_value='native'), send=AsyncMock(return_value='turn'),
+                                  close=AsyncMock(), emit=lambda event: None)
+        self.service.session_backends[owner['id']] = backend
+        owner['items'] = [{'kind': 'user', 'text': 'Record an issue'}]
+        owner['title_source'] = 'manual'
+        url = f"/api/chat/sessions/{owner['id']}/messages"
+        message = {'text': 'Record an issue', 'model': 'codex-model', 'effort': 'low'}
+        with patch.object(self.service, 'launch') as launch:
+            card = {'title': 'Record an issue', 'workflow': '', 'project': 'Example'}
+            response = await self.client.post(url, json={**message, 'task_card': card})
+            self.assertEqual(response.status_code, 202, response.text)
+            self.assertFalse(owner['attachment_sent'])
+            outgoing = launch.call_args.args[1]
+            self.assertEqual(outgoing.workflow_label, '')
+            self.assertIsNone(outgoing.workflow_context)
+            await self.service.run(owner, outgoing)
+            self.assertEqual(backend.send.call_args.args[1], message['text'])
+            self.assertNotIn('Attached workflow:', backend.workflow_instructions)
+            workflow_card = {**card, 'workflow': '同步验证目标', 'workflow_id': 'import-targets'}
+            response = await self.client.post(url, json={**message, 'task_card': workflow_card})
+            self.assertEqual(response.status_code, 202, response.text)
+            outgoing = launch.call_args.args[1].model_copy()
+            self.assertEqual(outgoing.workflow_context['id'], 'import-targets')
+            self.assertFalse(owner['attachment_sent'])
+            self.assertEqual(owner['attachment']['workflow_id'], 'rtl-summary')
+            owner['thread'] = None
+            await self.service.run(owner, outgoing)
+            self.assertIn('import-targets', backend.send.call_args.args[1])
+            self.assertIn('import-targets', backend.workflow_instructions)
+            self.assertNotIn('rtl-summary', backend.workflow_instructions)
+            response = await self.client.post(url, json=message)
+            self.assertEqual(response.status_code, 202, response.text)
+            self.assertTrue(owner['attachment_sent'])
+            self.assertEqual(launch.call_args.args[1].workflow_context['id'], 'rtl-summary')
+
     async def test_rtl_summary_requires_known_top_and_project_output(self):
         """Unknown tops are not guessed and project output cannot escape via symlinks."""
         root = Path(self.temp.name) / 'rtl-project'

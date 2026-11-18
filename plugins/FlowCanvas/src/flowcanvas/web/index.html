@@ -59,7 +59,8 @@
       <div class="pane-body conversation" id="conversation" aria-label="对话内容"><div class="chat-welcome"><div class="welcome-mark">✦</div><h3>从一个想法开始</h3><p>与助手一起梳理你的验证思路</p></div></div>
       <div id="reconnect-notice" class="reconnect-notice" role="status" hidden>连接中断，正在自动重连；回复会在连接恢复后同步。</div>
       <div id="chat-error" class="chat-error" role="alert" hidden></div>
-      <div id="message-queue" class="message-queue" hidden></div>
+      <div class="composer-stack">
+        <div id="message-queue" class="message-queue" aria-label="待发送消息" hidden></div>
       <div class="composer">
         <div id="testcase-attachments" class="testcase-attachments" aria-label="已附加用例与验证目标" aria-live="polite" hidden></div>
         <div id="quote-draft" class="annotation-tray" hidden>
@@ -110,6 +111,7 @@
           <button id="send" class="send-button" disabled aria-label="发送消息" title="发送消息">↑</button>
           </div>
         </div>
+      </div>
       </div>
 
     </section>
@@ -164,6 +166,16 @@
     </div>
     <p id="project-error" role="alert" hidden></p>
     <footer><button id="project-back" hidden>重新选择</button><button id="project-confirm">打开此文件夹</button><button id="project-create-import" class="project-create-import targets-empty-ai-button case-ai-action" type="button" hidden disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 4H5v16h14v-7M8 9h4M8 13h7M8 17h5"/><path class="case-ai-spark" d="M19 1l1.2 3.8L24 6l-3.8 1.2L19 11l-1.2-3.8L14 6l3.8-1.2Z"/></svg><span>创建并导入</span></button></footer>
+  </dialog>
+  <dialog id="workflow-hide-dialog" class="session-dialog" aria-labelledby="workflow-hide-title" aria-describedby="workflow-hide-description">
+    <form method="dialog">
+      <h3 id="workflow-hide-title">删除工作流胶囊？</h3>
+      <p id="workflow-hide-description">此工作流尚未运行完毕。删除胶囊后，仍可在工作流列表中查看运行进度。</p>
+      <div class="session-dialog-actions">
+        <button value="cancel" formnovalidate autofocus>取消</button>
+        <button class="dialog-primary" value="hide">删除胶囊</button>
+      </div>
+    </form>
   </dialog>
   <script src="/assets/sidebar-motion.js"></script>
   <script src="/assets/app.js"></script>

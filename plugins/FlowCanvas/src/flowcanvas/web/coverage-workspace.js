@@ -17,7 +17,7 @@ window.FlowCanvasCoverageCode={
       for(const entry of value.files){const option=el('option','',entry.path);option.value=entry.path;option.selected=entry.path===value.data.file;files.append(option);}files.hidden=value.files.length<2;
       const source=value.data,coverage=value.files.find(entry=>entry.path===source.file)||{},hits=new Set(coverage.covered_lines||[]),misses=new Set(coverage.uncovered_lines||[]),partial=new Set(coverage.partial_lines||[]),pre=el('pre','case-detail-source coverage-code-source');pre.tabIndex=0;pre.ariaLabel='构建源码及覆盖率标记';locationLabel.textContent=source.file+' · 构建源码';
       source.content.split('\n').forEach((text,index)=>{const number=index+1,row=el('div',number>=source.line&&number<=source.end_line?'is-bound':'');row.dataset.line=number;const state=partial.has(number)?'partial':misses.has(number)?'missed':hits.has(number)?'covered':'';if(state){row.classList.add(state);row.title=({covered:'已覆盖',partial:'部分覆盖',missed:'未覆盖'})[state];}row.append(el('span','',String(number)),el('code','',text||' '));pre.append(row);});const section=window.FlowCanvasDetailSection(host,'构建源码',node.instance+':'+metric);section.append(pre);body.replaceChildren(section);
-      requestAnimationFrame(()=>{if(!disposed&&pre.isConnected){const row=pre.children[source.line-1];if(row)pre.scrollTop=Math.max(0,row.offsetTop-pre.offsetTop-40);}});publish();
+      section.open=true;window.FlowCanvasScrollToSourceLine(body,pre.children[source.line-1],pre.children[source.end_line-1]);publish();
     }
     /** Read build sources through the existing snapshot/fingerprint guard; never substitute current RTL. */
     async function source(row,file,token){const query=new URLSearchParams({instance:node.instance,metric,file:file||''}),response=await fetch('/api/chat/projects/'+encodeURIComponent(project.id)+'/coverage/source?'+query),data=await response.json();if(disposed||token!==generation)return;if(!response.ok)throw Error(data.detail||'无法读取构建源码');render({instance:node.instance,metric,files:row.files||[],data});}
@@ -69,7 +69,7 @@ window.FlowCanvasCoverageCode={
       source.content.split('\n').forEach((text,index)=>{const number=index+1,state=partial.has(number)?'partial':misses.has(number)?'missed':hits.has(number)?'covered':'';const row=el('div',state);row.dataset.line=number;row.append(el('span','',String(number)),el('code','',text||' '));pre.append(row);});
       const section=window.FlowCanvasDetailSection(inspector.host,'构建源码');section.append(pre);inspector.body.replaceChildren(section);
       let scrollTimer;inspector.body.onscroll=()=>{clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>{if(inspector.host.hidden||!pre.isConnected)return;const y=inspector.body.getBoundingClientRect().top,row=[...pre.children].find(item=>item.getBoundingClientRect().bottom>y);if(row)document.dispatchEvent(new CustomEvent('flowcanvas-case-view',{detail:{case_id:node.id,view:{tab:'source',module_instance:node.instance,coverage_metric:node.coverage_metric,coverage_file:node.coverage_file,line:Number(row.dataset.line)}}}));},150);};
-      requestAnimationFrame(()=>{if(pre.isConnected){const row=pre.children[source.line-1];if(row)pre.scrollTop=Math.max(0,row.offsetTop-pre.offsetTop-40);}});
+      section.open=true;window.FlowCanvasScrollToSourceLine(inspector.body,pre.children[source.line-1]);
     }catch(error){if(epoch===selection&&token===inspector.generation&&inspector.host.isConnected)inspector.body.replaceChildren(el('p','targets-error',error.message));}
   }
   window.addEventListener('message',event=>{

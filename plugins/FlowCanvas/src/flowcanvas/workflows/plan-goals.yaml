@@ -1,46 +1,8 @@
 tools:
   ignore_tools: []
-call_time_out: 1900
 template_overwrite:
   PROJECT_ROOT: '{WORKSPACE}'
-  SOURCE_RTL: '{DUT}/{DUT}.v'
-  PICKER_INPUTS: '"{SOURCE_RTL}"'
-  DUT_OUTPUT: '{WORKSPACE}/{DUT}'
 stage:
-  - name: compile_rtl
-    desc: 编译 RTL
-    task:
-    - '使用已安装的 Picker，将用户指定的 RTL 编译为 Python DUT 包，供后续 UCAgent 验证使用。
-
-      输入：{SOURCE_RTL}；顶层模块：{DUT}；输出固定为：{DUT_OUTPUT}。
-
-      默认命令：
-
-      picker export {PICKER_INPUTS} --sname "{DUT}" --sim verilator --rw 1 --lang python
-      --tdir "{PROJECT_ROOT}/verification/" -c -w "{DUT}.fst" -j 4
-
-      项目顶层使用平台提供的 RTL 文件清单和头文件搜索路径。一般情况使用默认命令；用户有补充需求或遇到参数问题时，查询 picker export --help 后调整。
-
-      每次运行本工作流默认重新编译；仅当用户明确要求复用已有产物时跳过编译，调用 Complete 时传入 stage_args.reuse_existing=true，仍需通过加载验收并说明本次未编译。
-
-      不修改原始 RTL。重新编译前保留已有 DUT 包及 README.md，不影响其他测试和报告。
-
-      通过工作流的 RunBashCommand 执行并检查日志，timeout 设置为 1800，以便停止工作流时一并终止编译进程。
-
-      成功后用 SetCurrentStageJournal 记录命令和输出，调用 Complete 验收并继续后续阶段。
-
-      验收会实际加载并实例化 DUT。编译成功不代表功能验证通过，后续按当前工作流继续执行。
-
-      '
-    reference_files: []
-    output_files:
-    - '{OUT}/picker-result.json'
-    need_human_check: false
-    need_fail_llm_suggestion: false
-    need_pass_llm_suggestion: false
-    checker:
-    - name: compiled_dut
-      clss: flowcanvas.planning_compile.PlanningPickerChecker
   - name: requirement_analysis_and_planning
     desc: "需求分析与验证规划"
     task:

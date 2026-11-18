@@ -41,12 +41,17 @@ class WorkflowContinuationTests(unittest.TestCase):
                 self.owner.clear();self.owner.update(before)
         self.assertFalse(self.service.launch.called)
     def test_completed_receipt_and_unarmed_history_do_not_restart(self):
-        for fields in ({"status":"completed"},{"dismissed":True},{"auto_continue":False}):
+        for fields in ({"status":"completed"},{"auto_continue":False}):
             before=dict(self.card);self.card.update(fields)
             self.assertFalse(self.run_continue())
             self.card.clear();self.card.update(before)
         (Path(self.temp.name)/"complete.json").write_text("{}")
         self.assertFalse(self.run_continue())
+    def test_hiding_a_capsule_only_changes_presentation(self):
+        """A hidden workflow keeps its configured continuation behavior."""
+        self.card["dismissed"] = True
+        self.assertTrue(self.run_continue())
+
     def test_new_terminal_turn_can_continue_but_launch_and_steering_ownership_block(self):
         self.service.launching.add(self.owner["id"]);self.assertFalse(self.run_continue())
         self.service.launching.clear();self.service.steering.add(self.owner["id"])

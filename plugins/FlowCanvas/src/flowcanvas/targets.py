@@ -16,7 +16,7 @@ LOCK = threading.RLock()
 SKILL = Path(__file__).parent / 'skills/verification-targets/SKILL.md'
 
 
-SOURCE_SUFFIXES={'.v','.sv','.svh','.py','.sh','.bash','.mk','.yaml','.yml','.f','.tcl'}
+SOURCE_SUFFIXES={'.v','.sv','.vh','.svh','.py','.sh','.bash','.mk','.yaml','.yml','.f','.tcl'}
 SOURCE_NAMES={'Makefile','makefile','GNUmakefile'}
 
 

@@ -187,7 +187,7 @@ class WorkflowRuntime:
                 return {'card': card, 'accepted': True}
             if card is None:
                 project_root = None
-                if identity in {'rtl-summary', 'picker-compile', 'plan-goals', 'generate-testcase', 'import-targets', 'import-testcases', 'import-project', 'default'}:
+                if identity in {'rtl-summary', 'picker-compile', 'plan-goals', 'static-bug-analysis', 'generate-testcase', 'import-targets', 'import-testcases', 'import-project', 'default'}:
                     if not self.session.get('project_root'):
                         raise ValueError('Open a FlowCanvas project before running this RTL workflow')
                     project_root = Path(self.session['project_root']).resolve()
@@ -217,11 +217,18 @@ class WorkflowRuntime:
                     report = project_root / 'output/flowcanvas/design-summary' / dut / root.name / 'summary.md'
                     if not report.resolve().is_relative_to(project_root):
                         raise ValueError('Summary output must remain inside the bound project')
+                static_sources = None
+                if identity == 'static-bug-analysis':
+                    from .static_bug_workflow import prepare_sources
+                    static_sources = await asyncio.to_thread(
+                        prepare_sources, project_root, Path(spec['rtl_file']), dut, root)
                 relative = Path(dut) / Path(spec['rtl_file']).name
                 (root / 'workspace' / relative.parent).mkdir(parents=True)
                 shutil.copyfile(spec['rtl_file'], root / 'workspace' / relative)
                 config = next(w.config_file for w in get_plugin().workflows if w.name == identity)
                 request = {'dut': dut, 'rtl': str(relative), 'config': str(config), 'workflow_id': identity}
+                if static_sources is not None:
+                    request.update(static_sources=static_sources,project_root=str(project_root))
                 if identity in {'picker-compile', 'plan-goals'}:
                     output = project_root / 'verification' / dut
                     if not output.resolve().is_relative_to(project_root):
@@ -310,8 +317,10 @@ class WorkflowRuntime:
             if card['status'] != 'completed':
                 card.update(status='running', pause_reason='')
             self.publish()
+            # Both workflows can execute the Picker build stage.
+            read_timeout = 1900 if identity in {'picker-compile', 'plan-goals'} else 300
             # This endpoint is an owned loopback host, never a remote proxy target.
-            async with (httpx2.AsyncClient(trust_env=False, timeout=httpx2.Timeout(30, read=1900 if identity == 'picker-compile' else 300)) as http,
+            async with (httpx2.AsyncClient(trust_env=False, timeout=httpx2.Timeout(30, read=read_timeout)) as http,
                         streamable_http_client(card['url'], http_client=http) as streams):
                 read, write = streams[:2]
                 async with ClientSession(read, write) as client:
@@ -332,7 +341,7 @@ class WorkflowRuntime:
                                 f"{'.'.join(map(str, error.absolute_path)) or 'arguments'}: {error.message}"
                                 for error in errors[:5])
                             raise ValueError(f'Invalid arguments for {tool_name}: {details}')
-                        result = (await client.call_tool(tool_name, arguments, read_timeout_seconds=1900 if identity == 'picker-compile' else 300)).model_dump(mode='json')
+                        result = (await client.call_tool(tool_name, arguments, read_timeout_seconds=read_timeout)).model_dump(mode='json')
                     await self.inspect()
                     if tool_name:
                         return {'card': card, 'result': result}

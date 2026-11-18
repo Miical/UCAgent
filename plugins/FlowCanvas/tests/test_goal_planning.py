@@ -1,5 +1,4 @@
 """Selected planning stages remain identical to the upstream workflow."""
-import re
 import unittest
 from pathlib import Path
 import yaml
@@ -13,7 +12,7 @@ class GoalPlanningTests(unittest.TestCase):
         root=Path(__file__).resolve().parents[3]
         workflow=(root/"plugins/FlowCanvas/src/flowcanvas/workflows/plan-goals.yaml").read_text()
         selected=yaml.load(replace_bash_var(workflow,os.environ),Loader=UCAgentConfigLoader)
-        names=["compile_rtl","requirement_analysis_and_planning","dut_function_understanding",
+        names=["requirement_analysis_and_planning","dut_function_understanding",
                "functional_specification_analysis","functional_specification_refine",
                "coverage_model_implementation"]
         self.assertEqual([s["name"] for s in selected["stage"]],names)
@@ -33,7 +32,7 @@ class GoalPlanningTests(unittest.TestCase):
         for enabled in ("true","false"):
             resolved=yaml.load(replace_bash_var(workflow,{**os.environ,"HUMAN_CHECK_CK":enabled}),
                                Loader=UCAgentConfigLoader)
-            check_stage=resolved["stage"][3]["stage"][2]
+            check_stage=resolved["stage"][2]["stage"][2]
             self.assertEqual(check_stage["need_human_check"],enabled=="true")
         self.assertIn("不因 README 缺失停止",workflow)
         self.assertEqual(len(gates),10)
@@ -67,7 +66,13 @@ class NativePlanningHostTests(unittest.IsolatedAsyncioTestCase):
                 result=await runtime.run("plan-goals",str(rtl),"Probe")
                 card=result["card"]
                 self.assertIn("tools",result,(Path(card["root"])/"host.log").read_text()[-3000:])
-                self.assertIn("compile_rtl",card["current_stage"])
+                self.assertEqual("compile_rtl",card["current_stage"])
+                stages = {stage["name"]: stage for stage in card["stages"]}
+                self.assertEqual(stages["picker_compile"]["kind"], "group")
+                self.assertEqual(stages["compile_rtl"]["parent"], "picker_compile")
+                self.assertIsNone(stages["requirement_analysis_and_planning"]["parent"])
+                tips = await runtime.invoke(card["id"], "CurrentTips", {})
+                self.assertIn("已有产物校验候选：no", str(tips["result"]))
                 self.assertTrue(any(s.get("depth")==1 for s in card["stages"]))
                 self.assertTrue(any(s.get("depth")==2 for s in card["stages"]))
                 request=__import__("json").loads((Path(card["root"])/"request.json").read_text())
@@ -82,9 +87,7 @@ class PlanningPackageTests(unittest.TestCase):
         """Expose accepted native files while preserving staged RTL permissions."""
         import json
         import tempfile
-        from unittest.mock import patch
-        from flowcanvas.picker_build import PickerPackageChecker
-        from flowcanvas.planning_compile import PlanningPickerChecker
+        from flowcanvas.planning_compile import PlanningDutHandoff
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
             work=root/"workspace"
@@ -99,15 +102,12 @@ class PlanningPackageTests(unittest.TestCase):
             (package/"__init__.py").write_text("# compiled wrapper")
             (package/"_UT_Probe.so").write_bytes(b"fixture")
             (root/"request.json").write_text(json.dumps({"dut":"Probe","dut_output":str(package)}))
-            checker=PlanningPickerChecker()
+            checker=PlanningDutHandoff()
             checker.workspace=str(work)
-            with patch.object(PickerPackageChecker,"do_check",return_value=(True,{"load_check":"passed"})):
-                ok,result=checker.do_check()
+            ok,result=checker.do_check()
             self.assertTrue(ok,result)
             self.assertEqual((target/"_UT_Probe.so").read_bytes(),b"fixture")
             self.assertEqual(staged.stat().st_mode & 0o777,0o444)
-            with patch.object(PickerPackageChecker,"do_check",return_value=(False,{"error":"not accepted"})):
-                self.assertFalse(checker.do_check()[0])
 
     def test_deferred_gate_still_checks_when_planning_begins(self):
         """Attaching before compilation is allowed; entering the stage validates the files."""

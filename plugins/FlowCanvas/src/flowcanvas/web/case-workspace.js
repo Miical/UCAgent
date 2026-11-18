@@ -169,7 +169,7 @@
     if(current?.testcase.id!==event.detail.case_id)return;
     view=event.detail.view;
     const item=opened.get(current.project.id+':'+current.testcase.id);
-    if(item&&(!current.testcase.entity_type||current.testcase.entity_type==='case')){
+    if(item&&(!current.testcase.entity_type||['case','bug','target'].includes(current.testcase.entity_type))){
       const {tab,run_id,binding_id}=view;
       const previous=item.view;
       if(previous?.tab!==tab||previous?.run_id!==run_id||previous?.binding_id!==binding_id){
@@ -211,7 +211,7 @@
       const sidebarState=window.FlowCanvasSidebarState?.enter('tab:'+(testcase.entity_type||'case')+':'+testcase.id,project.id);if(sidebarState)chatCollapsed=sidebarState.rightCollapsed;
       restoreKey=null;current={project,testcase};opened.set(key,{...existing,project,testcase,preview:existing?existing.preview:true});
       if(changed||testcase.entity_type==='module')view=initialView||{tab:'overview'};
-      if(!testcase.entity_type||testcase.entity_type==='case')opened.get(key).view=view;
+      if(!testcase.entity_type||['case','bug','target'].includes(testcase.entity_type))opened.get(key).view=view;
       dedicatedName.textContent=testcase.entity_type==='coverage'?testcase.title.split(' · ')[0]:testcase.title||testcase.name;dedicated.title='专属对话 · '+dedicatedName.textContent;for(const detail of top.querySelectorAll('.testcase-detail-pane'))detail.hidden=detail.dataset.entityId!==testcase.id;pane.classList.add('case-workspace-open');collapseChat(chatCollapsed);top.hidden=divider.hidden=context.hidden=false;
       publish(true);ratio=1-window.FlowCanvasSidebarLayout.width/Math.max(1,pane.clientWidth-7);divider.setAttribute('aria-valuenow',String(Math.round(ratio*100)));paintTabs();
     },

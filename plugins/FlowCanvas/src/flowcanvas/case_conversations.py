@@ -46,8 +46,8 @@ def case_record(service, project_id, case_id):
         bug=next((row for row in Bugs(project['path']).read().targets if row.id==case_id),None)
         if bug is None:raise HTTPException(404,'Bug not found')
         return project,SimpleNamespace(id=bug.id,title=bug.name,name=bug.name,description=bug.description,
-                                       entity_type='bug',bindings=bug.bindings,
-                                       details={key:getattr(bug,key) for key in ('status','severity','condition','expected','actual','evidence','case_ids','example')})
+                                       entity_type='bug',bindings=[*bug.bindings,*bug.source_refs],
+                                       details={key:getattr(bug,key) for key in ('status','severity','condition','impact','expected','actual','evidence','case_ids','example')})
     if case_id.startswith(('vt_','fg_','fp_','tp_')):
         from .targets import Targets
         target=next((row for row in Targets(project['path']).read().targets if row.id==case_id),None)

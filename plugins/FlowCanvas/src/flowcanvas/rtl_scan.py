@@ -9,6 +9,7 @@ SKIP = {'.git', '.flowcanvas', '.venv', 'venv', 'node_modules', '__pycache__', '
 
 
 def scan(root):
+    """Index authored RTL, excluding generated workflow and Picker output."""
     root = Path(root).resolve()
     import pyslang as slang
     from pyslang.syntax import SyntaxTree
@@ -19,6 +20,9 @@ def scan(root):
         parent = Path(directory)
         dirs[:] = sorted(d for d in dirs if d not in SKIP and not (parent / d).is_symlink()
                          and parent / d != managed_output)
+        if parent == root / 'verification':
+            # Picker exports generated Verilog beside the Python wrapper.
+            dirs[:] = [d for d in dirs if not (parent / d / f'libUT_{d}.py').is_file()]
         for name in sorted(names):
             path = Path(directory, name)
             if path.suffix.lower() in {'.v', '.sv', '.vh', '.svh'} and not path.is_symlink():

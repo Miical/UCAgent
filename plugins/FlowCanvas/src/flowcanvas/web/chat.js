@@ -328,9 +328,22 @@ function paintWorkflowRun(){
     const percent=run.status==='completed'?100:steps.length?Math.round(done/steps.length*100):0;
     const status={starting:'启动中',running:'运行中',completed:'已完成',paused:'已暂停'}[run.status]||run.status;
     const card=element('article','run-capsule');card.hidden=Boolean(run.dismissed);card.dataset.id=run.id;card.dataset.status=run.status;card.tabIndex=0;card.setAttribute('aria-label',run.name+'，'+status+'，'+percent+'%');
-    if(run.status==='completed'){
-      const remove=element('button','run-remove','×');remove.type='button';remove.title='移除已完成任务';remove.setAttribute('aria-label',remove.title);
-      remove.onclick=async event=>{event.stopPropagation();try{await request('/sessions/'+run.conversation_id+'/workflow-runs/'+run.id+'/dismiss',{});await refreshWorkflowRuns();}catch(exc){error(exc.message);}};
+    if(['completed','paused'].includes(run.status)&&!run.dismissed){
+      const remove=element('button','run-remove');remove.innerHTML='<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8"/></svg>';remove.type='button';remove.title='删除工作流胶囊';remove.setAttribute('aria-label',remove.title);
+      remove.onclick=async event=>{
+        event.stopPropagation();
+        if(run.status==='paused'){
+          const dialog=$('workflow-hide-dialog');
+          if(dialog.open)return;
+          host.querySelectorAll('.run-expanded:popover-open').forEach(popover=>popover.hidePopover());
+          dialog.returnValue='';
+          dialog.showModal();
+          await new Promise(resolve=>dialog.addEventListener('close',resolve,{once:true}));
+          if(dialog.returnValue!=='hide')return;
+        }
+        try{await request('/sessions/'+run.conversation_id+'/workflow-runs/'+run.id+'/dismiss',{});await refreshWorkflowRuns();}
+        catch(exc){error(exc.message);}
+      };
       card.append(remove);
     }
     const compact=element('div','run-compact');
@@ -376,6 +389,7 @@ function paintWorkflowRun(){
     card.append(expanded);
     const existing=oldTrack&&[...oldTrack.children].find(node=>node.dataset.id===run.id);
     if(existing){
+      if(card.hidden)existing.querySelector('.run-expanded:popover-open')?.hidePopover();
       existing.dataset.status=card.dataset.status;existing.hidden=card.hidden;existing.setAttribute('aria-label',card.getAttribute('aria-label'));
       for(const selector of ['.run-compact','.run-expanded','.run-remove']){
         const old=[...existing.children].find(node=>node.matches(selector)),next=[...card.children].find(node=>node.matches(selector));
@@ -526,7 +540,7 @@ function paintQueue(){
   }
 }
 /** Close the anchored picker without changing the current model selection. */
-function closePicker(focus=false,kind='model',names=['model','session','backend','permission','attach','workflow']){for(const name of names){const popup=$(name+'-popover');if(popup.matches(':popover-open'))popup.hidePopover();popup.hidden=true;$(name+'-toggle').setAttribute('aria-expanded','false');}if(focus)$(kind+'-toggle').focus();}
+function closePicker(focus=false,kind='model',names=['model','session','backend','permission','attach','workflow']){for(const name of names){const popup=$(name+'-popover');if(name==='attach')closeWorkflowFolder();if(popup.matches(':popover-open'))popup.hidePopover();popup.hidden=true;$(name+'-toggle').setAttribute('aria-expanded','false');}if(focus)$(kind+'-toggle').focus();}
 /** Render catalog choices and reasoning controls with a persistent selected marker. */
 function paintPicker(){
   const chosen=models.find(m=>m.id===$('model').value);
@@ -728,9 +742,15 @@ for(const kind of ['model','session','backend','permission','attach','workflow']
     if(open){if(kind==='workflow'){paintWorkflowChoices();positionWorkflowPicker();popup.showPopover();$('workflow-search').focus();return;}if(kind==='attach')loadWorkflowMenu();if(kind==='session'){$('session-search').focus();list().catch(exc=>error(exc.message));}else (popup.querySelector('[aria-pressed="true"]')||toggle).focus();}
   };
   popup.addEventListener('keydown',event=>{
+    const submenu=kind==='attach'?event.target.closest('.workflow-folder-panel'):null;
+    if(submenu&&(event.key==='ArrowLeft'||event.key==='Escape')){
+      event.preventDefault();event.stopPropagation();closeWorkflowFolder(true);return;
+    }
     if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closePicker(true,kind);}
     if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)&&!event.target.matches('input,textarea')){
-      const buttons=[...popup.querySelectorAll('button:not(:disabled)')];const index=buttons.indexOf(document.activeElement);
+      const buttons=submenu?[...submenu.querySelectorAll('.workflow-choice[tabindex="0"],button:not(:disabled)')]:
+        [...popup.querySelectorAll(kind==='attach'?'.workflow-folder-button':'button:not(:disabled)')];
+      const index=buttons.indexOf(document.activeElement);
       const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length;
       event.preventDefault();buttons[next]?.focus();
     }
@@ -738,27 +758,90 @@ for(const kind of ['model','session','backend','permission','attach','workflow']
   popup.addEventListener('focusout',event=>{if(event.relatedTarget&&!event.relatedTarget.closest('.model-picker'))closePicker();});
 }
 document.addEventListener('click',event=>{if(!event.target.closest('.model-picker'))closePicker();});
-/** Read the curated menu; unsupported launch actions remain explicitly unavailable. */
+const workflowCategories=new Map([
+  ['项目导入',['import-project','import-targets','import-testcases']],
+  ['设计分析',['rtl-summary','static-bug-analysis']],
+  ['验证准备',['picker-compile','plan-goals']],
+  ['测试与验证',['generate-testcase','default']]
+]);
+/** Close the active folder and optionally return focus to its control. */
+function closeWorkflowFolder(focus=false){
+  const panel=$('workflow-options').querySelector('.workflow-folder-panel:popover-open');
+  if(!panel)return;
+  const trigger=panel.previousElementSibling;
+  if(focus)trigger.focus();
+  panel.hidePopover();trigger.setAttribute('aria-expanded','false');
+}
+
+/** Align both menus at the bottom and flip the submenu when space is tight. */
+function positionWorkflowFolder(panel){
+  const margin=8,gap=6,menu=$('attach-popover').getBoundingClientRect();
+  const bottom=Math.min(menu.bottom,innerHeight-margin);
+  panel.style.maxHeight=Math.max(0,bottom-margin)+'px';
+  const width=panel.offsetWidth,right=menu.right+gap,left=menu.left-width-gap;
+  const x=right+width<=innerWidth-margin?right:left>=margin?left:innerWidth-width-margin;
+  panel.style.left=Math.max(margin,x)+'px';
+  panel.style.top=Math.max(margin,bottom-panel.offsetHeight)+'px';
+}
+window.addEventListener('resize',()=>{
+  const panel=$('workflow-options').querySelector('.workflow-folder-panel:popover-open');
+  if(panel)positionWorkflowFolder(panel);
+});
+$('workflow-options').addEventListener('scroll',()=>closeWorkflowFolder());
+
+/** Read the curated menu and group workflows by their purpose in the composer. */
 async function loadWorkflowMenu(){
-  const host=$('workflow-options');host.replaceChildren();
+  const host=$('workflow-options');closeWorkflowFolder();host.replaceChildren();
   try{
     const {workflows}=await request('/workflows');
-    for(const item of workflows){
-      const row=document.createElement('div');row.className='workflow-menu-item workflow-choice';
-      const info=document.createElement('div');info.className='workflow-choice-info';
-      const name=document.createElement('div');name.className='workflow-menu-name';name.textContent=item.name;
-      const description=document.createElement('p');description.textContent=item.description;
-      const footer=document.createElement('div');footer.className='workflow-choice-footer';
-      const canAttach=item.can_start&&Boolean(session)&&['workspace','full'].includes(session?.permission_mode);
-      const attach=document.createElement('span');attach.className='workflow-attach-action';attach.classList.toggle('is-disabled',!canAttach);
-      const label=document.createElement('span');label.textContent='附加到当前对话';
-      const plus=document.createElementNS('http://www.w3.org/2000/svg','svg');plus.setAttribute('viewBox','0 0 20 20');plus.setAttribute('aria-hidden','true');const path=document.createElementNS(plus.namespaceURI,'path');path.setAttribute('d','m7 11 5-5a2.1 2.1 0 0 1 3 3l-7 7a3.5 3.5 0 0 1-5-5l7-7a4.9 4.9 0 0 1 7 7l-6 6');plus.append(path);attach.append(plus,label);footer.append(attach);
-      const direct=document.createElement('button');direct.className='workflow-direct';direct.type='button';direct.title='直接运行';direct.ariaLabel='直接运行 '+item.name;const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');const circle=document.createElementNS(icon.namespaceURI,'circle');circle.setAttribute('cx','12');circle.setAttribute('cy','12');circle.setAttribute('r','9');const triangle=document.createElementNS(icon.namespaceURI,'path');triangle.setAttribute('d','m10 8 6 4-6 4Z');icon.append(circle,triangle);direct.append(icon);direct.disabled=!item.can_start||!models.length;direct.onclick=event=>{event.stopPropagation();configureWorkflow(item,true);};
-      row.tabIndex=canAttach?0:-1;row.setAttribute('aria-label','附加 '+item.name+' 到当前对话');
-      row.onclick=()=>{if(canAttach)configureWorkflow(item,false);};
-      row.onkeydown=event=>{if(event.target===row&&(event.key==='Enter'||event.key===' ')){event.preventDefault();if(canAttach)configureWorkflow(item,false);}};
-      info.append(name,description);
-      row.classList.toggle('can-attach',canAttach);row.append(info,direct,footer);host.append(row);
+    const remaining=new Map(workflows.map(item=>[item.id,item]));
+    const sections=new Map([...workflowCategories].map(([category,ids])=>[category,ids.flatMap(id=>{
+      const item=remaining.get(id);
+      if(!item)return [];
+      remaining.delete(id);return [item];
+    })]));
+    sections.set('其他',[...remaining.values()]);
+    if($('attach-popover').hidden)return;
+    closeWorkflowFolder();host.replaceChildren();
+    for(const [category,items] of sections){
+      if(!items.length)continue;
+      const folder=document.createElement('div');
+      const trigger=document.createElement('button');trigger.type='button';trigger.className='workflow-folder-button model-option';
+      trigger.innerHTML='<span></span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg>';
+      trigger.querySelector('span').textContent=category;
+      trigger.setAttribute('aria-expanded','false');
+      const section=document.createElement('section');section.className='workflow-folder-panel model-popover';
+      section.id='workflow-category-'+host.children.length;
+      section.setAttribute('popover','manual');section.setAttribute('aria-label',category);
+      trigger.setAttribute('aria-controls',section.id);
+      folder.append(trigger,section);host.append(folder);
+      const open=(focus=false)=>{
+        if(!section.matches(':popover-open')){
+          closeWorkflowFolder();section.showPopover();trigger.setAttribute('aria-expanded','true');
+        }
+        positionWorkflowFolder(section);
+        if(focus)section.querySelector('.workflow-choice[tabindex="0"],button:not(:disabled)')?.focus();
+      };
+      trigger.onpointerenter=event=>{if(event.pointerType==='mouse')open();};
+      trigger.onclick=event=>open(event.detail===0);
+      trigger.onkeydown=event=>{if(event.key==='ArrowRight'){event.preventDefault();open(true);}};
+      for(const item of items){
+        const row=document.createElement('div');row.className='workflow-menu-item workflow-choice';
+        const info=document.createElement('div');info.className='workflow-choice-info';
+        const name=document.createElement('div');name.className='workflow-menu-name';name.textContent=item.name;
+        const description=document.createElement('p');description.textContent=item.description;
+        const footer=document.createElement('div');footer.className='workflow-choice-footer';
+        const canAttach=item.can_start&&Boolean(session)&&['workspace','full'].includes(session?.permission_mode);
+        const attach=document.createElement('span');attach.className='workflow-attach-action';attach.classList.toggle('is-disabled',!canAttach);
+        const label=document.createElement('span');label.textContent='附加到当前对话';
+        const plus=document.createElementNS('http://www.w3.org/2000/svg','svg');plus.setAttribute('viewBox','0 0 20 20');plus.setAttribute('aria-hidden','true');const path=document.createElementNS(plus.namespaceURI,'path');path.setAttribute('d','m7 11 5-5a2.1 2.1 0 0 1 3 3l-7 7a3.5 3.5 0 0 1-5-5l7-7a4.9 4.9 0 0 1 7 7l-6 6');plus.append(path);attach.append(plus,label);footer.append(attach);
+        const direct=document.createElement('button');direct.className='workflow-direct';direct.type='button';direct.title='直接运行';direct.ariaLabel='直接运行 '+item.name;const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');const circle=document.createElementNS(icon.namespaceURI,'circle');circle.setAttribute('cx','12');circle.setAttribute('cy','12');circle.setAttribute('r','9');const triangle=document.createElementNS(icon.namespaceURI,'path');triangle.setAttribute('d','m10 8 6 4-6 4Z');icon.append(circle,triangle);direct.append(icon);direct.disabled=!item.can_start||!models.length;direct.onclick=event=>{event.stopPropagation();configureWorkflow(item,true);};
+        row.tabIndex=canAttach?0:-1;row.setAttribute('aria-label','附加 '+item.name+' 到当前对话');
+        row.onclick=()=>{if(canAttach)configureWorkflow(item,false);};
+        row.onkeydown=event=>{if(event.target===row&&(event.key==='Enter'||event.key===' ')){event.preventDefault();if(canAttach)configureWorkflow(item,false);}};
+        info.append(name,description);
+        row.classList.toggle('can-attach',canAttach);row.append(info,direct,footer);section.append(row);
+      }
     }
     if(!workflows.length){const empty=document.createElement('p');empty.className='session-empty';empty.textContent='暂无可用工作流';host.append(empty);}
   }catch{const notice=document.createElement('p');notice.className='session-empty';notice.textContent='工作流列表加载失败，请重新打开菜单重试。';host.append(notice);}
@@ -893,8 +976,7 @@ window.FlowCanvasAI={
     const owner=await request('/sessions',{backend:backendChoice});
     await request('/sessions/'+owner.id+'/settings',{title:'导入项目 · '+project.name});
     await request('/sessions/'+owner.id+'/permissions',{mode:backendChoice==='opencode'?'full':'workspace'});
-    await request('/sessions/'+owner.id+'/attachment',{workflow_id:'import-project',task_only:true,rtl_file:project.path+'/'+project.rtl.top_file,dut:project.rtl.top});
-    await request('/sessions/'+owner.id+'/messages',{text:'请启动附加的 import-project 工作流，为项目 '+project.path+' 按阶段同步验证目标与测试用例，遵循工作流的源码绑定、覆盖定义拆分、运行配置与波形产物要求。只补缺失项，保留未变化内容。用户要求：'+(requirements||'完成项目导入。'),model,effort,speed:speedMode,task_card:{title:'导入项目',workflow:'导入项目',project:project.name,requirements:project.name+(requirements?.trim()?'\n'+requirements.trim():'')}});
+    await request('/sessions/'+owner.id+'/messages',{text:'请启动附加的 import-project 工作流，为项目 '+project.path+' 按阶段同步验证目标与测试用例，遵循工作流的源码绑定、覆盖定义拆分、运行配置与波形产物要求。只补缺失项，保留未变化内容。用户要求：'+(requirements||'完成项目导入。'),model,effort,speed:speedMode,task_card:{title:'导入项目',workflow:'导入项目',workflow_id:'import-project',project:project.name,requirements:project.name+(requirements?.trim()?'\n'+requirements.trim():'')}});
     for(const key of ['flowcanvas.main.session','flowcanvas.session'])localStorage.setItem(key+'.storage-v1.'+project.id,owner.id);
     location.reload();
   },
@@ -921,21 +1003,21 @@ window.FlowCanvasAI={
   async startCase({text,current=true,project,requirements,design=null}){
     await globalConversation();
     const model=$('model').value,effort=$('effort').value;
-    const taskTitle=design?.kind==='import-project'?'导入项目':design?.kind==='import-testcases'?'同步测试用例':design?.kind==='plan-goals'?'规划验证目标':design?.kind==='import-goals'?'同步验证目标':design?.kind==='add-goal'?'新增验证目标':design?.kind==='delete-goal'?'删除验证目标':design?.kind==='functional-coverage'?'分析功能覆盖率':design?.kind==='run-testcase'?'运行测试用例':design?.kind==='delete-testcase'?'删除测试用例':design?.kind==='line-coverage'?'分析'+(({line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率'})[design.metric]||'行覆盖率'):design?'解释设计':'新增测试用例';
+    const workflowId=design?({'import-project':'import-project','import-testcases':'import-testcases','import-goals':'import-targets','plan-goals':'plan-goals'})[design.kind]||null:'generate-testcase';
+    const taskTitle=design?.kind==='add-bug'?'新增 Bug':design?.kind==='delete-bug'?'删除 Bug':design?.kind==='import-project'?'导入项目':design?.kind==='import-testcases'?'同步测试用例':design?.kind==='plan-goals'?'规划验证目标':design?.kind==='import-goals'?'同步验证目标':design?.kind==='add-goal'?'新增验证目标':design?.kind==='delete-goal'?'删除验证目标':design?.kind==='functional-coverage'?'分析功能覆盖率':design?.kind==='run-testcase'?'运行测试用例':design?.kind==='delete-testcase'?'删除测试用例':design?.kind==='line-coverage'?'分析'+(({line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率'})[design.metric]||'行覆盖率'):design?'解释设计':'新增测试用例';
     if(!model)throw Error('请先选择可用模型');
     let owner=session;
     if(current){
       if(!owner)throw Error('请先打开一个对话');
       if(active.has(owner.status))throw Error('当前对话正在执行，请使用独立任务对话');
-      if(owner.attachment&&!owner.attachment_sent&&(design||owner.attachment.workflow_id!=='generate-testcase'))throw Error('当前对话已附加其他工作流，请使用独立任务对话');
     }else{
       owner=await request('/sessions',{backend:backendChoice});
       await request('/sessions/'+owner.id+'/settings',{title:design?taskTitle+' · '+(design.module||project.name):'AI 新增测试用例'});
       await request('/sessions/'+owner.id+'/permissions',{mode:backendChoice==='opencode'?'full':'workspace'});
     }
     if(current&&!owner.id)owner=await ensureSession();
-    if(!design||design.kind==='plan-goals'||design.kind==='import-goals'||design.kind==='import-testcases'||design.kind==='import-project')await request('/sessions/'+owner.id+'/attachment',{workflow_id:design?.kind==='import-project'?'import-project':design?.kind==='import-testcases'?'import-testcases':design?.kind==='import-goals'?'import-targets':design?.kind==='plan-goals'?'plan-goals':'generate-testcase',task_only:true,rtl_file:project.rtl?.top_file?project.path+'/'+project.rtl.top_file:'',dut:project.rtl?.top||'RTL'});
-    const result=await request('/sessions/'+owner.id+'/messages',{text,model,effort,speed:speedMode,task_card:{title:taskTitle,workflow:design?.kind==='import-project'?'导入项目':design?.kind==='import-testcases'?'同步测试用例':design?.kind==='import-goals'?'同步验证目标':design?.kind==='plan-goals'?'规划验证目标':design?'':'新增测试用例',project:project.name,requirements:design?(design.instance||'')+(requirements?'\n'+requirements:''):requirements||''}});
+    const result=await request('/sessions/'+owner.id+'/messages',{text,model,effort,speed:speedMode,
+      task_card:{title:taskTitle,workflow:workflowId?taskTitle:'',workflow_id:workflowId,project:project.name,requirements:design?(design.instance||'')+(requirements?'\n'+requirements:''):requirements||''}});
     await list();await choose(owner.id);
     return result;
   }

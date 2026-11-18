@@ -94,9 +94,13 @@ def test_rtl_dependency_scan_ignores_flowcanvas_source_snapshots(tmp_path):
     snapshot = tmp_path / 'output/flowcanvas/rtl-views/cache/sources/Child.sv'
     snapshot.parent.mkdir(parents=True)
     snapshot.write_bytes(child.read_bytes())
+    picker_package = tmp_path / 'verification' / 'Top'
+    picker_package.mkdir(parents=True)
+    (picker_package / 'libUT_Top.py').write_text('# Picker wrapper')
+    (picker_package / 'generated.v').write_bytes(child.read_bytes())
 
     result = parse_rtl(tmp_path, 'Top', 'Top.sv')
 
     assert result['ready'], result['issues']
     assert result['files'] == ['output/user-rtl/Child.sv', 'Top.sv']
-    assert all(not directory.startswith('output/flowcanvas') for directory in result['include_dirs'])
+    assert result['include_dirs'] == ['.', 'output/user-rtl']

@@ -20,6 +20,33 @@ window.FlowCanvasDetailSection=function(owner,label,key=label){
   section.open=states.get(key)!==false;section.ontoggle=()=>states.set(key,section.open);return section;
 };
 
+/** Place a short binding near the upper third, or show its start with a few lines of context. */
+window.FlowCanvasScrollToSourceLine=function(panel,row,endRow=row){
+  if(!row)return;
+  requestAnimationFrame(()=>{
+    if(!panel.contains(row)||!row.getClientRects().length)return;
+    panel.classList.remove('source-line-centered');
+    const height=panel.clientHeight;
+    const rowRect=row.getBoundingClientRect();
+    const offset=panel.scrollTop+rowRect.top-panel.getBoundingClientRect().top-panel.clientTop;
+    const context=Math.min(48,height/5);
+    const rangeHeight=endRow.getBoundingClientRect().bottom-rowRect.top;
+    if(rangeHeight>=height){
+      panel.scrollTop=Math.max(0,offset-context);
+      return;
+    }
+    const anchor=Math.max(height/3,rangeHeight/2);
+    const midpoint=rowRect.top+rangeHeight/2;
+    const contentEnd=panel.lastElementChild.getBoundingClientRect().bottom;
+    const before=Math.ceil(Math.max(0,anchor-offset-rangeHeight/2));
+    const after=Math.ceil(Math.max(0,height-anchor-contentEnd+midpoint));
+    panel.style.setProperty('--source-jump-before',before+'px');
+    panel.style.setProperty('--source-jump-after',after+'px');
+    panel.classList.add('source-line-centered');
+    panel.scrollTop=Math.max(0,offset+before+rangeHeight/2-anchor);
+  });
+};
+
 /** Selected-case inspector with independently selected source bindings and real execution records. */
 window.FlowCanvasCaseDetails=function(host,project){
   const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
@@ -131,6 +158,7 @@ window.FlowCanvasCaseDetails=function(host,project){
     if(!bindings.some(binding=>binding.id===sourceId))sourceId=bindings.find(binding=>binding.role==='definition')?.id||bindings[0].id;
     const results=await Promise.allSettled(bindings.map(binding=>json(base()+'/testcases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation:'inspect',binding_id:binding.id})})));
     if(token!==generation)return;
+    let selectedRow,selectedEndRow;
     const files=new Map(),blocks=[],roles={definition:'用例定义',stimulus:'激励与约束',check:'检查逻辑',coverage:'覆盖采样',configuration:'环境与配置',rtl:'RTL 实现'};
     results.forEach((result,index)=>{const binding=bindings[index];if(result.status==='rejected'){const part=section(roles[binding.role]||'源码');part.append(el('p','targets-error',binding.file+'：'+result.reason.message));return;}const source=result.value.source;if(!files.has(source.file))files.set(source.file,[]);files.get(source.file).push({...source,id:binding.id,role:binding.role});});
     for(const [file,ranges] of files){
@@ -140,7 +168,10 @@ window.FlowCanvasCaseDetails=function(host,project){
       (full?ranges[0].file_content:ranges[0].content).split('\n').forEach((text,index)=>{const line=start+index,bound=ranges.find(range=>line>=range.line&&line<=range.end_line),row=el('div',bound?'is-bound':'');row.dataset.line=String(line);row.dataset.bindingId=(bound||ranges[0]).id;row.append(el('span','',String(line)),el('code','',text||' '));pre.append(row);});
       pre.onmouseup=()=>{const selection=window.getSelection();if(!selection?.toString()||!pre.contains(selection.anchorNode)||!pre.contains(selection.focusNode))return;const first=selection.anchorNode.parentElement.closest('[data-line]'),last=selection.focusNode.parentElement.closest('[data-line]');if(first&&last){sourceId=first.dataset.bindingId;const lines=[Number(first.dataset.line),Number(last.dataset.line)];publish({line:Math.min(...lines),end_line:Math.max(...lines)});}};
       part.append(pre);blocks.push({part,pre});
+      const selectedRange=ranges.find(range=>range.id===sourceId);
+      if(selectedRange){part.open=true;selectedRow=pre.children[selectedRange.line-start];selectedEndRow=pre.children[selectedRange.end_line-start];}
     }
+    window.FlowCanvasScrollToSourceLine(body,selectedRow,selectedEndRow);
     publish();let scrollTimer;
     body.onscroll=()=>{clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>{if(token!==generation||body.hidden)return;const top=body.getBoundingClientRect().top,block=blocks.find(({part,pre})=>part.open&&pre.getBoundingClientRect().bottom>top),row=block&&[...block.pre.children].find(item=>item.getBoundingClientRect().bottom>top);if(row){sourceId=row.dataset.bindingId;publish({line:Number(row.dataset.line)});}},150);};
   }

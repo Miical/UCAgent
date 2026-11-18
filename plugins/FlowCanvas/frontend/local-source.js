@@ -58,6 +58,6 @@ export async function openLocalSource(reference) {
       if(start!==null&&index+1>=start&&index+1<=end)row.className='target-code-selected';
       row.append(number,code);pre.append(row);
     });body.replaceChildren(pre);
-    requestAnimationFrame(()=>{const row=pre.querySelector('.target-code-selected');if(row)pre.scrollTop=Math.max(0,row.offsetTop-pre.offsetTop-pre.clientHeight*.2);});
+    if(start!==null)globalThis.FlowCanvasScrollToSourceLine?.(pre,pre.children[start-1],pre.children[end-1]);
   }catch(error){body.textContent=error.message;}
 }

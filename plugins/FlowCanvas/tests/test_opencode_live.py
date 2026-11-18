@@ -2073,9 +2073,6 @@ else:
                 owner = service.get(response.json()['id'])
                 response = await client.post('/api/chat/sessions/' + owner['id'] + '/permissions', json={'mode': 'full'})
                 self.assertEqual(response.status_code, 200, response.text)
-                response = await client.post('/api/chat/sessions/' + owner['id'] + '/attachment', json={
-                    'workflow_id': 'generate-testcase', 'task_only': True, 'dut': 'Probe', 'rtl_file': str(rtl)})
-                self.assertEqual(response.status_code, 200, response.text)
                 models = await service.models('opencode', project)
                 model = next((m for m in models if m['default']), models[0])
                 response = await client.post('/api/chat/sessions/' + owner['id'] + '/messages', json={
@@ -2093,7 +2090,7 @@ else:
                         'You may add the minimum Probe_api.py, env fixture and actual bound coverage definitions needed '
                         'for this scene, preserving the existing driver, seed test and RTL. Record target_ids and all new '
                         'files in summary/testcase_plan.json. Report the actual new case and unverified items.',
-                    'task_card': {'title': 'Create test case', 'workflow': 'generate-testcase',
+                    'task_card': {'title': 'Create test case', 'workflow': 'generate-testcase', 'workflow_id': 'generate-testcase',
                                   'project': 'Authoring fixture', 'requirements': 'Zero mask must preserve the original word.'}})
                 self.assertEqual(response.status_code, 202, response.text)
                 started = last_report = asyncio.get_running_loop().time()

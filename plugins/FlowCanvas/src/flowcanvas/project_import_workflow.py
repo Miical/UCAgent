@@ -22,7 +22,7 @@ def project_import_overrides():
     return {'stage': phases, 'mission.prompt.system': '\n\n'.join([policy, *prompts])}
 
 
-def show_project_import_phases(phases, stages):
+def show_workflow_phases(phases, stages):
     """Expose group-only parents while keeping the engine's executable indices intact."""
     by_name = {stage['name']: stage for stage in stages}
     display = []
@@ -35,4 +35,5 @@ def show_project_import_phases(phases, stages):
             'skipped': all(stage['skipped'] for stage in children),
         })
         display.extend(children)
-    return display
+    grouped = {stage['name'] for stage in display}
+    return display + [stage for stage in stages if stage['name'] not in grouped]

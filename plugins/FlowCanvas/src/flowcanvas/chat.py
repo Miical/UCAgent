@@ -40,6 +40,7 @@ class TaskCard(BaseModel):
     """Display metadata for a user-authored task, never an authorization source."""
     title: str = Field(max_length=120)
     workflow: str = Field(max_length=120)
+    workflow_id: str | None = Field(default=None, max_length=120)
     project: str = Field(max_length=200)
     requirements: str = Field(default="", max_length=8000)
 
@@ -266,7 +267,7 @@ class ChatService:
                 or time.time() - (session.get('ended_at') or time.time()) < 2):
             return False
         cards = [card for card in session.get('workflow_runs', [])
-                 if card.get('auto_continue') and not card.get('dismissed')
+                 if card.get('auto_continue')
                  and card.get('status') in {'starting', 'running', 'paused'}]
         if not cards:
             return False
@@ -515,7 +516,7 @@ class ChatService:
         if not session['title']:
             session['title'] = message.task_card.title if message.task_card else message.text.strip()[:40]
             session['title_source'] = 'task' if message.task_card else 'provisional'
-        if (session.get('attachment') or {}).get('task_only'):
+        if not message.task_card and (session.get('attachment') or {}).get('task_only'):
             session['task_attachment_started'] = True
         session['items'].append({'id': uuid.uuid4().hex, 'kind': 'user', 'text': message.text,
                                  'workflow_label': message.workflow_label, 'task_card': message.task_card.model_dump() if message.task_card else None, 'quote': message.quote, 'view_context': message.view_context, 'status': 'completed', 'started_at': session['started_at']})
@@ -556,9 +557,14 @@ class ChatService:
                     'workspace is the project root, and relative top_file paths are resolved against it. '
                     'Inspect the project to confirm unknown information.\n\nProject context:\n' +
                     json.dumps(context, ensure_ascii=False, indent=2) + '\n\n')
-            attached = session.get('attachment')
-            from .catalog import workflow_menu
-            workflow_meta = next((item for item in workflow_menu() if attached and item['id'] == attached['workflow_id']), None)
+            workflow_context = message.workflow_context
+            if workflow_context is None and not message.task_card:
+                attached = session.get('attachment')
+                if attached:
+                    from .catalog import workflow_menu
+                    meta = next((item for item in workflow_menu() if item['id'] == attached['workflow_id']), None)
+                    if meta:
+                        workflow_context = {key: meta[key] for key in ('id', 'name', 'description')}
             backend.workflow_instructions = (
                 'FlowCanvas is a visual chip design verification workbench built on UCAgent. '
                 'It supports design inspection, verification target and test case management, coverage and bug tracking, '
@@ -580,15 +586,13 @@ class ChatService:
                 'End early only when the user explicitly stops or changes the task, or a concrete blocker requires user input or external action. '
                 'First try permitted recovery and documented alternatives; do not ask for information already available in the project. '
                 'If blocked, report the card ID, current stage, exact failed condition, recovery attempted, and the specific input or action needed.\n\n'
-                'Before managing verification targets, test cases, or bugs, call the corresponding tool with operation=guide. '
+                'Before managing verification targets, test cases, or bugs, call the corresponding tool with operation=inspect to read its guide. '
                 'Use tools to save records and source bindings rather than editing management files directly.\n\n'
                 'Report completion and unresolved issues based on actual checks. '
                 'Plans or source bindings do not establish verification success; '
                 'report a workflow complete only after it passes acceptance.\n\n' + project_context +
-                ('Attached workflow:\n' + json.dumps({
-                    'id': attached['workflow_id'], 'name': workflow_meta['name'],
-                    'description': workflow_meta['description']
-                }, ensure_ascii=False, indent=2) if attached and workflow_meta else ''))
+                ('Attached workflow:\n' + json.dumps(workflow_context, ensure_ascii=False, indent=2)
+                 if workflow_context else ''))
             previous_thread = session.get('thread')
             if session['backend']=='opencode':
                 backend.auto_title = session.get('title_source')=='provisional'
@@ -604,9 +608,6 @@ class ChatService:
             if session.get('delegation_stopped') or session['status'] == 'stopping':
                 session['status'] = 'error' if session.get('stop_error') else 'interrupted'
                 return
-            workflow_context = message.workflow_context
-            if workflow_context is None and attached and workflow_meta:
-                workflow_context = {key: workflow_meta[key] for key in ('id', 'name', 'description')}
             workflow_suffix = ('\n\nAttached workflow (FlowCanvas task context):\n' + json.dumps(workflow_context, ensure_ascii=False, indent=2)) if workflow_context else ''
             turn = await backend.send(session['thread'], ('Quoted context (reference only):\n' + message.quote + '\n\nUser request:\n' if message.quote else '') + message.text + workflow_suffix, message.model, message.effort,
                                            session.get('service_tier'), mode)
@@ -711,13 +712,13 @@ def routes(service):
 
     @router.post('/sessions/{identity}/workflow-runs/{card_id}/dismiss')
     async def dismiss_workflow(identity: str, card_id: str):
-        """Remove a completed card from the UI while retaining execution evidence."""
+        """Hide an inactive run’s capsule while retaining the workflow record."""
         owner = service.get(identity)
         card = next((c for c in owner.get('workflow_runs', []) if c['id'] == card_id), None)
         if card is None:
             raise HTTPException(404, 'Workflow card not found')
-        if card['status'] != 'completed':
-            raise HTTPException(409, 'Only completed workflow cards can be removed')
+        if card['status'] not in {'completed', 'paused'}:
+            raise HTTPException(409, 'Only completed or paused workflow capsules can be hidden')
         card['dismissed'] = True
         service.changed(owner)
         service.save(owner)
@@ -884,13 +885,17 @@ def routes(service):
         # Consume the composer chip only after validation; workflow execution remains available.
         if len(session.get('queue', [])) >= 20:
             raise HTTPException(409, 'Message queue is full')
-        attached = session.get('attachment')
+        card = message.task_card
+        attached = None if card else session.get('attachment')
+        workflow_id = card.workflow_id if card else (attached or {}).get('workflow_id')
         message.workflow_context = None
-        if attached:
+        if workflow_id:
             from .catalog import workflow_menu
-            meta = next((row for row in workflow_menu() if row['id'] == attached['workflow_id']), None)
+            meta = next((row for row in workflow_menu() if row['id'] == workflow_id and row['can_start']), None)
             if meta:
                 message.workflow_context = {key: meta[key] for key in ('id', 'name', 'description')}
+            elif card:
+                raise HTTPException(400, 'Task workflow is not available')
         message.workflow_label = (attached.get('name') or attached['workflow_id']) if attached and not session.get('attachment_sent') else ''
         if message.workflow_label:
             session['attachment_sent'] = True

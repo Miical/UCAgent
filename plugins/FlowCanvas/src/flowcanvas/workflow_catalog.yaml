@@ -20,6 +20,11 @@ workflows:
     description: 先完成 Picker 编译与加载验收，再执行 UCAgent 的需求规划、设计理解、测试点定义、边界细化和覆盖模型实现。
     workflow: flowcanvas:plan-goals
     enabled: true
+  - id: static-bug-analysis
+    name: RTL 静态 Bug 分析
+    description: 分批审查顶层及依赖源码，将有依据的疑似缺陷去重后登记为待验证 Bug。
+    workflow: flowcanvas:static-bug-analysis
+    enabled: true
   - id: picker-compile
     name: Picker 编译 RTL
     description: 用 Picker 将指定 RTL 编译为 Python DUT 包，检查加载并保存到项目 verification/<模块名>/，供后续验证使用。

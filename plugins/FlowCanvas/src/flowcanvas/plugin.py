@@ -14,6 +14,7 @@ def get_plugin() -> Plugin:
                              PluginWorkflow(name="import-testcases", config_file=root / "workflows" / "import-testcases.yaml"),
                              PluginWorkflow(name="import-targets", config_file=root / "workflows" / "import-targets.yaml"),
                              PluginWorkflow(name="plan-goals", config_file=root / "workflows" / "plan-goals.yaml"),
+                             PluginWorkflow(name="static-bug-analysis", config_file=root / "workflows" / "static-bug-analysis.yaml"),
                              PluginWorkflow(name="picker-compile", config_file=root / "workflows" / "picker-compile.yaml"),
                              PluginWorkflow(name="generate-testcase", config_file=root / "workflows" / "generate-testcase.yaml"),
                              PluginWorkflow(name="rtl-summary",
