@@ -364,7 +364,28 @@ function mountDefinitionPanel({view,endpoint,caseMode=false,bugMode=false}){
       const children=data.targets.filter(item=>item.parent===node.id&&item.lifecycle!=='draft');
       if(!testpoint){const part=section('测试点分解');if(children.length){const list=el('ul','module-child-list');for(const child of children){const item=el('li');item.append(button(child.name,()=>{selectedTarget=child.id;goalDetail(child);renderGoals();},'goal-detail-child'),el('p','goal-child-summary',child.explanation?.summary||child.description||'此测试点的验证意图待补充'));list.append(item);}part.append(list);}else part.append(el('p','case-detail-empty','当前功能点还没有拆分测试点'));}
       /** Cite concrete implementation with the same source viewer used by testcase explanations. */
-      const reference=(container,item)=>{const label=item.file+':'+item.line+(item.end_line&&item.end_line!==item.line?'-'+item.end_line:'');const link=button(label,async()=>{try{const {openLocalSource}=await import('./markdown-renderer.js');await openLocalSource({path:project.path+'/'+item.file,line:item.line,end:item.end_line});}catch(error){link.title=error.message;}},'case-story-source');link.title='查看当前源码 · '+label;container.append(link);};
+      const reference=(container,item)=>{
+        const label=item.file+':'+item.line+(item.end_line&&item.end_line!==item.line?'-'+item.end_line:'');
+        const link=button(label,async()=>{
+          try{
+            let location=item;
+            if(item.anchor){
+              const latest=await api({operation:'inspect',ids:[node.id]});
+              const steps=latest.targets[0]?.explanation?.implementation||[];
+              const anchor=JSON.stringify(item.anchor);
+              location=steps.flatMap(step=>[...step.assignments,...step.evidence])
+                .find(ref=>ref.file===item.file&&JSON.stringify(ref.anchor)===anchor);
+              if(!location||latest.reports[node.id]?.explanation_status!=='available'){
+                throw Error('源码引用已变化，请重新生成说明后查看。');
+              }
+            }
+            const {openLocalSource}=await import('./markdown-renderer.js');
+            await openLocalSource({path:project.path+'/'+location.file,line:location.line,end:location.end_line});
+          }catch(error){link.title=error.message;}
+        },'case-story-source');
+        link.title='查看当前源码 · '+label;
+        container.append(link);
+      };
       const implementation=section('实现与检查');
       implementation.append(el('p','goal-check-kind',({unknown:'检查方式待确认',coverage_only:'当前仅有覆盖采样，尚未找到独立正确性检查。',assertion:'检查方式：断言',comparison:'检查方式：数据比较或记分板',mixed:'检查方式：断言与比较逻辑结合'})[explanation.check_kind||'unknown']));
       if(explanation.implementation?.length){const list=el('dl','module-explanation-list');for(const step of explanation.implementation){const heading=el('dt','',step.title),body=el('dd');body.append(el('p','',step.confidence==='inferred'&&!step.text.includes('推断')?'推断：'+step.text:step.text));if(step.assignments?.length){const assignments=el('div','case-story-assignments');assignments.append(el('div','case-story-label','关键实现'));for(const assignment of step.assignments){const row=el('div','case-story-assignment');row.append(el('code','',assignment.expression),el('span','',assignment.meaning));reference(row,assignment);assignments.append(row);}body.append(assignments);}for(const evidence of step.evidence||[]){if(step.assignments?.some(item=>item.file===evidence.file&&item.line===evidence.line))continue;const citation=el('div','case-story-evidence');if(evidence.label)citation.append(el('span','',evidence.label+' · '));reference(citation,evidence);body.append(citation);}list.append(heading,body);}implementation.append(list);}else implementation.append(el('p','case-detail-empty','激励、采样条件和检查逻辑待结合源码补充'));

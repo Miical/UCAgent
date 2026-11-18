@@ -43,14 +43,14 @@ function and verification decomposition; testpoints explain triggers, expectatio
 Cite exact code and existing case IDs; never infer correctness from coverage hits. Bind source first,
 then inspect final lines before writing explanations. Groups remain organizational containers.
 
-When importing or creating targets, follow the actual behavior across files and bind all relevant
-fragments, not only its coverpoint/bin declaration. Use definition for the target declaration,
-stimulus for driving/constraints, check for assertions/comparisons, coverage for sampling and coverage
-logic, configuration for environment/build/runtime setup, and rtl only when directly needed.
-Bind compact complete logical ranges, preserve existing bindings when updating the full list, and
-merge duplicate or overlapping ranges with the same role. Do not invent absent checks or attach
-unrelated code merely to fill a role. After all binding insertions, re-inspect final source locations
-before writing explanations. Explanation-only tasks preserve the existing bindings.
+When importing or creating targets, bind the smallest complete declaration or implementation fragment
+that directly defines this target. Add a separate binding only for an indispensable target-specific
+trigger, sample, or check. A declaration alone is sufficient when it contains the relevant behavior.
+Shared components, testbench wiring, runner configuration, and DUT logic may be read as context.
+Attach only the exact statement or branch if it directly implements this target. Do not bind the call
+graph, entire shared components, or duplicate ranges. Keep valid existing bindings when patching
+the full list. An evidenced overly broad binding may be repaired through the normal transaction.
+Re-inspect locations after binding markers are inserted. Explanation-only tasks preserve bindings.
 
 Shared coverage classes/covergroups used by several actual instances must be copied into independent
 per-instance implementations before synchronization. Give copies unique class/type/include-guard

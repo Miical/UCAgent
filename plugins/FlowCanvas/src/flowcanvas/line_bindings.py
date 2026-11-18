@@ -43,9 +43,12 @@ def snapshot(path, bindings):
         positions = [line for line,identity in markers if identity == binding.id]
         if len(positions) != 1:
             continue
-        end, content = span(text,positions[0]+1,binding.line_count)
+        start = positions[0] + 1
+        end, content = span(text,start,binding.line_count)
+        start += next(i for i, line in enumerate(content.splitlines())
+                      if not MARKER.fullmatch(line))
         nodes.append({'id':binding.id,'kind':'LineRange','name':binding.id,'scope':'',
-                      'line':positions[0]+1,'end_line':end,'fingerprint':fingerprint(content)})
+                      'line':start,'end_line':end,'fingerprint':fingerprint(content)})
     return {'text':text,'markers':list(counts.elements()),'nodes':nodes,'orphans':[]}
 
 

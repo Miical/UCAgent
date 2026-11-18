@@ -37,6 +37,75 @@ class BackendAPITests(unittest.IsolatedAsyncioTestCase):
         await self.service.close()
         self.temp.cleanup()
 
+    async def test_generated_title_is_scoped_and_manual_title_wins(self):
+        from flowcanvas.backends.codex import normalize
+        for backend in ('codex', 'opencode'):
+            owner = self.service.create(backend)
+            owner.update(thread='owned-'+backend, title='First message', title_source='provisional')
+            url = '/api/chat/sessions/' + owner['id'] + '/settings'
+            response = await self.client.post(url, json={'pinned': True})
+            self.assertEqual(response.status_code, 200)
+            title_event = normalize('thread/name/updated', {
+                'threadId': owner['thread'], 'threadName': 'Trace FIFO timing'
+            })
+            self.service.event({**title_event, 'session_id': 'wrong-owner'})
+            self.assertEqual(owner['title'], 'First message')
+            self.service.event({**title_event, 'session_id': owner['id']})
+            self.assertEqual(owner['title'], 'Trace FIFO timing')
+            response = await self.client.post(url, json={'title': 'Keep my name'})
+            self.assertEqual(response.status_code, 200)
+            self.service.event({**title_event, 'session_id': owner['id']})
+            self.assertEqual(owner['title'], 'Keep my name')
+            self.assertTrue(owner['pinned'])
+            self.assertEqual(json.loads(self.service.session_path(owner).read_text())['title'], 'Keep my name')
+
+    async def test_opencode_emits_native_autotitle_but_ignores_placeholder(self):
+        events = []
+        backend = OpenCodeBackend(self.temp.name, events.append)
+        backend.connect = AsyncMock()
+        backend.http = AsyncMock(return_value={'id': 'native'})
+        backend.auto_title = True
+        self.assertEqual(await backend.open(None, 'provider/model'), 'native')
+        self.assertNotIn('title', backend.http.call_args.args[2])
+        for title in ('New session - 2026-11-18', 'Inspect FIFO clocks'):
+            await backend.event({'type': 'session.updated', 'properties': {
+                'info': {'id': 'native', 'title': title}
+            }})
+        self.assertEqual(events, [{'kind': 'title', 'thread': 'native', 'title': 'Inspect FIFO clocks'}])
+
+    async def test_codex_title_reads_ephemeral_structured_reply(self):
+        from flowcanvas.backends.codex import generate_title
+        captured = {}
+
+        class Transport:
+            def __init__(self, workspace, emit):
+                self.emit = emit
+                captured['workspace'] = workspace
+
+            async def connect(self):
+                pass
+
+            async def request(self, method, params):
+                captured[method] = params
+                if method=='thread/start':
+                    return {'thread': {'id': 'title-thread'}}
+                self.emit({'kind': 'item', 'turn': 'title-turn', 'item': {
+                    'kind': 'text', 'status': 'completed', 'text': '{"title":"检查 FIFO 时序"}'
+                }})
+                self.emit({'kind': 'turn', 'turn': 'title-turn', 'status': 'completed'})
+                return {'turn': {'id': 'title-turn'}}
+
+            async def close(self):
+                captured['closed'] = True
+
+        with patch('flowcanvas.backends.codex.CodexBackend', Transport):
+            self.assertEqual(await generate_title('请检查 FIFO 的读写时序。', 'model'), '检查 FIFO 时序')
+        self.assertTrue(captured['thread/start']['ephemeral'])
+        self.assertEqual(captured['thread/start']['sandbox'], 'read-only')
+        self.assertEqual(captured['turn/start']['outputSchema']['required'], ['title'])
+        self.assertTrue(captured['closed'])
+        self.assertFalse(captured['workspace'].exists())
+
     async def test_workflows_need_no_attachment_but_keep_ownership_and_enabled_checks(self):
         """Enabled workflows start without grants; disabled and foreign cards fail."""
         from fastapi import HTTPException

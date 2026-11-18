@@ -4,6 +4,7 @@ call_time_out: 1900
 template_overwrite:
   PROJECT_ROOT: '{WORKSPACE}'
   SOURCE_RTL: '{DUT}/{DUT}.v'
+  PICKER_INPUTS: '"{SOURCE_RTL}"'
   DUT_OUTPUT: '{WORKSPACE}/{DUT}'
 stage:
   - name: compile_rtl
@@ -15,10 +16,10 @@ stage:
 
       默认命令：
 
-      picker export "{SOURCE_RTL}" --sname "{DUT}" --sim verilator --rw 1 --lang python
+      picker export {PICKER_INPUTS} --sname "{DUT}" --sim verilator --rw 1 --lang python
       --tdir "{PROJECT_ROOT}/verification/" -c -w "{DUT}.fst" -j 4
 
-      一般情况使用默认命令；用户有补充需求或遇到参数问题时，查询 picker export --help 后调整。
+      项目顶层使用平台提供的 RTL 文件清单和头文件搜索路径。一般情况使用默认命令；用户有补充需求或遇到参数问题时，查询 picker export --help 后调整。
 
       每次运行本工作流默认重新编译；仅当用户明确要求复用已有产物时跳过编译，调用 Complete 时传入 stage_args.reuse_existing=true，仍需通过加载验收并说明本次未编译。
 

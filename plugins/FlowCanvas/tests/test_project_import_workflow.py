@@ -15,7 +15,10 @@ def test_composition_reuses_both_workflows_in_order():
     targets=load_yaml_with_env_vars(folder/'import-targets.yaml')
     cases=load_yaml_with_env_vars(folder/'import-testcases.yaml')
     combined=project_import_overrides()
-    assert combined['stage']==targets['stage']+cases['stage']
+    assert [(phase['name'],phase['desc'],phase['stage']) for phase in combined['stage']]==[
+        ('sync_verification_targets','Sync Verification Targets',targets['stage']),
+        ('sync_test_cases','Sync Test Cases',cases['stage']),
+    ]
     assert targets['mission']['prompt']['system'] in combined['mission.prompt.system']
     assert cases['mission']['prompt']['system'] in combined['mission.prompt.system']
     assert 'ALL stages of BOTH phases' in combined['mission.prompt.system']
@@ -38,8 +41,15 @@ async def test_project_import_host_preserves_both_baselines(tmp_path):
         assert card['current_stage']=='inspect_verification_scope'
         stages=[stage for stage in card['stages'] if stage.get('kind')!='startup']
         assert [stage['name'] for stage in stages if not stage.get('parent')]==[
-            'inspect_verification_scope','import_verification_cards','reconcile_import',
+            'sync_verification_targets','sync_test_cases']
+        groups={stage['name']:stage for stage in stages if stage.get('kind')=='group'}
+        assert all(not group['completed'] for group in groups.values())
+        assert [stage['name'] for stage in stages if stage.get('parent')=='sync_verification_targets']==[
+            'inspect_verification_scope','import_verification_cards','reconcile_import']
+        assert [stage['name'] for stage in stages if stage.get('parent')=='sync_test_cases']==[
             'inspect_testcase_scope','import_testcases','validate_coverage_smoke','reconcile_testcase_import']
+        assert next(stage for stage in stages if stage['name']=='configure_testcase_runners')['parent']=='import_testcases'
+        assert [stage['index'] for stage in stages if stage.get('kind')!='group']==list(range(10))
         assert result['tools']
         assert not (project/'verification').exists()
     finally:

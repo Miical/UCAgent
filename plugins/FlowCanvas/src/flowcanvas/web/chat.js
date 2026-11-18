@@ -322,8 +322,10 @@ function paintWorkflowRun(){
   if(!oldTrack)host.append(track,left,right);
   let previousGroup=null;
   for(const [runIndex,run] of runs.entries()){
-    const stages=workflowDisplayStages(run),done=stages.filter(s=>s.completed).length;
-    const percent=run.status==='completed'?100:stages.length?Math.round(done/stages.length*100):0;
+    const stages=workflowDisplayStages(run);
+    const steps=stages.filter(stage=>stage.kind!=='group');
+    const done=steps.filter(stage=>stage.completed||stage.skipped).length;
+    const percent=run.status==='completed'?100:steps.length?Math.round(done/steps.length*100):0;
     const status={starting:'启动中',running:'运行中',completed:'已完成',paused:'已暂停'}[run.status]||run.status;
     const card=element('article','run-capsule');card.hidden=Boolean(run.dismissed);card.dataset.id=run.id;card.dataset.status=run.status;card.tabIndex=0;card.setAttribute('aria-label',run.name+'，'+status+'，'+percent+'%');
     if(run.status==='completed'){
@@ -335,7 +337,7 @@ function paintWorkflowRun(){
     const ring=element('span','run-ring');ring.style.setProperty('--progress',percent+'%');ring.setAttribute('role','progressbar');ring.setAttribute('aria-valuenow',String(percent));ring.setAttribute('aria-valuemin','0');ring.setAttribute('aria-valuemax','100');ring.setAttribute('aria-label','工作流进度');compact.append(ring);
     const labels=element('div','run-labels');labels.append(element('strong','',run.name),element('span','',run.status==='completed'?'全部阶段已完成':run.current_stage||status));compact.append(labels);card.append(compact);
     const expanded=element('div','run-expanded');
-    const head=element('div','run-detail-head');head.append(element('span','run-status',status+' · '+done+'/'+stages.length+' 阶段'));
+    const head=element('div','run-detail-head');head.append(element('span','run-status',status+' · '+done+'/'+steps.length+' 阶段'));
     expanded.append(head);
     const timeline=element('ol','run-timeline');
     const found=stages.findIndex(stage=>stage.name===run.current_stage&&!stage.completed);
@@ -496,6 +498,8 @@ function render(data){
   seenAITestRuns.set(data.id,aiRun?.run?.id||null);
   const changedBackend=session?.backend!==data.backend;
   session=data;if(changedBackend)selectBackendModels(data.backend);document.dispatchEvent(new CustomEvent('flowcanvas-session',{detail:{id:data.id}}));view.render({...data,welcome_prompt_kind:welcomePromptKind,page_context:caseContext&&data.case_binding?.project_id===caseContext.project.id&&data.case_binding?.case_id===caseContext.testcase.id?caseContext:null});controls();error(data.error);paintQueue();paintAttachments();paintWorkflowRun();
+  const row=sessionRows.find(item=>item.id===data.id);
+  if(row)row.title=data.title;
   const option=[...$('sessions').options].find(o=>o.value===data.id);
   if(option)option.textContent=data.title||'新对话';
   $('session-label').textContent=data.title||'新对话';
@@ -630,7 +634,7 @@ async function deleteSession(row){
 }
 /** Change metadata without touching model history, and preserve the active draft. */
 async function updateSession(row,changes){
-  try{const data=await request('/sessions/'+row.id+'/settings',{title:row.title||'新对话',pinned:!!row.pinned,archived:!!row.archived,...changes});if(selected===row.id)render(data);await list();return true;}catch(exc){error(exc.message);return false;}
+  try{const data=await request('/sessions/'+row.id+'/settings',changes);if(selected===row.id)render(data);await list();return true;}catch(exc){error(exc.message);return false;}
 }
 /** Select shared history in the current pane without navigating away from its page tab. */
 async function choose(id,internal=false){

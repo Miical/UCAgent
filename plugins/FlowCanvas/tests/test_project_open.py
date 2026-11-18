@@ -3,7 +3,7 @@ from pathlib import Path
 import json
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from flowcanvas.projects import Projects, routes
+from flowcanvas.projects import Projects, parse_rtl, routes
 
 
 def test_folder_entry_opens_projects_or_prepares_first_initialization(tmp_path):
@@ -83,3 +83,20 @@ def test_folder_browser_marks_projects_and_retains_navigation_context(tmp_path):
         assert [(item['name'],item['is_project']) for item in data['folders']]==[('existing',True),('plain',False)]
         assert client.get('/api/chat/projects/folders',params={'path':str(existing)}).json()['is_project']
         assert client.get('/api/chat/projects/folders',params={'path':str(parent/'missing')}).status_code==400
+
+
+def test_rtl_dependency_scan_ignores_flowcanvas_source_snapshots(tmp_path):
+    top = tmp_path / 'Top.sv'
+    top.write_text('module Top; Child child(); endmodule\n')
+    child = tmp_path / 'output' / 'user-rtl' / 'Child.sv'
+    child.parent.mkdir(parents=True)
+    child.write_text('module Child; endmodule\n')
+    snapshot = tmp_path / 'output/flowcanvas/rtl-views/cache/sources/Child.sv'
+    snapshot.parent.mkdir(parents=True)
+    snapshot.write_bytes(child.read_bytes())
+
+    result = parse_rtl(tmp_path, 'Top', 'Top.sv')
+
+    assert result['ready'], result['issues']
+    assert result['files'] == ['output/user-rtl/Child.sv', 'Top.sv']
+    assert all(not directory.startswith('output/flowcanvas') for directory in result['include_dirs'])

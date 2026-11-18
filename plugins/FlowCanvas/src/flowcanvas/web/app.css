@@ -78,6 +78,12 @@ select{font:inherit;color:var(--text);background:transparent;border:0;outline-of
 .activity-time{font-size:10px;color:var(--text-dim);font-variant-numeric:tabular-nums;white-space:nowrap;}
 .message.user{margin-left:auto;max-width:88%;width:fit-content;margin-bottom:24px;}
 .message.user>.message-content{background:var(--surface2);padding:10px 15px;border:1px solid color-mix(in srgb,var(--border) 55%,transparent);border-radius:16px 16px 4px 16px;}
+.message.user:not(:has(>.message-references))>.message-content:not(.ai-task-message){
+  box-sizing:border-box;
+  width:fit-content;
+  max-width:100%;
+  margin-inline-start:auto;
+}
 .message.user>.message-label{display:none;}.prose{white-space:pre-wrap;}
 .message pre{background:var(--surface2);border:1px solid var(--border);padding:12px;border-radius:8px;overflow:auto;white-space:pre;font-size:11px;line-height:1.65;}
 .message code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.9em;background:var(--surface2);border-radius:4px;padding:2px 4px;}.message pre code{padding:0;background:none;}.message a{color:var(--accent);}
@@ -2153,7 +2159,7 @@ body:has(.workspace>.case-workspace-open) .workspace-tab-actions>#case-chat-togg
 
 /* Module overviews use flat explanatory sections and a restrained structural diagram. */
 .module-structure{margin:12px auto 0;color:var(--text-dim);font-size:12px}
-.module-structure-viewport{max-width:100%;max-height:420px;overflow:auto;overscroll-behavior:contain;padding:8px 0;scrollbar-width:thin}
+.module-structure-viewport{max-width:100%;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;padding:8px 0;scrollbar-width:thin}
 .module-structure-svg{display:block;margin:auto;max-width:none;flex:none}
 .module-structure-svg g.node polygon,.module-structure-svg g.node path,.module-structure-svg g.node ellipse{fill:var(--surface);stroke:var(--border)}
 .module-structure-svg g.node text{fill:var(--text);font-family:system-ui,sans-serif}

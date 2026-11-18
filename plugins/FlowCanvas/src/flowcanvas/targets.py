@@ -164,14 +164,18 @@ class Targets:
                                                        if any(r['status'] == v for r in records)), 'bound')
             reports[target.id] = {'status': state, 'bindings': records}
         extra = {}
+        payload = definition.model_dump()
         if self.path.name == 'verification.json':
             from .functional_coverage import project
             extra['coverage'] = project(self.root, definition, parsed, reports)
-            from .target_explanations import explanation_state
-            explanation_cache={}
-            for target in definition.targets:
-                reports[target.id]['explanation_status']=explanation_state(self,target.explanation,explanation_cache)
-        return {**definition.model_dump(), **extra, 'reports': reports, 'errors': errors,
+            from .target_explanations import project_explanation
+            explanation_cache = {}
+            for target, data in zip(definition.targets, payload['targets']):
+                state, explanation = project_explanation(self, target.explanation, explanation_cache)
+                reports[target.id]['explanation_status'] = state
+                if explanation is not None:
+                    data['explanation'] = explanation.model_dump()
+        return {**payload, **extra, 'reports': reports, 'errors': errors,
                 'summary': dict(Counter(r['status'] for r in reports.values()))}
 
     def inspect(self, files):

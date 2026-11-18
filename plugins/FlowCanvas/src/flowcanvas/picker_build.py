@@ -1,10 +1,30 @@
 """Validate directly compiled Picker packages for the FlowCanvas workflow."""
 import hashlib
 import json
+import shlex
 from pathlib import Path
 import subprocess
 import sys
 from ucagent.checkers.base import Checker
+
+
+def prepare_inputs(root, rtl, run_root):
+    """Create a Picker file list and fingerprint its source and header inputs."""
+    sources = [root / file for file in rtl['files']]
+    headers = [root / file for file in rtl['headers']]
+    include_dirs = [root / folder for folder in rtl['include_dirs']]
+    for path in sources + headers + include_dirs:
+        if not path.resolve().is_relative_to(root):
+            raise ValueError('Picker input must remain inside the project: ' + str(path))
+
+    hashes = {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in sources + headers}
+    filelist = run_root / 'picker-sources.txt'
+    filelist.write_text(''.join(str(path) + '\n' for path in sources))
+    args = ['--filelist', str(filelist)]
+    args.extend('--sflag=-I' + str(folder) for folder in include_dirs)
+    if include_dirs:
+        args.append('--vflag=' + ' '.join('+incdir+' + str(folder) for folder in include_dirs))
+    return {'picker_inputs': shlex.join(args), 'picker_source_hashes': hashes}
 
 
 def smoke(package):
@@ -41,6 +61,9 @@ class PickerPackageChecker(Checker):
                 raise ValueError('DUT output must remain inside the project')
             if hashlib.sha256(Path(spec['source_file']).read_bytes()).hexdigest() != spec['source_hash']:
                 raise ValueError('Input RTL changed; start a new compilation workflow')
+            for name, expected in spec.get('picker_source_hashes', {}).items():
+                if hashlib.sha256(Path(name).read_bytes()).hexdigest() != expected:
+                    raise ValueError('RTL dependency changed; start a new compilation workflow: ' + name)
             native = [p for p in package.rglob('*') if p.is_file()
                       and p.suffix in {'.so', '.dylib'} and spec['dut'] in p.name]
             if not native or (not reuse_existing and max(p.stat().st_mtime for p in native) < spec['build_started_at']):

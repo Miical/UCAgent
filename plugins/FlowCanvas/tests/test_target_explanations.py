@@ -70,3 +70,44 @@ def test_explanation_failure_rolls_back_new_binding_markers(setup):
     value=copy.deepcopy(explanation);value['implementation'][0]['assignments'][0]['expression']='return invented_value'
     with pytest.raises(ValueError):call('update',cards=[dict(id=point,bindings=[dict(file='checks.py',line=3,line_count=1,role='check')],explanation=value)])
     assert Targets(root).path.read_bytes()==before and (root/'checks.py').read_bytes()==source
+
+
+def test_bound_only_source_ignores_bookkeeping_markers(setup):
+    root, call, _, _, testpoint, _ = setup
+    call('begin_modify', ids=[testpoint])
+    call('update', cards=[{'id': testpoint, 'explanation': {'summary': 'Check the value'}}])
+    call('end_modify', ids=[testpoint], planned=True)
+    source = root / 'checks.py'
+    marker = '# @flowcanvas id=bind_' + '1' * 32 + '\n'
+    source.write_text(marker + source.read_text())
+    assert call('inspect', ids=[testpoint])['reports'][testpoint]['explanation_status']=='available'
+    source.write_text(source.read_text().replace('== 1', '== 2'))
+    assert call('inspect', ids=[testpoint])['reports'][testpoint]['explanation_status']=='stale'
+
+
+def test_citation_and_binding_resolve_non_marker_lines(setup):
+    root, call, _, _, testpoint, explanation = setup
+    ref = explanation['implementation'][0]['assignments'][0]
+    ref['line'] -= 1
+    ref['end_line'] = ref['line'] + 1
+    source = root / 'checks.py'
+    original = source.read_text().splitlines(keepends=True)
+    call('begin_modify', ids=[testpoint])
+    call('update', cards=[{'id': testpoint, 'explanation': explanation}])
+    call('end_modify', ids=[testpoint], planned=True)
+    saved = Targets(root).read().targets[-1].explanation.implementation[0].assignments[0]
+    assert saved.anchor.marker_id and saved.anchor.line_count == 2
+    new_marker = lambda digit: '# @flowcanvas id=bind_' + digit * 32 + '\n'
+    source.write_text(new_marker('1') + original[0] + new_marker('2') +
+                      original[1] + new_marker('3') + original[2])
+
+    report = call('inspect', ids=[testpoint])
+    assert report['reports'][testpoint]['explanation_status']=='available'
+    binding = report['reports'][testpoint]['bindings'][0]
+    assert (binding['line'], binding['end_line'], binding['status']) == (4, 6, 'bound')
+    citation = report['targets'][0]['explanation']['implementation'][0]['assignments'][0]
+    assert (citation['line'], citation['end_line']) == (4, 6)
+    assert Targets(root).read().targets[-1].explanation.implementation[0].assignments[0].line == 2
+
+    source.write_text(source.read_text().replace(original[0], ''))
+    assert call('inspect', ids=[testpoint])['reports'][testpoint]['explanation_status']=='stale'

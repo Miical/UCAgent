@@ -229,6 +229,15 @@ class WorkflowRuntime:
                     request.update(project_root=str(project_root), source_file=spec['rtl_file'], dut_output=str(output),
                                    source_hash=hashlib.sha256(Path(spec['rtl_file']).read_bytes()).hexdigest(),
                                    build_started_at=time.time())
+                    project_top_file = rtl.get('top_file')
+                    if (project_top_file and dut == rtl.get('top')
+                            and (project_root / project_top_file).resolve() == Path(spec['rtl_file']).resolve()):
+                        from .picker_build import prepare_inputs
+                        from .projects import parse_rtl
+                        resolved = await asyncio.to_thread(parse_rtl, project_root, dut, project_top_file)
+                        if not resolved['ready']:
+                            raise ValueError('Picker RTL 依赖尚未解析完整：' + '；'.join(resolved['issues']))
+                        request.update(await asyncio.to_thread(prepare_inputs, project_root, resolved, root))
                 if identity == 'default':
                     package = project_root / 'verification' / dut
                     if not (package / '__init__.py').is_file():

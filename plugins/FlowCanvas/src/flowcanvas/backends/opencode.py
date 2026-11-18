@@ -59,6 +59,7 @@ class OpenCodeBackend:
         self.process = self.client = None
         self.url = None
         self.mcp_url = self.workflow_instructions = None
+        self.auto_title = False
         self.lock = asyncio.Lock()
         self.tasks = set()
         self.active = {}
@@ -186,7 +187,10 @@ class OpenCodeBackend:
         if thread_id:
             await self.http('PATCH', '/session/' + thread_id, {'permission': policy})
         else:
-            thread_id = (await self.http('POST', '/session', {'title': 'FlowCanvas', 'permission': policy}))['id']
+            options = {'permission': policy}
+            if not self.auto_title:
+                options['title'] = 'FlowCanvas'
+            thread_id = (await self.http('POST', '/session', options))['id']
         return thread_id
 
     async def send(self, thread_id, text, model, effort, service_tier=None, mode='full'):
@@ -365,6 +369,13 @@ class OpenCodeBackend:
     async def event(self, event):
         """Apply snapshots and deltas once; native idle, not an assistant part, ends a turn."""
         kind, props = event.get('type'), event.get('properties', {})
+        if kind == 'session.updated':
+            info = props.get('info', {})
+            title = info.get('title')
+            if (info.get('id') and isinstance(title, str) and title!='FlowCanvas'
+                    and not title.startswith(('New session - ', 'Child session - '))):
+                self.emit({'kind': 'title', 'thread': info['id'], 'title': title})
+            return
         if kind in {'permission.asked', 'question.asked'}:
             self.background(self.reject_dialog(kind.split('.')[0], props['id']))
             return

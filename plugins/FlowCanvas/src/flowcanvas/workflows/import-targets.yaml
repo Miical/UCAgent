@@ -15,7 +15,7 @@ mission:
       Reuse existing IDs and parents; allocate only genuinely missing definitions. Unchanged healthy
       targets are read-only: do not begin_modify, rewrite titles/descriptions/explanations, rebind,
       regenerate markers or bump their state. A no-op synchronization must not write target data.
-      Repair only actual source changes, broken bindings or concrete metadata/hierarchy errors, using
+      Repair only actual source changes, incorrect or overly broad bindings, or concrete metadata/hierarchy errors, using
       the smallest update and preserving all unaffected content and bindings. Record each changed
       existing target in import-scope.json repairs as {id,reason} with concrete source evidence.
       Preserve unrelated targets and never automatically delete targets whose source disappeared;
@@ -35,10 +35,14 @@ mission:
       populate explanation with the feature's meaning and verification approach, or the test point's
       trigger conditions, expected behavior and actual checking mechanism. Cite real source excerpts;
       mark inference and coverage-only sampling explicitly. Groups remain organizational containers.
-      Follow each target through the real call/data flow and bind all relevant declaration, stimulus,
-      constraints, sampling, assertion/scoreboard and necessary configuration fragments across files.
-      Use definition/stimulus/check/coverage/configuration/rtl roles as appropriate; do not bind unrelated
-      code or invent missing mechanisms. Preserve existing bindings when replacing the complete list.
+      Bind the smallest complete source fragment that directly defines this target. The definition
+      binding is required; a declaration alone is enough when it explains the target. Add a fragment
+      only if it is indispensable to explaining this target's specific trigger, sample, or correctness
+      check. Read the call/data flow as needed, but do not bind it recursively or fill every role.
+      Do not attach shared monitors, scoreboards, sequences, fixtures, testbench tops, configuration,
+      or RTL simply because this target uses them. For an indispensable exception, bind only the exact
+      statement or branch and explain its direct role. Cite only concrete evidence used in the
+      explanation, without listing indirect context or repeating the same snippet.
       Save bindings first, inspect their final source lines, then update explanation using the same
       owned transaction. Only link existing test cases with evidence; do not invent relationships.
       The server generates source_hashes. Missing evidence stays unknown rather than fabricated.
@@ -112,6 +116,7 @@ stage:
     desc: 核对面板与源码一致性
     task:
       - "Inspect the final cards and source scope again. Confirm titles/descriptions match documents and code, parent links reflect the verification hierarchy, and every imported card is ready and bound. Review source completeness and semantic parent relationships yourself; range checks do not prove syntax completeness. Explain all exclusions and unresolved documentation-only plans."
+      - "Review each binding and explanation citation. Keep the declaration and only the necessary target-specific fragments. Repair evidenced broad or indirect bindings without rewriting unrelated cards, and record the reason in repairs."
       - "Report separate added, repaired and unchanged counts, source range and unresolved issues. No changes is a successful result; do not create extra targets to demonstrate progress. State that this workflow has not run verification or imported coverage results. Finish with Complete and Exit; do not repeat import or simulation to produce a report."
     checker:
       - name: final_alignment

@@ -1,7 +1,9 @@
 """Conversation-scoped MCP tools for enabled workflows and project operations."""
 import asyncio
 import socket
+from fastapi import HTTPException
 from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult
 import uvicorn
 from .workflow_runtime import WorkflowRuntime
@@ -37,8 +39,11 @@ class WorkflowBridge:
             """Start any enabled workflow without prior attachment or separate authorization, or resume this conversation's card. For rtl-summary, picker-compile and plan-goals, omitted rtl_file uses the bound project top module and source; explicit relative paths are project-relative. Provide dut when selecting another RTL module. Returns card_id, instructions and tool argument schemas. Execute tools via call_workflow_tool(card_id, tool_name, arguments), never by calling this tool repeatedly. Inspect cards with list_workflow_runs."""
             self.call = asyncio.current_task()
             try:
-                result = await self.runtime.run(workflow_id, rtl_file, dut, card_id)
-                return result
+                return await self.runtime.run(workflow_id, rtl_file, dut, card_id)
+            except HTTPException as exc:
+                raise ToolError(str(exc.detail)) from exc
+            except ValueError as exc:
+                raise ToolError(str(exc)) from exc
             finally:
                 self.call = None
 

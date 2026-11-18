@@ -1,6 +1,7 @@
 """Host a workflow's UCAgent MCP service in an isolated task process, without a model."""
 import json
 from pathlib import Path
+import shlex
 import sys
 import signal
 import time
@@ -20,6 +21,7 @@ def main():
     if spec.get('dut_output'):
         overrides.update({'template_overwrite.PROJECT_ROOT': spec['project_root'],
                           'template_overwrite.SOURCE_RTL': spec['source_file'],
+                          'template_overwrite.PICKER_INPUTS': spec.get('picker_inputs', shlex.quote(spec['source_file'])),
                           'template_overwrite.DUT_OUTPUT': spec['dut_output']})
     if spec.get('workflow_id') == 'import-project':
         from .project_import_workflow import project_import_overrides
@@ -54,6 +56,9 @@ def main():
                            'fail_count': stage.fail_count, 'check_pass': stage.check_pass,
                            'skipped': stage.is_skipped(), 'human_check': stage.is_hmcheck_needed(),
                            'time_cost': row.get('time_cost'), 'skills': row.get('skill_list', [])})
+        if spec.get('workflow_id') == 'import-project':
+            from .project_import_workflow import show_project_import_phases
+            stages = show_project_import_phases(agent.stage_manager.root_stage.substages, stages)
         stats = agent.status_info()
         tui = {'mission': task_data.get('mission_name'),
                'changed_files': [{'mtime': mtime, 'file': filename, 'path': str((Path(agent.output_dir)/filename).resolve())} for _, mtime, filename in agent.pdb.api_changed_files()[:5]],

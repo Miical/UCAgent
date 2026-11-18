@@ -1,10 +1,22 @@
 """Structured target explanations with source-grounded implementation and explicit case relationships."""
 import hashlib
+from bisect import bisect_left, bisect_right
+from collections import Counter
 from pathlib import Path
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from .line_bindings import MARKER, fingerprint
 
 GUIDE=Path(__file__).parent/'guides/target-explanation-guide.md'
+
+
+class SourceAnchor(BaseModel):
+    """Server-owned location in non-marker lines following a marker or the file start."""
+    model_config=ConfigDict(extra='forbid')
+    marker_id:str|None=Field(default=None,pattern=r'^bind_[0-9a-f]{32}$')
+    offset:int=Field(ge=0)
+    line_count:int=Field(ge=1)
+    fingerprint:str=Field(pattern=r'^[0-9a-f]{64}$')
 
 
 class SourceReference(BaseModel):
@@ -14,6 +26,7 @@ class SourceReference(BaseModel):
     line:int=Field(ge=1)
     end_line:int|None=Field(default=None,ge=1)
     label:str=Field(default='',max_length=200)
+    anchor:SourceAnchor|None=None
 
 
 class ImplementationAssignment(SourceReference):
@@ -67,6 +80,65 @@ class TargetExplanation(BaseModel):
         return self
 
 
+
+BINDING_SOURCE_PREFIX = 'without-binding-markers:'
+
+
+class SourceLocations:
+    """Translate between real file lines and ranges that ignore FlowCanvas markers."""
+
+    def __init__(self, raw):
+        source = raw.decode('utf-8')
+        self.lines = source.splitlines(keepends=True)
+        markers = {}
+        counts = Counter()
+        self.code_lines = []
+        for line, text in enumerate(self.lines, 1):
+            match = MARKER.fullmatch(text.rstrip('\r\n'))
+            if match:
+                marker = match[1]
+                markers[marker] = line
+                counts[marker] += 1
+            else:
+                self.code_lines.append(line)
+        self.markers = {marker: line for marker, line in markers.items() if counts[marker] == 1}
+        content = ''.join(self.lines[line-1] for line in self.code_lines)
+        self.filtered_hash = BINDING_SOURCE_PREFIX + hashlib.sha256(content.encode('utf-8')).hexdigest()
+        self.raw_hash = hashlib.sha256(raw).hexdigest()
+
+    def anchor(self, start, end):
+        first = bisect_left(self.code_lines, start)
+        last = bisect_right(self.code_lines, end)
+        if end < start or end > len(self.lines) or first == last:
+            raise ValueError('Explanation source range is invalid')
+        marker_line, marker = max(
+            ((line, marker) for marker, line in self.markers.items() if line < start),
+            default=(0, None),
+        )
+        text = ''.join(self.lines[line-1] for line in self.code_lines[first:last])
+        return SourceAnchor(marker_id=marker, offset=first-bisect_right(self.code_lines, marker_line),
+                            line_count=last-first, fingerprint=fingerprint(text))
+
+    def resolve(self, anchor):
+        if anchor.marker_id and anchor.marker_id not in self.markers:
+            raise ValueError('Explanation source marker is missing or duplicated')
+        marker_line = self.markers.get(anchor.marker_id, 0)
+        start = bisect_right(self.code_lines, marker_line) + anchor.offset
+        end = start + anchor.line_count
+        if end > len(self.code_lines):
+            raise ValueError('Explanation source range is invalid')
+        text = ''.join(self.lines[line-1] for line in self.code_lines[start:end])
+        if fingerprint(text) != anchor.fingerprint:
+            raise ValueError('Explanation anchored source has changed')
+        return self.code_lines[start], self.code_lines[end-1], text
+
+
+def read_locations(path):
+    if path.stat().st_size>2*1024*1024:
+        raise ValueError('Explanation source exceeds 2 MB')
+    return SourceLocations(path.read_bytes())
+
+
 def validate_explanation(store,target):
     """Verify real source excerpts and case IDs, then attach server-owned source fingerprints."""
     explanation=target.explanation
@@ -76,18 +148,19 @@ def validate_explanation(store,target):
     files={};root=store.root.resolve()
     for ref in references:
         path=store.file(ref.file).resolve()
-        if path.stat().st_size>2*1024*1024:raise ValueError('Explanation source exceeds 2 MB')
-        if path not in files:files[path]=path.read_bytes()
-        lines=files[path].decode('utf-8').splitlines();end=ref.end_line or ref.line
-        if end<ref.line or end>len(lines):raise ValueError('Explanation source range is invalid')
-        if isinstance(ref,ImplementationAssignment) and (not ref.expression.strip() or ''.join(ref.expression.split()) not in ''.join('\n'.join(lines[ref.line-1:end]).split())):
+        if path not in files:
+            files[path] = read_locations(path)
+        locations = files[path]
+        ref.anchor = locations.anchor(ref.line, ref.end_line or ref.line)
+        _, _, content = locations.resolve(ref.anchor)
+        if isinstance(ref,ImplementationAssignment) and (not ref.expression.strip() or
+                ''.join(ref.expression.split()) not in ''.join(content.split())):
             raise ValueError('Explanation expression does not match the cited source')
         ref.file=str(path.relative_to(root))
     for binding in target.bindings:
         path=store.file(binding.file).resolve()
         if path not in files:
-            if path.stat().st_size>2*1024*1024:raise ValueError('Explanation source exceeds 2 MB')
-            files[path]=path.read_bytes()
+            files[path] = read_locations(path)
     if len({item.case_id for item in explanation.related_cases})!=len(explanation.related_cases):
         raise ValueError('Duplicate related test case')
     if any(not relation.reason.strip() for relation in explanation.related_cases):raise ValueError('Related cases require a nonempty explanation')
@@ -96,17 +169,40 @@ def validate_explanation(store,target):
         known={case.id for case in Cases(root).read().targets}
         if any(item.case_id not in known for item in explanation.related_cases):
             raise ValueError('Related test case does not exist in this project')
-    explanation.source_hashes={str(path.relative_to(root)):hashlib.sha256(raw).hexdigest() for path,raw in files.items()}
+    explanation.source_hashes = {str(path.relative_to(root)): locations.filtered_hash
+                                 for path, locations in files.items()}
 
 
-def explanation_state(store,explanation,cache):
-    """Mark explanations stale when a cited or bound source changes, caching each file per projection."""
-    if explanation is None:return 'missing'
-    for file,expected in explanation.source_hashes.items():
+def project_explanation(store, explanation, cache):
+    """Resolve saved anchors into current line numbers without modifying the persisted offsets."""
+    if explanation is None:
+        return 'missing', None
+
+    def locations(file):
         if file not in cache:
             try:
-                path=store.file(file)
-                cache[file]=hashlib.sha256(path.read_bytes()).hexdigest() if path.stat().st_size<=2*1024*1024 else None
-            except (OSError,ValueError):cache[file]=None
-        if cache[file]!=expected:return 'stale'
-    return 'available'
+                cache[file] = read_locations(store.file(file))
+            except (OSError, ValueError):
+                cache[file] = None
+        return cache[file]
+
+    for file, expected in explanation.source_hashes.items():
+        source = locations(file)
+        if source is None or expected not in (source.filtered_hash, source.raw_hash):
+            return 'stale', None
+
+    projected = explanation.model_copy(deep=True)
+    try:
+        for step in projected.implementation:
+            for ref in [*step.assignments, *step.evidence]:
+                if ref.anchor is None:
+                    continue
+                source = locations(ref.file)
+                if source is None:
+                    return 'stale', None
+                start, end, _ = source.resolve(ref.anchor)
+                ref.line = start
+                ref.end_line = end if start != end or ref.end_line is not None else None
+    except ValueError:
+        return 'stale', None
+    return 'available', projected

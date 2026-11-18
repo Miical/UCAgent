@@ -68,9 +68,9 @@ class PermissionSettings(BaseModel):
 
 class SessionSettings(BaseModel):
     """Editable conversation metadata, independent of native model history."""
-    title: str = Field(min_length=1, max_length=120)
-    archived: bool = False
-    pinned: bool = False
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    archived: bool | None = None
+    pinned: bool | None = None
 
 
 class ChatService:
@@ -399,6 +399,27 @@ class ChatService:
         self.save(session)
         return session
 
+    def apply_generated_title(self, session, value):
+        """Replace only the first-message title, even if the user renamed during generation."""
+        if (session.get('title_source') != 'provisional' or not isinstance(value, str)
+                or self.sessions.get(session['id']) is not session):
+            return
+        title = ' '.join(value.split()).strip()[:120]
+        if not title:
+            return
+        session.update(title=title, title_source='generated')
+        self.changed(session)
+        self.save(session)
+
+    async def generate_codex_title(self, session, text, model):
+        """Keep optional naming independent of turn execution and error handling."""
+        from .backends.codex import generate_title
+        try:
+            title = await generate_title(text, model)
+        except (OSError, ValueError, RuntimeError, TimeoutError, KeyError, TypeError):
+            return
+        self.apply_generated_title(session, title)
+
     def event(self, event):
         """Apply backend events only to their owning conversation and turn."""
         if event['kind'] == 'disconnected':
@@ -415,6 +436,10 @@ class ChatService:
         if session is None:
             return
         kind = event['kind']
+        if kind == 'title':
+            if event.get('thread'):
+                self.apply_generated_title(session, event.get('title'))
+            return
         if (kind in {'item', 'delta'} and (session.get('retry_error') or
                 session['status'] in ACTIVE and RETRY_NOTICE.fullmatch(session.get('error') or ''))
                 and event.get('turn') == session.get('turn')):
@@ -488,7 +513,8 @@ class ChatService:
         session.update(status='starting', error='', turn=None, model=message.model, effort=message.effort,
                        started_at=time.time(), ended_at=None, speed=message.speed, service_tier=tier)
         if not session['title']:
-            session['title'] = message.text.strip()[:40]
+            session['title'] = message.task_card.title if message.task_card else message.text.strip()[:40]
+            session['title_source'] = 'task' if message.task_card else 'provisional'
         if (session.get('attachment') or {}).get('task_only'):
             session['task_attachment_started'] = True
         session['items'].append({'id': uuid.uuid4().hex, 'kind': 'user', 'text': message.text,
@@ -564,6 +590,8 @@ class ChatService:
                     'description': workflow_meta['description']
                 }, ensure_ascii=False, indent=2) if attached and workflow_meta else ''))
             previous_thread = session.get('thread')
+            if session['backend']=='opencode':
+                backend.auto_title = session.get('title_source')=='provisional'
             session['thread'] = await backend.open(session['thread'], message.model, mode)
             if session['backend'] == 'codex' and previous_thread and session.get('runtime_permission_policy') != 2:
                 # One-time retirement of the old prompt policy, not a mode-specific
@@ -583,6 +611,13 @@ class ChatService:
             turn = await backend.send(session['thread'], ('Quoted context (reference only):\n' + message.quote + '\n\nUser request:\n' if message.quote else '') + message.text + workflow_suffix, message.model, message.effort,
                                            session.get('service_tier'), mode)
             session['turn'] = turn
+            if (session['backend']=='codex' and session.get('title_source')=='provisional'
+                    and not session.get('title_attempted') and not session.get('delegation_stopped')):
+                session['title_attempted'] = True
+                first = next(item['text'] for item in session['items'] if item['kind']=='user')
+                job = asyncio.create_task(self.generate_codex_title(session, first, message.model))
+                self.jobs.add(job)
+                job.add_done_callback(self.jobs.discard)
             # Notifications may precede the RPC response: never overwrite terminal state.
             if session.get('delegation_stopped') or session['status'] == 'stopping':
                 await backend.interrupt(session['thread'], turn)
@@ -766,11 +801,13 @@ def routes(service):
     async def settings(identity: str, settings: SessionSettings):
         """Persist labels and reversible organization without deleting conversation data."""
         session = service.get(identity)
-        if not settings.title.strip():
+        if settings.title is not None and not settings.title.strip():
             raise HTTPException(400, 'Conversation title cannot be blank')
         if settings.archived and session['status'] in ACTIVE:
             raise HTTPException(409, 'Stop the active turn before archiving')
-        session.update(title=settings.title.strip(), archived=settings.archived, pinned=settings.pinned)
+        session.update(settings.model_dump(exclude_none=True, exclude={'title'}))
+        if settings.title is not None:
+            session.update(title=settings.title.strip(), title_source='manual')
         service.changed(session)
         service.save(session)
         return session

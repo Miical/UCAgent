@@ -14,8 +14,11 @@ def scan(root):
     from pyslang.syntax import SyntaxTree
     from pyslang.parsing import PreprocessorOptions
     files = []
+    managed_output = root / 'output' / 'flowcanvas'
     for directory, dirs, names in os.walk(root, followlinks=False):
-        dirs[:] = sorted(d for d in dirs if d not in SKIP and not Path(directory, d).is_symlink())
+        parent = Path(directory)
+        dirs[:] = sorted(d for d in dirs if d not in SKIP and not (parent / d).is_symlink()
+                         and parent / d != managed_output)
         for name in sorted(names):
             path = Path(directory, name)
             if path.suffix.lower() in {'.v', '.sv', '.vh', '.svh'} and not path.is_symlink():

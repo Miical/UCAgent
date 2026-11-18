@@ -6,7 +6,8 @@ mission:
     system: |
       Import the current FlowCanvas project {PROJECT_ROOT} by completing two consecutive phases:
       first synchronize verification targets, then synchronize test cases and their execution setup.
-      Reuse the original workflows' instructions, stages and acceptance checkers in that order.
+      Each phase is a parent group containing the original workflow's stages and acceptance checkers.
+      Use Complete on the executable child stages. Each parent group finishes when its children do.
       Both phases are repeatable: preserve unchanged targets and cases, add missing definitions,
       and perform only evidenced minimal repairs. Preserve IDs, user text and historical runs.
       Verification target synchronization must finish before preparing test-case coverage mappings.
