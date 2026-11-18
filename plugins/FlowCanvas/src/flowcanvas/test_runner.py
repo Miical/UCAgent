@@ -71,10 +71,16 @@ class TestRuns:
 
     async def stop(self, root, run_id):
         """Cancel only a verified run in the bound project, retaining logs and history."""
-        self.output(root, run_id)
+        run = self.output(root, run_id)['run']
         task = self.tasks.get(run_id)
         if task:
-            task.cancel()
+            process = self.processes.get(run_id)
+            publishing_native = (run.get('coverage_config') or {}).get('provider') == 'toffee' and (
+                process is not None and process.returncode is not None
+            )
+            if not publishing_native:
+                task.cancel()
+            # Once simulation has exited, wait for the native publication before releasing the run.
             await asyncio.gather(task, return_exceptions=True)
         return self.output(root, run_id)
 
@@ -131,8 +137,10 @@ class TestRuns:
                 row.update(mode=mode,smoke_status='pending',ready_pattern=ready_pattern,
                            startup_timeout=startup_timeout,case_identity=case_identity(case))
             if data.coverage and mode in {'test','coverage_smoke'}:
-                from .coverage_runtime import state
-                row.update(coverage_config=data.coverage.model_dump(),coverage_epoch=state(root)['epoch'],coverage_status='pending')
+                row.update(coverage_config=data.coverage.model_dump(),coverage_status='pending')
+                if data.coverage.provider!='toffee':
+                    from .coverage_runtime import state
+                    row['coverage_epoch']=state(root)['epoch']
                 if mode=='coverage_smoke':
                     from .smoke_runs import coverage_identity
                     row['coverage_identity']=coverage_identity(row['coverage_config'])
@@ -151,10 +159,14 @@ class TestRuns:
             with (folder/(row['id']+'.log')).open('ab',buffering=0) as log:
                 if row.get('coverage_config'):
                     from .coverage_runtime import render, context, state
-                    if row['coverage_config'].get('provider')=='vcs':
+                    provider=row['coverage_config'].get('provider')
+                    if provider=='vcs':
                         from .native_vcs import build_identity, metadata_identity
                         row['build_id']=await asyncio.to_thread(build_identity,row['cwd'])
                         row['native_coverage_identity']=await asyncio.to_thread(metadata_identity,row['cwd'])
+                    elif provider=='toffee':
+                        from .native_toffee import build_identity
+                        row['build_id']=await asyncio.to_thread(build_identity,row['cwd'])
                     else:
                         row['build_id']=(await self.coverage_command(render(row['coverage_config']['build_id_command'],context(row)),row,log)).strip()
                     if not row['build_id']:raise ValueError('构建标识为空')

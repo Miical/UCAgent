@@ -67,7 +67,9 @@ class TestcaseAuthoringChecker(Checker):
                 raise ValueError("Enable the simulator waveform switch and route VCD output to {wave_dir}/waves.vcd")
             coverage_plan = plan.get("coverage_plan") or {}
             if not definition.coverage or coverage_plan.get("adapter") not in {"toffee", "normalized"}:
-                raise ValueError("Configure coverage extraction and record coverage_plan.adapter")
+                raise ValueError("Configure the coverage backend and record coverage_plan.adapter")
+            if (coverage_plan["adapter"] == "toffee") != (definition.coverage.provider == "toffee"):
+                raise ValueError("Picker/Toffee authoring requires the native toffee provider and adapter")
             if "{run_dir}" not in case.runner.command:
                 raise ValueError("Run outputs must be isolated using {run_dir}")
             for field in ("line_source", "functional_source"):
@@ -96,14 +98,21 @@ class TestcaseAuthoringChecker(Checker):
                 needed = {"SetCoverage", "set_line_coverage", "set_func_coverage"}
                 if not needed <= collection_calls:
                     raise ValueError("Missing Toffee collection calls: " + ", ".join(sorted(needed-collection_calls)))
-                extract = definition.coverage.extract_command
-                if "--dat-dir" not in extract and "--lcov" not in extract:
-                    raise ValueError("Toffee extraction must convert current-run .dat with --dat-dir or supply --lcov")
-                report_dir = command_option(case.runner.command, "--report-dir")
-                if "--toffee-report" in shlex.split(case.runner.command) and "flowcanvas.coverage_adapter" in extract:
-                    report_source = command_option(extract, "--report")
-                    if not report_dir or report_dir.rstrip("/") != (report_source or "").rstrip("/"):
-                        raise ValueError("Pass the same per-run directory to --report and --report-dir; "
+                from .native_toffee import BUILD_INPUTS, MAPPING
+                native_paths = {
+                    "line_source": "{run_dir}/raw",
+                    "functional_source": "{run_dir}/toffee",
+                    "mapping_file": MAPPING.as_posix(),
+                    "build_inputs_file": BUILD_INPUTS.as_posix()
+                }
+                for field, value in native_paths.items():
+                    if coverage_plan.get(field) != value:
+                        raise ValueError(f"Native Toffee coverage_plan.{field} must be {value}")
+                arguments = shlex.split(case.runner.command)
+                if "--toffee-report" in arguments:
+                    report_dir = command_option(case.runner.command, "--report-dir")
+                    if (report_dir or "").rstrip("/") != native_paths["functional_source"] or "--report-dump-json" not in arguments:
+                        raise ValueError("Enable Toffee JSON output under {run_dir}/toffee; "
                                          "Toffee creates a timestamped report subdirectory")
 
             for field in ("mapping_file", "build_inputs_file"):

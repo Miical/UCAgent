@@ -45,7 +45,14 @@ def context(row):
 
 
 async def collect(runner,row,log):
-    config=row['coverage_config'];values=context(row)
+    config=row['coverage_config']
+    if config.get('provider')=='toffee':
+        import asyncio
+        from .native_toffee import publish_run
+        artifact=await asyncio.to_thread(publish_run,row['cwd'],row['run_dir'],row['build_id'])
+        row.update(coverage_status='published',coverage_artifact=str(artifact))
+        return
+    values=context(row)
     row['coverage_status']='extracting'
     if config.get('provider')=='vcs':
         from .native_vcs import extract

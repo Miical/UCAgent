@@ -100,7 +100,7 @@ class TestCase(BaseModel):
 class CoverageConfig(BaseModel):
     """Declarative coverage integration; execution is not enabled by this schema."""
     model_config = ConfigDict(extra='forbid')
-    provider: Literal['commands', 'vcs'] = 'commands'
+    provider: Literal['commands', 'vcs', 'toffee'] = 'commands'
     mode: Literal['shared', 'per_run'] = 'shared'
     tool: str = Field(min_length=1, max_length=100, description='覆盖率工具，例如 vcs-urg')
     description: str = Field(min_length=1, max_length=2000, description='采集环境、版本、源码同步边界和必要前置条件')
@@ -115,12 +115,16 @@ class CoverageConfig(BaseModel):
     @classmethod
     def legacy_mode(cls, value):
         """Preserve explicitly configured independent-run merge integrations."""
-        if isinstance(value, dict) and 'mode' not in value and value.get('merge_command'):
+        if isinstance(value, dict) and 'mode' not in value and (value.get('merge_command') or value.get('provider')=='toffee'):
             value = dict(value, mode='per_run')
         return value
 
     @model_validator(mode='after')
     def paths_and_merge(self):
+        if self.provider=='toffee':
+            if self.mode!='per_run' or any((self.extract_command,self.build_id_command,self.merge_command,self.report_path)):
+                raise ValueError('Native Toffee reads per-run Verilator and Toffee artifacts without project commands')
+            return self
         if self.provider=='vcs':
             if self.mode!='shared' or any((self.extract_command,self.build_id_command,self.merge_command,self.report_path)):
                 raise ValueError('Native VCS uses fixed metadata and platform extraction, not project commands')

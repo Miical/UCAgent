@@ -1,8 +1,10 @@
-"""Read completed, build-scoped Picker/Toffee artifact directories."""
+"""Publish and read build-scoped Picker/Toffee run artifacts."""
 from functools import lru_cache
 import hashlib
 import json
 from pathlib import Path
+import shutil
+import tempfile
 
 from .coverage_adapter import identity, merge_observations, toffee_report
 from .targets import atomic
@@ -15,10 +17,17 @@ CLEARED_RUNS = ".cleared-runs.json"
 
 
 def enabled(root):
-    """Prefer a configured VCS project when both native directories exist."""
-    root = Path(root)
+    """Honor the configured provider and discover existing native run directories."""
+    root = Path(root).resolve()
     database = root / DATABASE
-    if not database.is_dir() or not database.resolve().is_relative_to(root.resolve()):
+    if not database.resolve().is_relative_to(root):
+        return False
+    definition = root / ".flowcanvas/testcases.json"
+    if definition.is_file():
+        config = json.loads(definition.read_text()).get("coverage") or {}
+        if config.get("provider") in {"toffee", "vcs"}:
+            return config["provider"] == "toffee"
+    if not database.is_dir():
         return False
     config = database.parents[1] / "config.json"
     return not config.is_file() or json.loads(config.read_text()).get("provider") != "vcs"
@@ -30,6 +39,8 @@ def file_stamp(path):
 
 
 def completed_runs(database):
+    if not database.is_dir():
+        return []
     return [folder for folder in sorted(database.iterdir())
             if not folder.name.startswith(".") and not folder.is_symlink()
             and folder.is_dir() and (folder / "run.json").is_file()]
@@ -49,8 +60,72 @@ def reset(root):
 
 
 @lru_cache(maxsize=8)
-def build_identity(root, stamps):
+def _build_identity(root, stamps):
     return identity(root, root / BUILD_INPUTS)
+
+
+def build_identity(root):
+    root = Path(root).resolve()
+    inputs = (root / BUILD_INPUTS).resolve()
+    if not inputs.is_relative_to(root):
+        raise ValueError("覆盖率构建清单必须在项目内")
+    files = [(root / name).resolve() for name in json.loads(inputs.read_text())]
+    if not all(file.is_relative_to(root) for file in files):
+        raise ValueError("覆盖率构建输入必须在项目内")
+    return _build_identity(root, tuple(map(file_stamp, [inputs, *files])))
+
+
+def artifact_files(run_dir):
+    reports = sorted((run_dir / "toffee").rglob("toffee_report.json"))
+    databases = sorted((run_dir / "raw").rglob("*.dat"))
+    if not all(file.resolve().is_relative_to(run_dir) for file in [*reports, *databases]):
+        raise ValueError("覆盖率产物必须在所属运行目录内")
+    return reports, databases
+
+
+def read_report(root, run_dir, module, build_id, report_path):
+    report = toffee_report(root, report_path, build_id, root / MAPPING,
+                           module=module, dat_dir=run_dir / "raw")
+    if not report["instances"] and not report["functional"]["observations"] and not any(
+        metric.get("dut", {}).get("total") for metric in report["code_metrics"].values()
+    ):
+        raise ValueError("没有 DUT 覆盖率数据")
+    return report
+
+
+def publish_run(root, run_dir, expected_build):
+    """Publish a completed run atomically, retaining its original artifacts."""
+    root, run_dir = Path(root).resolve(), Path(run_dir).resolve()
+    database = (root / DATABASE).resolve()
+    if not database.is_relative_to(root) or not run_dir.is_relative_to(root):
+        raise ValueError("覆盖率产物必须位于项目内")
+    if build_identity(root) != expected_build:
+        raise ValueError("运行期间覆盖率构建已变化")
+    reports, databases = artifact_files(run_dir)
+    if len(reports) != 1 or not databases:
+        raise ValueError("本次运行必须输出一个 Toffee 报告以及 Verilator 覆盖率数据库")
+    destination = database / run_dir.name
+    receipt = destination / "run.json"
+    if destination.is_symlink() or receipt.is_symlink():
+        raise ValueError("覆盖率发布目录和清单不能使用符号链接")
+    if receipt.is_file():
+        if json.loads(receipt.read_text()).get("build_id") == expected_build:
+            return destination
+        raise ValueError("同一运行已发布到另一个构建")
+    database.mkdir(parents=True, exist_ok=True)
+    module = json.loads((root / ".flowcanvas/project.json").read_text())["rtl"]["top"]
+    with tempfile.TemporaryDirectory(prefix=".publish-", dir=database) as temporary:
+        staged = Path(temporary) / run_dir.name
+        for source in [*reports, *databases]:
+            target = staged / source.relative_to(run_dir)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+        read_report(root, staged, module, expected_build, staged / reports[0].relative_to(run_dir))
+        if build_identity(root) != expected_build:
+            raise ValueError("发布期间覆盖率构建已变化")
+        atomic(staged / "run.json", {"build_id": expected_build})
+        staged.rename(destination)
+    return destination
 
 
 @lru_cache(maxsize=8)
@@ -64,13 +139,8 @@ def read_runs(root, module, build_id, runs):
             if metadata.get("build_id") != build_id:
                 raise ValueError("运行产物属于其他构建")
             toffee = run_dir / "toffee" if any(path.name == "toffee_report.json" for path, *_ in files) else None
-            report = toffee_report(root, toffee, build_id, root / MAPPING,
-                                   module=module, dat_dir=run_dir / "raw")
+            report = read_report(root, run_dir, module, build_id, toffee)
             report["run_id"] = run_id
-            if not report["instances"] and not report["functional"]["observations"] and not any(
-                metric.get("dut", {}).get("total") for metric in report["code_metrics"].values()
-            ):
-                raise ValueError("没有 DUT 覆盖率数据")
             reports.append(report)
             accepted.append({"id": run_id})
         except (ValueError, OSError, KeyError, TypeError) as exc:
@@ -92,19 +162,14 @@ def public(root):
         folders = [folder for folder in completed_runs(database) if folder.name not in excluded]
         result["can_reset"] = bool(folders)
         module = json.loads((root / ".flowcanvas/project.json").read_text())["rtl"]["top"]
-        inputs = root / BUILD_INPUTS
-        files = [(root / name).resolve() for name in json.loads(inputs.read_text())]
-        if not all(file.is_relative_to(root) for file in [inputs.resolve(), *files]):
-            raise ValueError("覆盖率构建输入必须在项目内")
-        build_id = build_identity(root, tuple(map(file_stamp, [inputs, *files])))
+        build_id = build_identity(root)
         runs = []
         for folder in folders:
             manifest = folder / "run.json"
-            files = [manifest, *sorted((folder / "toffee").rglob("toffee_report.json")),
-                     *sorted((folder / "raw").rglob("*.dat"))]
-            if not all(file.resolve().is_relative_to(folder) for file in files):
+            reports, databases = artifact_files(folder)
+            if not manifest.resolve().is_relative_to(folder):
                 raise ValueError("覆盖率产物必须在所属运行目录内")
-            runs.append((folder, tuple(file_stamp(file) for file in files)))
+            runs.append((folder, tuple(map(file_stamp, [manifest, *reports, *databases]))))
         report, accepted, error = read_runs(root, module, build_id, tuple(runs))
         revision = hashlib.sha256(repr((module, build_id, runs)).encode()).hexdigest()
         result.update(build_id=build_id, report=report, runs=accepted, revision=revision)

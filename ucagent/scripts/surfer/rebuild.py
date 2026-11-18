@@ -19,6 +19,7 @@ LOCK_SHA256 = "c5ced9f5f40448b8980608201e8fb14d9b24d82ca0003185cb7b1cc5ff236441"
 VIEW_SHA256 = "dbedaaeb5e8d2a6384cf332aae7ee427ec415997abed8ca5a685344a591d115d"
 PATCHED_VIEW_SHA256 = "0026a885c0fcb0c248cedb15a373d214de416b5f2832e9a8d3029602128a8a13"
 FITTED_VIEW_SHA256 = "23ddaa16a0e6cd0c9dcada3092bd1430709b415785ee654128f0dadd65a586be"
+FOCUSED_VIEW_SHA256 = "8e0b49fb76e4c6a8381fd7bdd295a69f145566ea4627d52dedf2fc8e091350ef"
 
 
 def main() -> None:
@@ -44,7 +45,7 @@ def main() -> None:
     view_hash = hashlib.sha256(view.read_bytes()).hexdigest()
     if (source_hash, view_hash) not in {
         (SOURCE_SHA256, VIEW_SHA256), (PATCHED_SHA256, PATCHED_VIEW_SHA256),
-        (PATCHED_SHA256, FITTED_VIEW_SHA256),
+        (PATCHED_SHA256, FITTED_VIEW_SHA256), (PATCHED_SHA256, FOCUSED_VIEW_SHA256),
     }:
         parser.error("Use a clean pinned checkout or one with the complete local patch")
     version = subprocess.check_output([args.wasm_bindgen, "--version"], text=True).strip()
@@ -62,8 +63,11 @@ def main() -> None:
     if source_hash == SOURCE_SHA256:
         subprocess.run(["patch", "--batch", "-p1", "-i", str(resources / "bit_expansion.patch")],
                        cwd=source, check=True)
-    if view_hash != FITTED_VIEW_SHA256:
+    if view_hash not in {FITTED_VIEW_SHA256, FOCUSED_VIEW_SHA256}:
         subprocess.run(["patch", "--batch", "-p1", "-i", str(resources / "variable_name_width.patch")],
+                       cwd=source, check=True)
+    if view_hash != FOCUSED_VIEW_SHA256:
+        subprocess.run(["patch", "--batch", "-p1", "-i", str(resources / "signal_focus_color.patch")],
                        cwd=source, check=True)
     shutil.copyfile(resources / "bit_expansion.rs", translation.with_name("bit_expansion.rs"))
     env = dict(os.environ, VERGEN_GIT_SHA=SURFER_REVISION,

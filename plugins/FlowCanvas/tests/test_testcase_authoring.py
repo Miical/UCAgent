@@ -22,11 +22,8 @@ def authored(tmp_path):
     cases=Cases(root)
     case=reserve_case(cases,"test_zero",{"title":"Zero operands","description":"Check zero input sum"},0,"owner")
     definition=cases.read()
-    definition.targets[0].runner=RunTemplate(command="FLOWCANVAS_WAVE_DIR={wave_dir} pytest --report-dir={run_dir}/report {case}",description="Existing project pytest runner")
-    definition.coverage=CoverageConfig(tool="toffee-verilator",description="Native report and LCOV",
-        artifact_path="{run_dir}/coverage.json",extract_command="python extract.py --dat-dir {run_dir}/raw",
-        merge_command="python merge.py {inputs_manifest} {merge_dir}",
-        report_path="{merge_dir}/coverage.json",build_id_command="python identity.py")
+    definition.targets[0].runner=RunTemplate(command="FLOWCANVAS_WAVE_DIR={wave_dir} pytest --toffee-report --report-dump-json --report-dir={run_dir}/toffee {case}",description="Existing project pytest runner")
+    definition.coverage=CoverageConfig(provider="toffee",tool="verilator-toffee",description="Native run artifacts")
     cases.save(definition,definition.revision)
     source=root/"verification/tests/test_Probe_zero.py"
     source.parent.mkdir(parents=True)
@@ -61,14 +58,14 @@ def test_zero(env):
         bind_target(targets,row["id"],{"file":cov_file,"start":node["start"],"fingerprint":node["fingerprint"],"role":"coverage"},
                      targets.read().revision)
         parent=row["id"];ids.append(parent)
-    mapping=root/"verification/coverage/map.json"
+    mapping=root/"verification/coverage/flowcanvas-map.json"
     mapping.write_text(json.dumps({"FG-API/FC-ADD/CK-ZERO":ids[-1]}))
     inputs=root/"verification/coverage/build-inputs.json"
     inputs.write_text(json.dumps([cov_file]))
     plan={"case_id":case["id"],"target_ids":[ids[-1]],"files":[file,str(api.relative_to(root))],
           "coverage_plan":{"adapter":"toffee","line_enabled":True,"functional_enabled":True,
-                           "collector_files":[str(api.relative_to(root))],"line_source":"{run_dir}/coverage.dat",
-                           "functional_source":"{run_dir}/report/toffee_report.json",
+                           "collector_files":[str(api.relative_to(root))],"line_source":"{run_dir}/raw",
+                           "functional_source":"{run_dir}/toffee",
                            "mapping_file":str(mapping.relative_to(root)),
                            "build_inputs_file":str(inputs.relative_to(root))}}
     plan_path=work/"summary/testcase_plan.json"
@@ -184,7 +181,7 @@ async def test_native_host_loads_four_incremental_stages_and_guides(tmp_path):
         await service.close()
 
 
-def test_authoring_requires_a_saved_per_run_extraction_plan(authored):
+def test_authoring_requires_a_saved_native_coverage_plan(authored):
     """Neither a test entry nor an empty coverage config completes authoring."""
     root,work,cases,identity,source,plan_path,request_path,check=authored
     plan=json.loads(plan_path.read_text())
@@ -193,7 +190,7 @@ def test_authoring_requires_a_saved_per_run_extraction_plan(authored):
     assert not check()[0]
 
 
-@pytest.mark.parametrize("change",["disabled","missing_setcoverage","missing_line_report","no_lcov"])
+@pytest.mark.parametrize("change",["disabled","missing_setcoverage","missing_line_report","wrong_output_path"])
 def test_unavailable_cannot_bypass_dual_collection_setup(authored,change):
     """Reject plans that claim completion while omitting part of either collection chain."""
     root,work,cases,identity,source,plan_path,request_path,check=authored
@@ -207,9 +204,8 @@ def test_unavailable_cannot_bypass_dual_collection_setup(authored,change):
     elif change=="missing_line_report":
         api.write_text(api.read_text().replace("set_line_coverage(request, path, dut=dut)","pass"))
     else:
-        data=cases.read()
-        data.coverage.extract_command="python functional_only.py"
-        cases.save(data,data.revision)
+        plan["coverage_plan"]["line_source"]="{run_dir}/wrong"
+        plan_path.write_text(json.dumps(plan))
     assert not check()[0]
 
 
@@ -217,12 +213,68 @@ def test_report_directory_must_match_toffee_output_contract(authored):
     """Creation rejects assuming JSON is directly below Toffee's report root."""
     root,work,cases,identity,source,plan_path,request_path,check=authored
     data=cases.read()
-    data.targets[0].runner.command="FLOWCANVAS_WAVE_DIR={wave_dir} pytest {case} --toffee-report --report-dir={run_dir}/toffee"
-    data.coverage.extract_command="python -m flowcanvas.coverage_adapter extract --dat-dir {run_dir}/raw --report {run_dir}/toffee/toffee_report.json"
+    data.targets[0].runner.command=data.targets[0].runner.command.replace("{run_dir}/toffee","{run_dir}/toffee/toffee_report.json")
     cases.save(data,data.revision)
     ok,result=check()
     assert not ok and "timestamped" in result["error"]
     data=cases.read()
-    data.coverage.extract_command=data.coverage.extract_command.replace("/toffee/toffee_report.json","/toffee")
+    data.targets[0].runner.command=data.targets[0].runner.command.replace("/toffee/toffee_report.json","/toffee")
     cases.save(data,data.revision)
     assert check()[0]
+
+
+@pytest.mark.asyncio
+async def test_authored_native_case_publishes_artifacts_after_run(authored):
+    """The normal run entry publishes native data, even when a DUT assertion fails."""
+    from shlex import quote
+    import sys
+
+    from flowcanvas.coverage_runtime import public
+    from flowcanvas.native_toffee import DATABASE
+    from flowcanvas.targets import atomic
+    from flowcanvas.test_runner import TestRuns
+    from flowcanvas.testcases import execute
+
+    root, work, cases, case_id, source, plan, request, check = authored
+    rtl = root / "Probe.v"
+    rtl.write_text("module Probe(input a, output y);\nassign y=a;\nendmodule\n")
+    atomic(root / ".flowcanvas/project.json", {"rtl": {"top": "Probe", "files": ["Probe.v"]}})
+    launcher = root / "run_probe.py"
+    launcher.write_text("""import json
+from pathlib import Path
+from sys import argv
+run = Path(argv[1])
+raw = run / "raw"
+raw.mkdir()
+(raw / "coverage.dat").write_text("# SystemC::Coverage-3\\nC '\\x01f\\x02Probe.v\\x01l\\x022\\x01page\\x02v_line/Probe\\x01h\\x02TOP.Probe' 4\\n")
+report = run / "toffee/report-generated/toffee_report.json"
+report.parent.mkdir(parents=True)
+report.write_text(json.dumps({"coverages": {"functional": {"groups": [
+    {"name": "FG-API", "points": [{"name": "FC-ADD", "bins": [{"name": "CK-ZERO", "hints": 3}]}]}
+]}}}))
+raise SystemExit(1)
+""")
+    data = cases.read()
+    data.targets[0].runner.command = f"{quote(sys.executable)} {quote(str(launcher))} {{run_dir}} {{wave_dir}} {{case}}"
+    cases.save(data, data.revision)
+    ok, result = check()
+    assert ok, result
+    execute(root, dict(operation="end_modify", ids=[case_id], expected_revision=cases.read().revision), "owner")
+    assert public(root)["provider"] == "toffee"
+    assert public(root)["report"] is None
+    runner = TestRuns()
+    try:
+        run = await runner.start(root, case_id)
+        await runner.tasks[run["id"]]
+    finally:
+        await runner.close()
+    result = runner.list(root)[0]
+    assert result["status"] == "failed" and result["exit_code"] == 1
+    assert result["coverage_status"] == "published", result
+    assert (root / DATABASE / run["id"] / "run.json").is_file()
+    assert (Path(run["run_dir"]) / "raw/coverage.dat").is_file()
+    snapshot = public(root)
+    assert snapshot["runs"] == [{"id": run["id"]}]
+    assert snapshot["report"]["instances"][0]["files"][0]["line_hits"] == {"2": 4}
+    assert snapshot["report"]["functional"]["observations"][-1]["bins"][0]["hits"] == 3
+    assert not (root / DATABASE.parent.parent / "state.json").exists()

@@ -83,12 +83,15 @@ New VCS imports use the native provider rather than generating custom scripts.
 
 ### Native Picker / Toffee artifacts
 
-The verification panel reads completed runs from
-`output/flowcanvas/coverage/database/toffee/<run_id>/`. Put Verilator databases
-under `raw/` and the native Toffee JSON report under `toffee/`. Publish a
-`run.json` containing the run's `build_id` after the files are complete. The
-reader derives the active build from `verification/coverage/build-inputs.json`
-and uses `verification/coverage/flowcanvas-map.json` for target matching.
+The test-case authoring workflow configures `provider: toffee` for Picker /
+Toffee. The case runner writes Verilator databases under `{run_dir}/raw/` and
+one native Toffee JSON report under `{run_dir}/toffee/`. After the command
+exits, FlowCanvas validates and publishes the complete files with a build
+receipt under `output/flowcanvas/coverage/database/toffee/<run_id>/`. Manually
+published directories use the same layout with a `run.json` containing
+`build_id`. FlowCanvas derives the active build from
+`verification/coverage/build-inputs.json` and uses
+`verification/coverage/flowcanvas-map.json` for target matching.
 The panel combines compatible runs on read and only shows measured DUT code
 metrics. Existing test runner commands still use their saved configuration.
 Clearing accumulation excludes the completed run IDs from the next batch

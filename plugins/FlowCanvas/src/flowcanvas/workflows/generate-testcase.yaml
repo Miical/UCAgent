@@ -75,16 +75,12 @@ stage:
         # finally:
         #     dut.Finish()
         ```
-        FlowCanvas 运行器会提供 FLOWCANVAS_RUN_DIR；不要把输出写回共享编译目录。原始 .dat 在 Finish 后供运行器提取。
-        默认提取命令使用当前项目 Python 环境：
-        python -m flowcanvas.coverage_adapter extract --adapter toffee --project {project} --report {run_dir}/toffee --dat-dir {run_dir}/raw --module {DUT} --mapping {project}/verification/coverage/flowcanvas-map.json --build-id "<本次实际构建指纹>" --output {run_dir}/coverage.json
-        构建指纹用 coverage_adapter identity 和真实 build-inputs.json 计算，不能照抄占位文字。适配器负责执行 verilator_coverage --write-info，无需 AI 自写转换脚本。已有 VCS 或其他正确实现可保留等价采集与标准报告流程。
-      - "同时确定本用例运行后的覆盖率采集方案：行覆盖率需真实编译开关、DUT SetCoverage/Finish 及 set_line_coverage 上报；功能覆盖率需真实采样、mark_function 和 set_func_coverage。复用已有机制，禁止以覆盖标记代替采样或报告。"
-      - "为卡片 runner.command 配置 {wave_dir}，并接通真实波形输出开关。核对编译时调试访问能力、运行时 VCD 输出开关及路径；在 runner.description 中说明未实测前提。不修改用例行为或伪造波形，不自动运行 DUT。"
-      - "运行输出须隔离到 {run_dir}。Toffee 运行模板开启 --toffee-report --report-dump-json，并设置独立 --report-dir；Toffee 会再生成报告子目录，适配器 --report 应传本次报告目录，不猜固定 JSON 层级。根据真实工具版本核对参数。让 AI 确定原始行覆盖数据库、Toffee JSON 报告、提取步骤及合并命令，保存项目 coverage_plan，不能等运行完才临时猜路径。"
-      - "优先使用 python -m flowcanvas.coverage_adapter：extract --adapter toffee 读取 Toffee JSON 和从本次原始行数据库转换的 LCOV，或 extract --adapter normalized 接受其他适配器的统一报告；merge 按原子行命中和 bin 次数合并，不平均百分比。必要时读取 --help。VCS 等已有原生合并器可继续使用，只要输出同一报告格式。"
-      - "保存项目 verification/coverage/flowcanvas-map.json，内容为真实 FG/FC/CK 完整标签路径到测试点 ID；保存 build-inputs.json，列出 RTL、编译产物、覆盖定义和影响采样的共享代码相对路径，不包含普通新增用例。使用 identity 计算构建标识，禁止固定字符串。"
-      - "用 test_case_runs(operation=configure, settings={coverage:配置}) 保存 coverage-json-v1 的提取命令、独立原始/标准报告路径、合并命令和构建标识命令。testcase_plan.json 加 coverage_plan：adapter（toffee 或 normalized）、line_source 与 functional_source（均包含 {run_dir}）、mapping_file 与 build_inputs_file（项目相对路径）。必须补齐两种覆盖率采集：coverage_plan 中 line_enabled 与 functional_enabled 均为 true，并用 collector_files 列出真实采集源码。运行时缺失数据可以标 unavailable，但不能用 unavailable 代替创建时的配置任务；本创建流程只配置和静态核对，不运行 DUT。"
+        FlowCanvas 提供 FLOWCANVAS_RUN_DIR。DUT Finish 后生成的 .dat 放在本次运行的 raw/，原生 Toffee JSON 放在 toffee/；不要写回共享编译目录或直接修改累计目录。
+      - "行覆盖率需真实编译开关、DUT SetCoverage/Finish 及 set_line_coverage 上报；功能覆盖率需真实采样、mark_function 和 set_func_coverage。复用已有机制，禁止以覆盖标记代替采样或报告。"
+      - "为卡片 runner.command 配置 {wave_dir}，接通真实 VCD 输出开关。核对编译时调试访问能力、运行时输出开关及路径；在 runner.description 中说明未实测前提，不自动运行 DUT。"
+      - "Picker / Toffee 运行输出隔离到 {run_dir}。开启 pytest 的 --toffee-report --report-dump-json --report-dir {run_dir}/toffee，或由已有入口传入等效选项。将 Verilator 覆盖数据库写到 {run_dir}/raw；Toffee 自己创建报表子目录。FlowCanvas 在运行前计算真实构建指纹，运行结束后发布原始产物到 output/flowcanvas/coverage/database/toffee/<run_id>/；面板读取并合并同一构建。"
+      - "Picker / Toffee 用 test_case_runs(operation=configure, settings={coverage:{provider:toffee,tool:verilator-toffee,description:实际环境说明}}, expected_revision=当前版本) 注册原生后端。使用固定的 verification/coverage/flowcanvas-map.json 保存 FG/FC/CK 完整标签路径到测试点 ID 的映射，用 verification/coverage/build-inputs.json 列出 RTL、实际编译产物、覆盖定义和采样相关共享源码，不包含普通新增用例。不生成提取、合并或构建标识命令。复用已有正确的 VCS / 其他后端设置时，使用 normalized 作为计划 adapter，保留现有运行与采集约定。"
+      - "testcase_plan.json 的 coverage_plan 必须记录 adapter、line_source、functional_source、mapping_file、build_inputs_file、collector_files，且 line_enabled 与 functional_enabled 都为 true。对于原生 Toffee，adapter=toffee，line_source 和 functional_source 固定为 {run_dir}/raw 与 {run_dir}/toffee，mapping_file 与 build_inputs_file 使用上述固定路径。创建只检查采集链路是否配置，真实 DUT 行覆盖以运行后的原始计数为准。"
       - "通过 test_cases(update/inspect/update) 更新同一占位 ID，绑定测试函数，保留 creating 状态供下一阶段审查；同步新增或修改目标的源码绑定。源码绑定只保留用例强相关的完整片段：definition 绑定可运行入口，stimulus 绑定该场景实际使用的 sequence/virtual sequence；场景独有且理解用例不可缺少的约束、辅助任务或预期检查可补充绑定。为理解调用链而读取共享代码，不等于需要绑定；不默认关联共享 monitor、driver、sequencer、agent、env、基类、通用记分板、覆盖采集、fixture、RTL 或构建运行脚本，不为了填满角色而扩展范围。仅在确有不可替代的场景专属逻辑时绑定其最小完整片段并说明理由。保留强相关的既有绑定，去掉当前用例过宽的基础设施绑定，不修改其他用例或共享源码。"
     reference_files: ["{OUT}/testcase_plan.json", "Guide_Doc/dut_test_case.md", "Guide_Doc/dut_fixture.md", "Guide_Doc/dut_api_instruction.md", "Guide_Doc/dut_function_coverage_def.md"]
     checker:
@@ -95,7 +91,7 @@ stage:
     desc: 核对场景、接口与覆盖关联
     task:
       - "逐项审查本用例的输入、独立预期、真实 DUT/API 调用和断言是否验证了指定场景；排除空实现、assert False 占位、无条件通过、skip/xfail，以及只标记覆盖但没有实际激励的写法。"
-      - "核对 fixture 依赖链、DUT 包导入路径、时钟/复位与采样、API 超时/Step、清理、运行模板及覆盖标签均来自真实文件。核对两种覆盖率的编译/采样/落盘/提取/合并路径，确认 test_case_runs(operation=configure, settings={coverage:配置}) 已保存，报告和数据库属于当前 run_dir，构建指纹来自真实输入。确认复用接口未被破坏，所需新增环境足够支撑本场景，不要求实现无关功能。"
+      - "核对 fixture 依赖链、DUT 包导入路径、时钟/复位与采样、API 超时/Step、清理、运行模板及覆盖标签均来自真实文件。核对覆盖率编译开关、采样和本次运行的原始落盘路径，确认 test_case_runs(operation=configure, settings={coverage:配置}) 已保存，报告和数据库属于当前 run_dir，构建指纹来自真实输入。确认复用接口未被破坏，所需新增环境足够支撑本场景，不要求实现无关功能。"
       - "静态解析本次所有修改的 Python 文件，不导入或运行项目模块。检查不能证明运行成功时如实记录待验证项；不要通过 pytest --collect-only 等隐式加载 DUT 的方式绕过禁止仿真。"
       - "将本场景的验证意图及必要运行说明直接维护在测试用例卡片 description 中；技术静态检查有门禁，语义正确性仍由本阶段逐项阅读代码核对。"
     reference_files: ["{OUT}/testcase_plan.json", "Guide_Doc/dut_test_case.md", "Guide_Doc/dut_fixture.md", "Guide_Doc/dut_api_instruction.md"]

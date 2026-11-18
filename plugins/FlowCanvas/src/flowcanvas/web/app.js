@@ -35,21 +35,26 @@ let widths=[25,45,30],caseTabActive=false,mainDetailCollapsed=true;
 let sidebarScope=null,sidebarPanel=null,sidebarRight=true,restoringSidebars=false;
 const rightSidebarKey='flowcanvas.right-sidebar-collapsed';
 try{sidebarRight=localStorage.getItem(rightSidebarKey)!=='false';}catch{}
-/** Share right sidebar visibility across the workspace. Left sidebar choices stay per panel. */
+/** Share right sidebar visibility globally and left sidebar visibility across a project's tabs. */
 window.FlowCanvasSidebarState={
   activate(projectId){const scope=projectId||'global';if(sidebarScope!==scope||!sidebarPanel)this.enter('nav:'+document.getElementById('project-heading').textContent,scope);},
   enter(panel,projectId=sidebarScope){
     if(!projectId)return {leftCollapsed:false,rightCollapsed:sidebarRight};
     if(projectId==='global'&&panel.startsWith('nav:'))panel='nav:global';
     if(sidebarScope===projectId&&sidebarPanel===panel)return {leftCollapsed:workspace.classList.contains('project-collapsed'),rightCollapsed:sidebarRight};
+    const scopeChanged=sidebarScope!==projectId;
     sidebarScope=projectId;sidebarPanel=panel;
-    let leftCollapsed=false;
-    try{
-      const saved=JSON.parse(localStorage.getItem('flowcanvas.sidebar-state.v1.'+sidebarScope+'.'+panel)||'null');
-      if(typeof saved?.leftCollapsed==='boolean')leftCollapsed=saved.leftCollapsed;
-    }catch{}
+    let leftCollapsed=workspace.classList.contains('project-collapsed');
+    if(scopeChanged){
+      leftCollapsed=false;
+      try{
+        const shared=localStorage.getItem('flowcanvas.left-sidebar-collapsed.'+projectId);
+        const saved=JSON.parse(localStorage.getItem('flowcanvas.sidebar-state.v1.'+projectId+'.'+panel)||'null');
+        leftCollapsed=shared===null?saved?.leftCollapsed===true:shared==='true';
+      }catch{}
+    }
     restoringSidebars=true;
-    toggleProject(leftCollapsed,false);
+    if(scopeChanged)toggleProject(leftCollapsed,false);
     if(panel.startsWith('nav:'))toggleDetails(sidebarRight,false,false);
     restoringSidebars=false;
     return {leftCollapsed,rightCollapsed:sidebarRight};
@@ -62,8 +67,8 @@ window.FlowCanvasSidebarState={
     }
     if(!sidebarScope||!sidebarPanel)return;
     try{
-      localStorage.setItem('flowcanvas.sidebar-state.v1.'+sidebarScope+'.'+sidebarPanel,
-        JSON.stringify({leftCollapsed:workspace.classList.contains('project-collapsed')}));
+      localStorage.setItem('flowcanvas.left-sidebar-collapsed.'+sidebarScope,
+        String(workspace.classList.contains('project-collapsed')));
     }catch{}
   }
 };

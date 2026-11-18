@@ -1,0 +1,15 @@
+--- a/libsurfer/src/view.rs
++++ b/libsurfer/src/view.rs
+@@ -1210,7 +1210,11 @@
+     ) -> egui::Response {
+         let color_pair = {
+             if self.item_is_focused(vidx) {
+-                &self.user.config.theme.accent_info
++                let theme = &self.user.config.theme;
++                &ThemeColorPair {
++                    background: theme.highlight_background,
++                    foreground: theme.get_best_text_color(theme.highlight_background),
++                }
+             } else if self.item_is_selected(displayed_id) {
+                 &self.user.config.theme.selected_elements_colors
+             } else if matches!(
