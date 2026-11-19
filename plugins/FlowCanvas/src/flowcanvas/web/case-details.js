@@ -20,7 +20,7 @@ window.FlowCanvasDetailSection=function(owner,label,key=label){
   section.open=states.get(key)!==false;section.ontoggle=()=>states.set(key,section.open);return section;
 };
 
-/** Present both directions of coverage association as the same flat, navigable list. */
+/** Present related records as a flat, navigable list. */
 window.FlowCanvasCoverageGroup=function(container,{label,kind}){
   const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
   const group=el('div','coverage-link-group');
@@ -39,10 +39,10 @@ window.FlowCanvasCoverageGroup=function(container,{label,kind}){
       const link=el('button','coverage-link-row');
       link.type='button';link.disabled=!row.open;
       if(row.open)link.onclick=row.open;
-      if(row.caseResult){
+      if(row.caseResult||row.bugStatus){
         const badge=el('span','case-result-badge');
-        badge.dataset.caseResult=row.caseResult;
-        badge.dataset.status='neutral';
+        if(row.caseResult)badge.dataset.caseResult=row.caseResult;
+        badge.dataset.status=row.bugStatus==='as_designed'||row.bugStatus==='confirmed'?row.bugStatus:'neutral';
         link.append(badge);
       }
       link.append(el('span','coverage-link-name',row.label));
@@ -96,18 +96,20 @@ window.FlowCanvasScrollToSourceLine=function(panel,row,endRow=row,{pad=true}={})
 };
 
 /** Selected-case inspector with independently selected source bindings and real execution records. */
-window.FlowCanvasCaseDetails=function(host,project,createRunButton){
+window.FlowCanvasCaseDetails=function(host,project,createRunButton,{waveBug,waveAction}={}){
   const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
-  let selected=null,report=null,tab='overview',runId=null,sourceId=null,revision='',generation=0,offset=0,outputRequest=null;
+  let selected=null,report=null,tab=waveBug?'wave':'overview',runId=null,sourceId=null,revision='',generation=0,offset=0,outputRequest=null;
   let wavePanel=null,waveExplanation=null;
-  let coverageSections=null,coveragePolling=false;
+  let coverageSections=null,coveragePolling=false,bugLinks=null;
   let runs=[],log=null,resultNote=null,runCommand=null,runSelect=null,runBadge=null,wavePath='',waveRevision='',wavePolling=false;
   const positions=new Map(),tabPrefix='case-detail-'+Math.random().toString(36).slice(2)+'-';
   const names={overview:'概览',source:'源码',runs:'运行记录',wave:'波形'};
   const statusNames={starting:'启动中',running:'运行中',completed:'已结束',failed:'运行失败',interrupted:'已中断'};
   const stepStatus={planned:'待执行',observed:'已观察',passed:'通过',failed:'失败',skipped:'已跳过',unknown:'未确认'};
   const title=el('header','case-detail-title'),tabs=el('nav','case-detail-tabs'),body=el('div','case-detail-body');
-  tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','测试用例详情');host.append(title,tabs,body);
+  const waveToolbar=waveAction?null:el('div','wave-context-toolbar case-wave-toolbar');
+  waveAction??=el('div','wave-context-actions');
+  tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','测试用例详情');if(!waveBug)host.append(title,tabs);if(waveToolbar)host.append(waveToolbar);host.append(body);
   for(const [key,name]of Object.entries(names)){
     const button=el('button','',name);button.type='button';button.setAttribute('role','tab');button.id=tabPrefix+key;button.onclick=()=>{tab=key;render();};
     button.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const keys=Object.keys(names),index=keys.indexOf(tab);tab=event.key==='Home'?keys[0]:event.key==='End'?keys.at(-1):keys[(index+(event.key==='ArrowRight'?1:-1)+keys.length)%keys.length];render();document.getElementById(tabPrefix+tab).focus();};tabs.append(button);
@@ -117,14 +119,16 @@ window.FlowCanvasCaseDetails=function(host,project,createRunButton){
     if(!selected)return;
     const position={tab,run_id:runId,binding_id:tab==='source'?sourceId:null,...extra};
     positions.set(selected.id,position);
-    document.dispatchEvent(new CustomEvent('flowcanvas-case-view',{detail:{case_id:selected.id,view:position}}));
+    document.dispatchEvent(new CustomEvent('flowcanvas-case-view',{detail:{
+      case_id:waveBug?.id||selected.id,view:waveBug?{...position,wave_case_id:selected.id}:position
+    }}));
   }
   /** Read JSON with actionable errors and no untrusted HTML insertion. */
   async function json(url,options){const response=await fetch(url,options);const value=await response.json();if(!response.ok)throw Error(typeof value.detail==='string'?value.detail:'无法读取数据');return value;}
   /** Build a project-scoped URL from the current immutable selection. */
   function base(){return '/api/chat/projects/'+encodeURIComponent(project().id);}
   /** Create the shared flat section used throughout case details. */
-  function section(label,key=label){const node=label==='波形'?el('section','case-section'):window.FlowCanvasDetailSection(host,label,selected.id+':'+tab+':'+key);if(label==='波形')node.append(el('h4','module-section-heading',label));body.append(node);if(label==='AI 解读'&&tab==='wave'){waveExplanation=node;window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,node);}return node;}
+  function section(label,key=label){const node=label==='波形'?el('section','case-section'):window.FlowCanvasDetailSection(host,label,selected.id+':'+tab+':'+key);if(label==='波形')node.append(el('h4','module-section-heading',label));body.append(node);if(label==='AI 解读'&&tab==='wave'){node.classList.add('case-wave-explanation');waveExplanation=node;window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,waveBug?.id||selected.id,node);}return node;}
   /** Render a labeled value using the shared section layout. */
   function field(label,value,code=false){section(label).append(el(code?'pre':'p','',value||'尚未填写'));}
   function coverageTree(render,rows,empty){
@@ -185,14 +189,54 @@ window.FlowCanvasCaseDetails=function(host,project,createRunButton){
       if(parts!==coverageSections&&coverageSections)refreshCoverageLinks();
     }
   }
-  const coveragePoll=setInterval(()=>{if(!document.hidden&&!host.closest('[hidden]'))refreshCoverageLinks();},2500);
+  /** Refresh the associations maintained by Bug management while the overview is visible. */
+  async function refreshBugLinks(){
+    const links=bugLinks;
+    if(!links||links.pending)return;
+    links.pending=true;
+    const projectId=project().id;
+    try{
+      const rows=await json(base()+'/testcases/'+encodeURIComponent(selected.id)+'/bug-links');
+      if(links!==bugLinks)return;
+      const signature=JSON.stringify(rows);
+      if(links.signature===signature)return;
+      links.signature=signature;
+      const statuses={unverified:'待复核',as_designed:'设计如此',confirmed:'已确认缺陷'};
+      links.render(rows.map(row=>({
+        label:row.name,bugStatus:row.status,
+        kind:row.example?'演示 · '+statuses[row.status]:statuses[row.status],
+        open:()=>document.dispatchEvent(new CustomEvent('flowcanvas-case-restore',{
+          detail:{project_id:projectId,case_id:row.id,view:{tab:'overview'},bugLink:true}
+        }))
+      })),'尚未关联 Bug');
+    }catch(error){
+      if(links===bugLinks&&!links.signature)links.render([],'暂时无法读取关联 Bug');
+    }finally{links.pending=false;}
+  }
+  const coveragePoll=setInterval(()=>{
+    if(document.hidden||host.closest('[hidden]'))return;
+    refreshCoverageLinks();
+    refreshBugLinks();
+  },2500);
   function overviewBlock(data){
     for(const [label,value] of [['验证目的',data.purpose],['验证方法',data.method]]){
       section(label).append(el('p',value?'':'case-detail-empty',value||'待补充'));
     }
   }
   /** Bind the shared action button to the currently selected test case. */
-  function taskButton(kind,label,extra={}){return window.FlowCanvasCaseTaskButton(kind,label,{project:project(),testcase:selected,kind,...extra});}
+  function taskButton(kind,label,extra={}){
+    return window.FlowCanvasCaseTaskButton(kind,label,{
+      project:project(),testcase:waveBug||selected,kind,...(waveBug?{waveCase:selected}:{}),...extra
+    });
+  }
+  /** Keep the waveform action next to its selector while the artifact loads. */
+  function paintWaveAction(path='',reason='正在读取波形…'){
+    if(tab!=='wave'||!selected)return;
+    const task=taskButton('case-waveform','解读波形',{run_id:runId,waveform:path});
+    task.disabled=!path;
+    if(!path)task.title=reason;
+    waveAction.replaceChildren(task);
+  }
   /** Open a cited current-source range in the existing viewer, scoped to this project. */
   function sourceReference(file,line,end){
     const label=file+(line?':'+line+(end&&end!==line?'-'+end:''):'');
@@ -267,7 +311,8 @@ window.FlowCanvasCaseDetails=function(host,project,createRunButton){
     }
     runSelect.value=runId;runSelect.onchange=()=>{runId=runSelect.value;render();};
     runBadge=el('span','case-run-status');updateRunBadge(runs.find(row=>row.id===runId));
-    label.append(runSelect);picker.append(label,runBadge);body.append(picker);
+    label.append(runSelect);picker.append(label,runBadge);
+    if(tab==='wave'&&waveToolbar)waveToolbar.prepend(picker);else body.append(picker);
   }
   /** Show every related source file once, highlighting all of its bound fragments. */
   async function source(token){
@@ -328,28 +373,42 @@ window.FlowCanvasCaseDetails=function(host,project,createRunButton){
   /** Present only files discovered inside this execution's managed directory. */
   async function execution(token){
     if(!await loadRuns(token))return;
-    if(!runId){body.append(el('p','case-detail-empty','此用例尚无正式运行记录'));return;}
+    if(!runId){
+      paintWaveAction('','此用例尚无运行记录');
+      body.append(el('p','case-detail-empty','此用例尚无正式运行记录'));
+      if(tab==='wave')section('AI 解读').append(el('p','case-detail-empty','生成波形后可进行解读。'));
+      return;
+    }
     picker();const run=runs.find(row=>row.id===runId);
     if(tab==='wave'){
       const result=await json(base()+'/test-runs/'+encodeURIComponent(runId)+'/waveforms');if(token!==generation)return;
       const waiting=['starting','running'].includes(run?.status);
       if(!result.files.length||run?.waveform_status==='failed'||waiting){
-        const viewer=section('波形'),actions=el('div','case-overview-actions'),task=taskButton('case-waveform','解读波形');task.disabled=true;task.title='本次运行尚无波形文件';actions.append(task);viewer.querySelector('.module-section-heading').remove();
-        viewer.append(el('p','case-detail-empty',waiting?'运行仍在生成波形，结束后将自动载入。':run?.waveform_error?'波形不可用：'+run.waveform_error:'本次运行尚无波形文件'));const explanation=section('AI 解读');explanation.classList.add('case-wave-explanation');explanation.querySelector('.module-section-heading').append(actions);explanation.append(el('p','case-detail-empty','生成波形后可进行解读。'));return;
+        const viewer=section('波形');
+        const reason=waiting?'运行仍在生成波形':'本次运行尚无可查看的波形';
+        paintWaveAction('',reason);
+        viewer.querySelector('.module-section-heading').remove();
+        viewer.append(el('p','case-detail-empty',waiting?'运行仍在生成波形，结束后将自动载入。':run?.waveform_error?'波形不可用：'+run.waveform_error:'本次运行尚无波形文件'));section('AI 解读').append(el('p','case-detail-empty','生成波形后可进行解读。'));return;
       }
       const viewer=section('波形');viewer.classList.add('case-section-wave');
       const file=result.files.find(file=>file.path==='waveforms/waves.vcd')||result.files.find(file=>/\.(vcd|fst)$/i.test(file.path));
-      if(!file){viewer.querySelector('.module-section-heading').remove();viewer.append(el('p','case-detail-empty','本次运行没有可查看的 VCD/FST 波形'));return;}
-      const path=file.path;wavePath=path;publish({waveform:path});
-      const analysisUrl=base()+'/test-runs/'+encodeURIComponent(runId)+'/waveform-analysis?case_id='+encodeURIComponent(selected.id)+'&waveform='+encodeURIComponent(path);
+      if(!file){paintWaveAction('','本次运行没有可查看的 VCD/FST 波形');viewer.querySelector('.module-section-heading').remove();viewer.append(el('p','case-detail-empty','本次运行没有可查看的 VCD/FST 波形'));section('AI 解读').append(el('p','case-detail-empty','本次运行没有可供解读的波形。'));return;}
+      const path=file.path;wavePath=path;paintWaveAction(path);publish({waveform:path});
+      const analysisUrl=base()+'/test-runs/'+encodeURIComponent(runId)+'/waveform-analysis?case_id='+encodeURIComponent(waveBug?.id||selected.id)+'&waveform='+encodeURIComponent(path);
       const saved=await json(analysisUrl);if(token!==generation)return;
       waveRevision=JSON.stringify([saved.revision,saved.status]);
-      const actions=el('div','case-overview-actions');actions.append(taskButton('case-waveform','解读波形',{run_id:runId,waveform:path}));viewer.querySelector('.module-section-heading').remove();
+      viewer.querySelector('.module-section-heading').remove();
       const source=base()+'/test-runs/'+encodeURIComponent(runId)+'/waveform-view/'+path.split('/').map(encodeURIComponent).join('/');
       const catalogUrl=analysisUrl.replace('/waveform-analysis?','/waveform-signals?');
-      wavePanel=window.FlowCanvasWavePanel(viewer,{source,analysisUrl,catalogUrl,runSelect:runSelect.closest('.case-run-picker'),analysis:saved.analysis,onSelection:()=>{for(const button of waveExplanation?.querySelectorAll('.case-wave-point-title')||[])button.setAttribute('aria-pressed','false');}});
-      const explanation=section('AI 解读');explanation.classList.add('case-wave-explanation');explanation.querySelector('.module-section-heading').append(actions);
+      wavePanel=window.FlowCanvasWavePanel(viewer,{source,analysisUrl,catalogUrl,runSelect:waveToolbar?null:runSelect.closest('.case-run-picker'),analysis:saved.analysis,onSelection:()=>{for(const button of waveExplanation?.querySelectorAll('.case-wave-point-title')||[])button.setAttribute('aria-pressed','false');}});
+      const explanation=section('AI 解读');
       if(!saved.analysis){explanation.append(el('p','case-detail-empty',saved.status==='stale'?'波形已更新，请重新解读。':'点击“解读波形”生成分析。'));return;}
+      if(waveBug&&saved.analysis.verdict&&saved.analysis.summary){
+        const overview=el('div','bug-wave-evidence-summary');
+        const status=({reproduced:'本次波形复现',not_reproduced:'本次运行未复现',insufficient_evidence:'波形证据不足'})[saved.analysis.verdict];
+        overview.append(el('strong','',status),el('p','',saved.analysis.summary));
+        explanation.append(overview);
+      }
       for(const [index,point] of saved.analysis.points.entries()){
         const entry=el('article','case-wave-point'),jump=el('button','case-wave-point-title',(index+1)+'. '+point.title);jump.type='button';
         jump.setAttribute('aria-pressed',String(index===0));jump.title='查看对应信号和时间窗口';
@@ -366,11 +425,13 @@ window.FlowCanvasCaseDetails=function(host,project,createRunButton){
   }
   /** Replace only the active tab when selection changes, guarding stale asynchronous responses. */
   function render(){
-    const token=++generation;coverageSections=null;wavePanel?.dispose();wavePanel=null;waveExplanation=null;if(selected)window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,null);offset=0;log=null;resultNote=null;wavePath='';body.onscroll=null;body.replaceChildren();body.dataset.tab=tab;title.replaceChildren();
+    const token=++generation;coverageSections=null;bugLinks=null;wavePanel?.dispose();wavePanel=null;waveExplanation=null;if(selected)window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,waveBug?.id||selected.id,null);offset=0;log=null;resultNote=null;wavePath='';body.onscroll=null;body.replaceChildren();body.dataset.tab=tab;title.replaceChildren();
+    if(waveToolbar){waveToolbar.hidden=tab!=='wave'||!selected;waveToolbar.replaceChildren(waveAction);}
     for(const button of tabs.children){const active=button.id===tabPrefix+tab;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;}
-    body.setAttribute('role','tabpanel');body.setAttribute('aria-labelledby',tabPrefix+tab);
+    if(!waveBug){body.setAttribute('role','tabpanel');body.setAttribute('aria-labelledby',tabPrefix+tab);}
     if(!selected){title.append(el('strong','','测试用例详情'));body.append(el('p','case-detail-empty','在左侧选择测试用例'));return;}
     publish();
+    paintWaveAction();
     const heading=el('div','case-detail-heading');
     heading.append(el('strong','',selected.title||selected.name),el('code','',selected.name));
     if(createRunButton){
@@ -383,10 +444,19 @@ window.FlowCanvasCaseDetails=function(host,project,createRunButton){
       const actions=el('div','detail-overview-toolbar');actions.append(taskButton('case-overview','生成用例概览'));body.append(actions);
       overviewBlock(selected.overview||{});
       showCoverageOverview();
+      const links=el('div','coverage-link-groups');
+      section('关联 Bug').append(links);
+      bugLinks={render:window.FlowCanvasCoverageGroup(links,{kind:'related'}),signature:'',pending:false};
+      refreshBugLinks();
       timeline();
       return;
     }
-    (tab==='source'?source(token):execution(token)).catch(error=>{if(token===generation)body.append(el('p','targets-error',error.message));});
+    (tab==='source'?source(token):execution(token)).catch(error=>{
+      if(token!==generation)return;
+      if(!wavePath)paintWaveAction('','暂时无法读取波形');
+      if(tab==='wave')section('AI 解读').append(el('p','case-detail-empty','暂时无法读取波形解读。'));
+      body.append(el('p','targets-error',error.message));
+    });
   }
   const runPoll=setInterval(async()=>{if(host.closest('[hidden]')||document.hidden||tab!=='runs'||!runId||!log)return;const token=generation;try{await output(token);}catch(error){if(token===generation)log.textContent=error.message;}},1000);
   const wavePoll=setInterval(async()=>{
@@ -398,14 +468,14 @@ window.FlowCanvasCaseDetails=function(host,project,createRunButton){
         if(token!==generation)return;const next=rows.find(row=>row.id===runId);if(next&&next.status!==runs.find(row=>row.id===runId)?.status){render();return;}
       }
       if(!wavePath)return;
-      const saved=await json(base()+'/test-runs/'+encodeURIComponent(runId)+'/waveform-analysis?case_id='+encodeURIComponent(selected.id)+'&waveform='+encodeURIComponent(wavePath));if(token===generation&&JSON.stringify([saved.revision,saved.status])!==waveRevision)render();}catch{}finally{wavePolling=false;}
+      const saved=await json(base()+'/test-runs/'+encodeURIComponent(runId)+'/waveform-analysis?case_id='+encodeURIComponent(waveBug?.id||selected.id)+'&waveform='+encodeURIComponent(wavePath));if(token===generation&&JSON.stringify([saved.revision,saved.status])!==waveRevision)render();}catch{}finally{wavePolling=false;}
   },2500);
   const onRun=event=>{
-    if(event.detail.project?.id===project()?.id&&event.detail.run?.case_id===selected?.id){runId=event.detail.run.id;tab='runs';render();body.scrollTop=0;}
+    if(!waveBug&&event.detail.project?.id===project()?.id&&event.detail.run?.case_id===selected?.id){runId=event.detail.run.id;tab='runs';render();body.scrollTop=0;}
   };
   document.addEventListener('flowcanvas-test-run',onRun);
-  const onClose=event=>{if(event.detail.case_id===selected?.id){wavePanel?.dispose();wavePanel=null;window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,null);revision='';}};
+  const onClose=event=>{if(event.detail.case_id===(waveBug?.id||selected?.id)&&selected){wavePanel?.dispose();wavePanel=null;window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,waveBug?.id||selected.id,null);revision='';}};
   document.addEventListener('flowcanvas-case-tab-closed',onClose);
   render();
-  return {dispose(){generation++;coverageSections=null;clearInterval(coveragePoll);wavePanel?.dispose();if(selected)window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,null);clearInterval(runPoll);clearInterval(wavePoll);document.removeEventListener('flowcanvas-test-run',onRun);document.removeEventListener('flowcanvas-case-tab-closed',onClose);host.remove();},context(){return {tab,run_id:runId,binding_id:tab==='source'?sourceId:null};},select(node,bindings,initialView){const next=JSON.stringify([node,bindings]);if(revision===next&&!initialView)return;const changed=selected?.id!==node?.id;selected=node;report=bindings;revision=next;if(changed||initialView){const position=initialView||positions.get(node?.id)||{};tab=Object.hasOwn(names,position.tab)?position.tab:'overview';runId=typeof position.run_id==='string'?position.run_id:null;sourceId=typeof position.binding_id==='string'?position.binding_id:null;}render();}};
+  return {dispose(){generation++;coverageSections=null;bugLinks=null;clearInterval(coveragePoll);wavePanel?.dispose();if(selected)window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,waveBug?.id||selected.id,null);clearInterval(runPoll);clearInterval(wavePoll);document.removeEventListener('flowcanvas-test-run',onRun);document.removeEventListener('flowcanvas-case-tab-closed',onClose);host.remove();},context(){return {tab,run_id:runId,binding_id:tab==='source'?sourceId:null,...(waveBug&&wavePath?{waveform:wavePath}:{})};},select(node,bindings,initialView){const next=JSON.stringify([node,bindings]);if(revision===next&&!initialView)return;const changed=selected?.id!==node?.id;selected=node;report=bindings;revision=next;if(changed||initialView){const position=initialView||positions.get(node?.id)||{};tab=waveBug?'wave':Object.hasOwn(names,position.tab)?position.tab:'overview';runId=typeof position.run_id==='string'?position.run_id:null;sourceId=typeof position.binding_id==='string'?position.binding_id:null;}render();}};
 };

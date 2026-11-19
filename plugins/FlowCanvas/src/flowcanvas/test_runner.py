@@ -454,7 +454,7 @@ def routes(projects,runner):
 
     @router.get('/{identity}/test-runs/{run_id}/waveform-analysis')
     def waveform_analysis(identity:str,run_id:str,case_id:str,waveform:str='waveforms/waves.vcd'):
-        """Read annotations only for the selected case, run and exact waveform bytes."""
+        """Read annotations scoped to the case or linked Bug, run and exact waveform bytes."""
         from .waveform_analysis import WaveAnalysisStore
         try:
             return WaveAnalysisStore(root(identity),case_id,run_id,waveform).read()

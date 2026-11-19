@@ -149,3 +149,31 @@ def test_legacy_repair_status_converges_to_confirmed(tmp_path, legacy_status):
     execute(tmp_path, dict(operation='update', target_id=bug['id'], expected_revision=1,
                            values={'description': 'Updated report'}))
     assert json.loads(store.path.read_text())['targets'][0]['status'] == 'confirmed'
+
+
+@pytest.mark.asyncio
+async def test_case_bug_links_follow_bug_relationship_and_review(tmp_path):
+    """Expose current inverse links by case ID, including an empty list after unlinking."""
+    from types import SimpleNamespace
+    from flowcanvas.bugs import routes as bug_routes
+    from flowcanvas.testcases import Cases, CasesDefinition, TestCase
+
+    first = TestCase(id='tc_' + 'a' * 32, name='test_first')
+    second = TestCase(id='tc_' + 'b' * 32, name='test_second')
+    Cases(tmp_path).save(CasesDefinition(targets=[first, second]), 0)
+    bug = execute(tmp_path, dict(operation='create', name='First case Bug', expected_revision=0,
+                                 values={'case_ids': [first.id]}))
+    execute(tmp_path, dict(operation='create', name='Second case Bug', expected_revision=1,
+                           values={'case_ids': [second.id]}))
+    app = FastAPI()
+    app.include_router(bug_routes(SimpleNamespace(state={'recent': [{'id': 'p', 'path': str(tmp_path)}]})))
+    url = '/api/chat/projects/p/testcases/' + first.id + '/bug-links'
+    async with httpx2.AsyncClient(transport=httpx2.ASGITransport(app=app), base_url='http://test') as client:
+        response = await client.get(url)
+        assert response.status_code == 200
+        assert response.json() == [{'id': bug['id'], 'name': bug['name'], 'status': 'unverified', 'example': False}]
+        Bugs(tmp_path).review(bug['id'], BugReview(expected_revision=2, status='confirmed'))
+        assert (await client.get(url)).json()[0]['status'] == 'confirmed'
+        execute(tmp_path, dict(operation='update', target_id=bug['id'], expected_revision=3, values={'case_ids': []}))
+        assert (await client.get(url)).json() == []
+        assert (await client.get('/api/chat/projects/p/testcases/tc_missing/bug-links')).status_code == 404

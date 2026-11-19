@@ -337,6 +337,19 @@ def routes(projects, sessions=None):
     def read(identity:str):
         try:return store(identity).status()
         except (ValueError,OSError) as exc:raise HTTPException(422,str(exc)) from None
+    @router.get('/{identity}/testcases/{case_id}/bug-links')
+    def testcase_bug_links(identity: str, case_id: str):
+        """Read the inverse of Bug.case_ids without resolving the Bug source citations."""
+        project = root(identity)
+        try:
+            if not any(row.id == case_id and row.lifecycle != 'draft' for row in Cases(project).read().targets):
+                raise HTTPException(404, '测试用例不存在')
+            return [{'id': row.id, 'name': row.name, 'status': row.status, 'example': row.example}
+                    for row in Bugs(project).read().targets
+                    if row.lifecycle != 'draft' and case_id in row.case_ids]
+        except (ValueError, OSError) as exc:
+            raise HTTPException(422, str(exc)) from None
+
     @router.post('/{identity}/bugs/{bug_id}/review')
     def review(identity: str, bug_id: str, request: BugReview):
         try:

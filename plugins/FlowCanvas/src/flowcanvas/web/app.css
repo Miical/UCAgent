@@ -374,7 +374,6 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 /* Workflow capsules occupy the conversation top; expanded details overlay its body. */
 .workflow-run{position:relative;z-index:8;display:flex;flex-wrap:wrap;gap:10px;padding:10px 20px 18px;flex-shrink:0;background:var(--surface);overflow:visible;}
 .workflow-run[hidden]{display:none;}
-.workflow-run::after{content:"";position:absolute;z-index:-1;pointer-events:none;left:0;right:0;top:0;height:90px;background:linear-gradient(to bottom,color-mix(in srgb,var(--surface) 75%,transparent) 55%,transparent);}
 .run-capsule{position:relative;flex:0 1 260px;min-width:190px;max-width:100%;height:58px;border:1px solid var(--border);border-radius:30px;background:var(--surface);color:var(--text);outline:none;transition:box-shadow .28s ease,border-color .28s ease;}
 .run-capsule:hover,.run-capsule:focus-within{z-index:12;border-color:color-mix(in srgb,var(--accent) 35%,var(--border));box-shadow:0 8px 24px #17253b12;}
 .run-compact{position:relative;z-index:2;display:flex;align-items:center;gap:11px;height:56px;padding:8px 14px;box-sizing:border-box;}
@@ -430,14 +429,17 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 .run-expanded-preview{height:44px;padding:0 0 10px;margin-bottom:8px;}
 
 /* Smaller task ribbon; keep the expanded details readable. */
-.run-track{gap:8px;padding:8px 20px 15px;}
-.run-capsule{flex-basis:164px;min-width:164px;height:40px;border-radius:21px;}
+.workflow-run{--run-track-top:8px;--run-capsule-height:40px;}
+.run-track{gap:8px;padding:var(--run-track-top) 20px 15px;}
+.run-capsule{flex-basis:164px;min-width:164px;height:var(--run-capsule-height);border-radius:21px;}
 .run-capsule>.run-compact{height:38px;padding:5px 10px;gap:8px;}
 .run-capsule>.run-compact .run-ring{width:20px;height:20px;}
 .run-capsule>.run-compact .run-labels{gap:1px;}
 .run-capsule>.run-compact .run-labels strong{font-size:10px;}
 .run-capsule>.run-compact .run-labels span{font-size:9px;}
-.run-scroll{top:16px;width:23px;height:23px;font-size:20px;}
+.run-scroll{top:calc(var(--run-track-top) + var(--run-capsule-height) / 2);width:23px;height:23px;transform:translateY(-50%);}
+.run-scroll svg{display:block;width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.run-scroll-left svg{transform:rotate(180deg)}
 
 .workflow-detail-header{display:flex;align-items:center;gap:10px;border-bottom:0;}
 
@@ -595,23 +597,27 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 .run-capsule{isolation:auto;}
 .run-capsule::after{content:none;}
 .run-capsule>.run-compact{background:inherit;border-radius:inherit;}
-.run-track{padding-bottom:40px;}
-/* Reserve space outside the conversation scrollport for the ribbon and its fade. */
-.workflow-run{--workflow-ribbon-height:90px;height:0;min-height:0;padding:0;overflow:visible;pointer-events:none;}
-.workflow-run:not(.is-collapsed){height:var(--workflow-ribbon-height);}
+.run-track{padding-bottom:14px;}
+/* Fade scrolling messages across the ribbon, while reserving space above the first message. */
+.chat-pane{--workflow-ribbon-height:62px;--conversation-scrollbar-clearance:16px;}
+.workflow-run{height:var(--workflow-ribbon-height);min-height:0;padding:0;overflow:visible;pointer-events:none;}
 .workflow-run .run-track{width:max-content;max-width:100%;box-sizing:border-box;pointer-events:auto;}
 .workflow-run .run-scroll{pointer-events:auto;}
-.workflow-run+#conversation{margin-top:0;padding-top:102px;scroll-padding-top:102px;}
-.workflow-run:not(.is-collapsed)+#conversation{padding-top:12px;scroll-padding-top:24px;}
-.chat-pane:not(.case-workspace-open) .workflow-run:not(.is-collapsed)+#conversation.is-scrolled{
-  --conversation-fade-top:min(24px,20%);
-  mask-image:linear-gradient(to bottom,transparent,#000 var(--conversation-fade-top));
+.chat-pane:not(.case-workspace-open) .workflow-run:not([hidden],.is-collapsed)+#conversation.is-scrolled{
+  --conversation-fade-top:min(calc(var(--workflow-ribbon-height) + 46px),45%);
+  --conversation-top-stops:transparent,rgb(0 0 0 / 7%) min(30px,12%),rgb(0 0 0 / 24%) min(54px,24%),rgb(0 0 0 / 67%) min(80px,36%),#000 var(--conversation-fade-top);
+  --conversation-content-mask:linear-gradient(to bottom,var(--conversation-top-stops));
 }
 #conversation.has-more-below,
-.chat-pane:not(.case-workspace-open) .workflow-run:not(.is-collapsed)+#conversation.is-scrolled.has-more-below{
-  mask-image:linear-gradient(to bottom,transparent,#000 var(--conversation-fade-top,0px),#000 calc(100% - min(28px,20%)),transparent);
+.chat-pane:not(.case-workspace-open) .workflow-run:not([hidden],.is-collapsed)+#conversation.is-scrolled.has-more-below{
+  --conversation-content-mask:linear-gradient(to bottom,var(--conversation-top-stops,#000),#000 calc(100% - min(28px,20%)),transparent);
 }
 
+/* Keep the native scrollbar opaque when the conversation content fades. */
+#conversation.has-more-below,
+.chat-pane:not(.case-workspace-open) .workflow-run:not([hidden],.is-collapsed)+#conversation.is-scrolled{
+  mask-image:var(--conversation-content-mask),linear-gradient(to left,#000 var(--conversation-scrollbar-clearance),transparent 0);
+}
 .run-capsule.same-conversation{border-color:color-mix(in srgb,var(--accent) 30%,var(--border));}
 
 /* Keep the composer controls on one line; attachments yield space first. */
@@ -2301,6 +2307,10 @@ body:has(.workspace>.case-workspace-open) .workspace-tab-actions>#case-chat-togg
 .module-coverage-panel .coverage-code-body>.case-detail-empty,.module-coverage-panel .coverage-code-body>.targets-error{padding:12px 2px;font-size:12px}
 
 /* All verification levels use plain rows, with indentation instead of card containers. */
+.targets-loading{display:flex;align-items:center;justify-content:center;gap:8px;padding:24px 12px;color:var(--text-dim);font-size:11px}
+.targets-loading[hidden]{display:none}
+.targets-loading::before{content:"";box-sizing:border-box;width:12px;height:12px;border:1.5px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:fc-loading-spin .9s linear infinite}
+@media(prefers-reduced-motion:reduce){.targets-loading::before{animation:none}}
 .target-goal-pane .targets-tree.verification-title-list{padding:6px 8px 16px}
 .verification-title-list .verification-item{margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
 .target-goal-pane .verification-title-list .verification-item>.target-header{display:grid;grid-template-columns:minmax(0,1fr);height:32px;min-height:32px;margin:0;border:0;border-radius:4px;background:transparent;box-shadow:none;outline:0;transition:background .15s}
@@ -2490,8 +2500,8 @@ body:has(.workspace>.case-workspace-open:not(.case-chat-collapsed)) .workspace-d
 @container(max-width:740px){.wave-panel-range{display:none}}
 @container(max-width:560px){.wave-panel-toolbar .wave-panel-run{width:120px;max-width:120px}.wave-panel-signals span{display:none}}
 @container(max-width:390px){.wave-panel-toolbar{flex-wrap:wrap;gap:4px}.wave-panel-toolbar>.wave-panel-tools:last-child{margin-left:auto}}
-.wave-panel-status:not(.is-error)::before{content:"";width:14px;height:14px;border:1.5px solid var(--border);border-top-color:var(--text-dim);border-radius:50%;animation:wave-panel-loading .9s linear infinite}
-@keyframes wave-panel-loading{to{transform:rotate(360deg)}}
+.wave-panel-status:not(.is-error)::before{content:"";width:14px;height:14px;border:1.5px solid var(--border);border-top-color:var(--text-dim);border-radius:50%;animation:fc-loading-spin .9s linear infinite}
+@keyframes fc-loading-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.wave-panel-status:not(.is-error)::before{animation:none}}
 .wave-signal-row{grid-template-columns:16px minmax(0,1fr) 42px}
 .wave-signal-row.is-active{background:color-mix(in srgb,var(--accent) 8%,var(--surface));color:var(--accent)}
@@ -2502,21 +2512,40 @@ body:has(.workspace>.case-workspace-open:not(.case-chat-collapsed)) .workspace-d
 /* Wave annotations and the bound conversation share one persistent right sidebar. */
 .case-chat-surface{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
 .case-chat-surface[hidden],.case-wave-sidebar[hidden],.workspace-wave-nav[hidden],.workspace-dedicated-label[hidden]{display:none!important}
-.case-workspace-open .case-chat-surface>.conversation-header{min-height:36px;padding:0 12px;border:0}
+.case-workspace-open .case-chat-surface>.conversation-header{flex:none;min-height:36px;padding:0 12px;border:0}
 .case-wave-sidebar{flex:1;min-height:0;overflow:auto;padding:16px 18px 24px;font-size:12px;line-height:1.8;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 .case-wave-sidebar>.case-wave-explanation{border:0;margin:0}
-.case-wave-sidebar>.case-wave-explanation>.module-section-heading{padding:0 0 12px;background:transparent;box-shadow:none;cursor:default}
-.case-wave-sidebar>.case-wave-explanation>.module-section-heading::before,.case-wave-sidebar>.case-wave-explanation>.module-section-heading>span{display:none}
-.case-wave-sidebar>.case-wave-explanation>.module-section-heading>.case-overview-actions{margin:0}
-.case-wave-sidebar .case-wave-point,.case-wave-sidebar .case-detail-empty{margin-inline:0}
-.case-wave-sidebar .case-wave-point{padding:12px 0}
+.case-wave-sidebar>.case-wave-explanation>.module-section-heading{display:none}
+.case-wave-sidebar>.case-wave-explanation>:not(summary){margin:0}
 .workspace-wave-nav{display:flex;align-items:center;flex:1;min-width:0;gap:6px;margin-right:8px}
 .workspace-wave-nav::before{content:"";flex:none;width:1px;height:var(--workspace-separator-height);margin-right:-3px;transform:translateX(-4px);background:var(--workspace-short-divider,var(--border))}
 .workspace-wave-nav>button{flex:none;height:24px;padding:0 7px;border:0;border-radius:5px;background:transparent;color:var(--text-dim);font:10px/24px system-ui,sans-serif;white-space:nowrap;cursor:pointer}
 .workspace-wave-nav>button:hover{background:color-mix(in srgb,var(--text) 5%,var(--workspace-rail));color:var(--text)}
 .workspace-wave-nav>button[aria-selected="true"]{background:var(--surface);color:var(--text);font-weight:500}
 .case-workspace-open .case-detail-body[data-tab="wave"]>.wave-panel{height:calc(100% - 2px);min-height:420px;margin-bottom:0}
+.bug-wave-pane:not([hidden]),.bug-wave-viewer{display:flex;flex:1;flex-direction:column;min-width:0;min-height:0}
+.wave-context-toolbar{--wave-context-control-height:32px;display:flex;flex:none;align-items:center;gap:8px;min-width:0}
+.wave-context-toolbar[hidden]{display:none}
+:is(.bug-wave-toolbar,.case-wave-toolbar){padding:10px 22px 0}
+.wave-context-toolbar>.case-run-picker{align-self:center;min-width:0;height:var(--wave-context-control-height);margin:0;padding-block:0}
+.bug-wave-case-control{min-width:0;max-width:100%}
+.bug-wave-case-control .bug-wave-case-trigger{width:256px;height:var(--wave-context-control-height);gap:10px;margin:0;padding:0 7px;border-radius:6px;text-align:left;color:var(--text);cursor:pointer}
+.bug-wave-case-trigger .case-run-picker-label{flex:none}
+.bug-wave-case-name{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 12px/22px system-ui,sans-serif}
+.bug-wave-case-trigger .picker-chevron{color:var(--text)}
+.bug-wave-case-trigger:focus-visible,.bug-wave-case-trigger[aria-expanded="true"]{outline:0;border-color:color-mix(in srgb,var(--accent) 16%,var(--border));box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 10%,transparent)}
+.bug-wave-case-popover[popover]{position:fixed;inset:auto;margin:0;box-sizing:border-box;padding:5px;border-radius:10px;color:var(--text)}
+.bug-wave-case-popover .model-options{max-height:none;overflow:visible}
+.bug-wave-case-popover .model-option{padding:7px 9px;border-radius:6px;color:var(--text);font-size:12px;cursor:pointer}
+.bug-wave-case-option-label{overflow-wrap:anywhere}
+.bug-wave-case-popover .model-check{flex:none;color:var(--accent)}
+.wave-context-actions{display:flex;align-items:center;flex:none}
+.testcase-detail-pane .wave-context-actions .detail-ai-task{box-sizing:border-box;height:var(--wave-context-control-height);padding-block:0;white-space:nowrap}
+.bug-wave-pane>.case-detail-empty{margin:16px 22px}
 .case-wave-sidebar .case-wave-point{margin:0;padding:12px 0}
+.bug-wave-evidence-summary{padding:0 0 12px;border-bottom:1px solid var(--border)}
+.bug-wave-evidence-summary strong{font-size:13px;font-weight:650}
+.bug-wave-evidence-summary p{margin:5px 0 0;color:var(--text-dim);white-space:pre-wrap;overflow-wrap:anywhere}
 .case-chat-surface>#conversation{flex:1;min-height:0;overflow:auto}
 
 /* Compact execution history control shared by logs and the waveform toolbar. */
@@ -2639,6 +2668,11 @@ body:has(.workspace>.case-workspace-open:not(.case-chat-collapsed)) .workspace-d
   .case-view-area>.testcase-detail-pane{--detail-content-gutter:max(16px,calc((100% - var(--workspace-content-width)) / 2))}
 }
 .chat-pane:not(.case-workspace-open) #conversation{box-sizing:border-box;padding:22px 24px 16px;scrollbar-gutter:stable both-edges}
+.chat-pane:not(.case-workspace-open) .case-chat-surface>.workflow-run:not([hidden])+#conversation{
+  margin-top:calc(-1 * var(--workflow-ribbon-height));
+  padding-top:calc(var(--workflow-ribbon-height) + 12px);
+  scroll-padding-top:calc(var(--workflow-ribbon-height) + 12px);
+}
 .chat-pane:not(.case-workspace-open) #conversation>*{box-sizing:border-box;width:100%;max-width:var(--workspace-content-width);margin-left:auto;margin-right:auto}
 .chat-pane:not(.case-workspace-open) #conversation>.message.user{width:fit-content;max-width:min(88%,var(--workspace-content-width));margin-left:auto;margin-right:max(0px,calc((100% - var(--workspace-content-width))/2))}
 html[data-theme="light"] .chat-pane:not(.case-workspace-open){background:var(--surface)}
@@ -2679,7 +2713,7 @@ html[data-theme="light"] .composer-footer .model-trigger>.picker-chevron{color:i
 
 .project-dialog .project-import-guidance{margin:14px 0 0;color:color-mix(in srgb,var(--text-dim) 70%,var(--surface));font-size:10px;line-height:1.7}
 
-.chat-pane:not(.case-workspace-open) .case-chat-surface>.workflow-run{box-sizing:border-box;width:100%;max-width:none;margin:0}
+.chat-pane:not(.case-workspace-open) .case-chat-surface>.workflow-run{box-sizing:border-box;width:calc(100% - var(--conversation-scrollbar-clearance));max-width:none;margin:0}
 
 /* Expand the right-hand chapter marks in place, without shifting the document. */
 .detail-index{--detail-index-expanded-width:196px;position:absolute;z-index:2;inset-inline-end:var(--detail-index-edge,10px);inset-block-start:calc(var(--detail-index-top,0px) + 20px);width:28px;font-size:12px;transition:width 220ms cubic-bezier(.2,.7,.3,1)}
@@ -2749,7 +2783,7 @@ html[data-theme="light"] .composer-footer .model-trigger>.picker-chevron{color:i
 .bug-review-status[data-status="confirmed"]::before{background:#c45b56}
 .bug-review-actions .module-overview-generate{min-height:28px;padding:3px 9px;font-size:11px}
 .bug-review-note{flex-basis:100%;margin:0;color:var(--text-dim);font-size:12px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
-.bug-workbench .case-result-badge[data-status="as_designed"]{color:#239b68}
+.case-result-badge[data-status="as_designed"]{color:#239b68}
 
 .bug-review-expected{flex-basis:100%}
 .bug-review-expected-heading{display:flex;align-items:center;gap:10px;font-size:12px}

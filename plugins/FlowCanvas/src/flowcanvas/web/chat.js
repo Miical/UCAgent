@@ -289,7 +289,7 @@ let capsulesVisible=false,previousExecutingRuns=null;
 function paintCapsuleVisibility(){
   const available=allWorkflowRuns.some(run=>!run.dismissed),host=$('workflow-run'),button=$('workflow-capsules-toggle');
   const visible=available&&capsulesVisible;
-  host.hidden=false;host.classList.toggle('is-collapsed',!visible);host.inert=!visible;
+  host.hidden=!available;host.classList.toggle('is-collapsed',!visible);host.inert=!visible;
   host.setAttribute('aria-hidden',String(!visible));
   button.disabled=!available;button.setAttribute('aria-expanded',String(visible));
   button.title=button.ariaLabel=visible?'隐藏工作流胶囊':'显示工作流胶囊';
@@ -314,14 +314,15 @@ function paintWorkflowRun(){
   const unfinished=visibleRuns.some(run=>run.status!=='completed');
   if(previousExecutingRuns===null)capsulesVisible=unfinished;
   else if([...executing].some(id=>!previousExecutingRuns.has(id)))capsulesVisible=true;
-  else if(visibleRuns.length&&!unfinished)capsulesVisible=false;
+  else if(previousExecutingRuns.size&&visibleRuns.length&&!unfinished)capsulesVisible=false;
   previousExecutingRuns=executing;paintCapsuleVisibility();
   const focused=document.activeElement?.closest('.run-capsule')?.dataset.id;
   const previousScroll=host.querySelector('.run-track')?.scrollLeft||0;
   const oldTrack=host.querySelector('.run-track');
   const element=(tag,cls,text)=>{const node=document.createElement(tag);node.className=cls;if(text!==undefined)node.textContent=text;return node;};
   const track=element('div','run-track');track.setAttribute('aria-label','横向滚动工作流任务');
-  const left=element('button','run-scroll run-scroll-left','‹'),right=element('button','run-scroll run-scroll-right','›');
+  const left=element('button','run-scroll run-scroll-left'),right=element('button','run-scroll run-scroll-right');
+  left.innerHTML=right.innerHTML='<svg viewBox="0 0 12 12" aria-hidden="true"><path d="m4.5 2.5 3 3.5-3 3.5"/></svg>';
   left.type=right.type='button';left.title='向左滚动';right.title='向右滚动';left.setAttribute('aria-label',left.title);right.setAttribute('aria-label',right.title);
   left.onclick=()=>track.scrollBy({left:-280,behavior:'smooth'});right.onclick=()=>track.scrollBy({left:280,behavior:'smooth'});
   const scrollState=()=>{left.hidden=track.scrollLeft<2;right.hidden=track.scrollLeft+track.clientWidth>=track.scrollWidth-2;};

@@ -17,6 +17,7 @@ class CaseView(BaseModel):
     coverage_file: str | None = Field(default=None,max_length=4096)
     binding_id: str | None = Field(default=None,max_length=100)
     run_id: str | None = Field(default=None,pattern='^[0-9a-f]{32}$')
+    wave_case_id: str | None = Field(default=None,pattern='^tc_[0-9a-f]{32}$')
     waveform: str | None = Field(default=None,max_length=2000)
     line: int | None = Field(default=None,ge=1)
     end_line: int | None = Field(default=None,ge=1)
@@ -47,7 +48,7 @@ def case_record(service, project_id, case_id):
         if bug is None:raise HTTPException(404,'Bug not found')
         return project,SimpleNamespace(id=bug.id,title=bug.name,name=bug.name,description=bug.description,
                                        entity_type='bug',bindings=[*bug.bindings,*bug.source_refs],
-                                       details={key:getattr(bug,key) for key in ('status','severity','condition','impact','expected','actual','evidence','case_ids','example')})
+                                       details={key:getattr(bug,key) for key in ('status','severity','condition','impact','expected','actual','evidence','case_ids','example','review_note','review_expected')})
     if case_id.startswith(('vt_','fg_','fp_','tp_')):
         from .targets import Targets
         target=next((row for row in Targets(project['path']).read().targets if row.id==case_id),None)
@@ -66,6 +67,9 @@ def view_snapshot(service, session, view):
     project,card=case_record(service,binding['project_id'],binding['case_id'])
     if Path(session['project_root']).resolve()!=Path(project['path']).resolve():
         raise HTTPException(409,'Conversation belongs to another project')
+    if view.wave_case_id and (getattr(card,'entity_type','')!='bug' or view.tab!='wave'
+                              or view.wave_case_id not in card.details['case_ids']):
+        raise HTTPException(422,'Waveform case must belong to the selected Bug')
     value=dict(project_id=project['id'],project_root=project['path'],case_id=card.id,
                title=card.title,name=card.name,description=card.description,view=view.model_dump(exclude_none=True))
     if getattr(card,'entity_type','')=='coverage':
@@ -109,8 +113,10 @@ def view_snapshot(service, session, view):
     bug_view=getattr(card,'entity_type','')=='bug'
     if bug_view:
         from .bugs import Bugs
-        if view.tab not in {'overview','source'} or view.run_id or view.waveform or view.module_instance:
-            raise HTTPException(422,'Bug conversations support details and bound source only')
+        if (view.tab not in {'overview','source','wave'} or view.module_instance
+                or (view.tab != 'wave' and (view.run_id or view.waveform))
+                or (view.tab == 'wave' and view.binding_id)):
+            raise HTTPException(422,'Bug conversations support details, bound source and linked waveforms')
         store=Bugs(project['path'])
         value.update(entity_type='bug',bug=card.details)
     if view.tab=='coverage':raise HTTPException(422,'Coverage view belongs to the design tab')
@@ -131,9 +137,22 @@ def view_snapshot(service, session, view):
         metadata=Path(project['path'])/'output/flowcanvas/test-runs'/(view.run_id+'.json')
         if not metadata.is_file():raise HTTPException(404,'Run not found')
         run=json.loads(metadata.read_text())
-        if run.get('case_id')!=card.id:raise HTTPException(422,'Run does not belong to this case')
+        run_case_id = run.get('case_id')
+        if bug_view:
+            if run_case_id not in card.details['case_ids'] or (view.wave_case_id and view.wave_case_id != run_case_id):
+                raise HTTPException(422,'Run does not belong to a test case linked to this Bug')
+            _, testcase = case_record(service, project['id'], run_case_id)
+            value['testcase'] = dict(id=testcase.id, title=testcase.title, name=testcase.name)
+        elif run_case_id != card.id:
+            raise HTTPException(422,'Run does not belong to this case')
         value['run']={key:run.get(key) for key in ('id','status','mode','command','started','ended','exit_code','build_id','source_fingerprint','run_dir','coverage_status')}
-        if view.waveform:
+        if view.waveform and bug_view:
+            from .waveform_analysis import WaveAnalysisStore
+            try:
+                WaveAnalysisStore(project['path'], card.id, view.run_id, view.waveform)
+            except (ValueError, OSError, KeyError) as exc:
+                raise HTTPException(422, str(exc)) from None
+        elif view.waveform:
             directory=(metadata.parent/view.run_id).resolve();path=(directory/view.waveform).resolve()
             if not path.is_relative_to(directory) or not path.is_file() or path.suffix.lower() not in {'.vcd','.fst','.fsdb','.vpd','.wlf'}:
                 raise HTTPException(422,'Waveform does not belong to this run')

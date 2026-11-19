@@ -86,3 +86,54 @@ async def test_analysis_endpoint_case_ownership(waveform):
         endpoint='/api/chat/projects/p/test-runs/'+'a'*32+'/waveform-analysis'
         assert (await client.get(endpoint,params={'case_id':'case'})).json()['status']=='empty'
         assert (await client.get(endpoint,params={'case_id':'other'})).status_code==422
+
+
+def test_bug_waveform_analysis_is_scoped_to_linked_runs(waveform):
+    """Freeze Bug evidence context and keep each Bug's annotations separate from the case."""
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    from flowcanvas.bugs import execute
+    from flowcanvas.case_conversations import CaseView, view_snapshot
+    from flowcanvas.testcases import Cases, CasesDefinition, TestCase
+
+    root, run_id = waveform.root, 'a' * 32
+    case = TestCase(id='tc_' + 'a' * 32, name='test_related')
+    other = TestCase(id='tc_' + 'b' * 32, name='test_other')
+    Cases(root).save(CasesDefinition(targets=[case, other]), 0)
+    run = root / 'output/flowcanvas/test-runs' / (run_id + '.json')
+    run.write_text(json.dumps(dict(id=run_id, case_id=case.id, status='completed')))
+    bugs = [execute(root, dict(operation='create', name=f'Bug {revision}', expected_revision=revision,
+                               values={'case_ids': [case.id if revision < 2 else other.id]}))
+            for revision in range(3)]
+    first, second, unrelated = (bug['id'] for bug in bugs)
+    project = dict(id='p', path=str(root))
+    service = SimpleNamespace(projects=SimpleNamespace(state={'recent': [project]}))
+    session = dict(project_root=str(root), case_binding=dict(project_id='p', case_id=first))
+    view = CaseView(tab='wave', run_id=run_id, waveform=waveform.waveform, wave_case_id=case.id)
+    context = view_snapshot(service, session, view)
+    assert context['entity_type'] == 'bug'
+    assert context['testcase']['id'] == case.id and context['run']['id'] == run_id
+    with pytest.raises(HTTPException, match='Waveform case'):
+        view_snapshot(service, session, view.model_copy(update={'wave_case_id': other.id}))
+
+    bug_wave = WaveAnalysisStore(root, first, run_id, waveform.waveform)
+    catalog = bug_wave.execute()
+    assert {'verdict', 'summary'} <= set(catalog['schema']['required'])
+    signal = next(item['name'] for item in catalog['signals'] if item['name'].endswith('req'))
+    analysis = dict(verdict='reproduced', summary='Request rose while it was expected to stay low.',
+                    signals=[signal], points=[dict(time='5', title='Request', explanation='Request rises', signals=[signal])])
+    saved = bug_wave.execute('save', analysis=analysis)
+    assert saved['status'] == 'ready'
+    assert saved['analysis']['verdict'] == 'reproduced'
+    assert saved['analysis']['summary'] == analysis['summary']
+    empty = dict(verdict='reproduced', summary='No evidence.', signals=[], points=[])
+    with pytest.raises(ValueError, match='waveform evidence point'):
+        bug_wave.execute('save', analysis=empty, expected_revision=1)
+    saved = bug_wave.execute('save', analysis=dict(empty, verdict='insufficient_evidence'), expected_revision=1)
+    assert saved['analysis']['points'] == [] and saved['analysis']['verdict'] == 'insufficient_evidence'
+    assert WaveAnalysisStore(root, case.id, run_id, waveform.waveform).read()['status'] == 'empty'
+    assert WaveAnalysisStore(root, second, run_id, waveform.waveform).read()['status'] == 'empty'
+    with pytest.raises(ValueError, match='linked to this Bug'):
+        WaveAnalysisStore(root, unrelated, run_id, waveform.waveform)

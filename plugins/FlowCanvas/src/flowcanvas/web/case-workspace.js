@@ -68,13 +68,28 @@
   }
   /** Reuse the same sidebar boundary while swapping only its visible content. */
   function syncSidebar(){
-    const wave=!!current&&view.tab==='wave'&&(!current.testcase.entity_type||current.testcase.entity_type==='case'),key=wave?current.project.id+':'+current.testcase.id+':'+(view.run_id||''):null;
+    const entity=current?.testcase.entity_type;
+    const wave=!!current&&view.tab==='wave'&&(!entity||entity==='case'||entity==='bug');
+    const key=wave?current.project.id+':'+current.testcase.id+':'+(view.wave_case_id||'')+':'+(view.run_id||''):null;
     if(key&&key!==sidebarWaveKey){sidebarWaveKey=key;sidebarMode=opened.get(current.project.id+':'+current.testcase.id)?.waveSidebar==='chat'?'chat':'analysis';}
     if(!wave){sidebarWaveKey=null;sidebarMode='chat';}
     waveNav.querySelector('.workspace-dedicated-name').textContent=dedicatedName.textContent;
     waveNav.hidden=!wave||chatCollapsed;dedicated.hidden=wave;chatSurface.hidden=wave&&sidebarMode==='analysis';analysisPane.hidden=!wave||sidebarMode!=='analysis';
     for(const button of waveNav.children){const active=button.dataset.mode===sidebarMode;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;}
-    if(wave){const content=waveAnalyses.get(current.project.id+':'+current.testcase.id);if(content){if(analysisPane.firstChild!==content)analysisPane.replaceChildren(content);}else if(analysisPane.firstChild?.dataset.placeholder!=='true'){const empty=document.createElement('p');empty.className='case-detail-empty';empty.dataset.placeholder='true';empty.textContent='正在读取波形解读…';analysisPane.replaceChildren(empty);}}
+    if(wave){
+      const content=waveAnalyses.get(current.project.id+':'+current.testcase.id);
+      if(content){
+        if(analysisPane.firstChild!==content)analysisPane.replaceChildren(content);
+      }else{
+        let empty=analysisPane.firstElementChild;
+        if(empty?.dataset.placeholder!=='true'){
+          empty=document.createElement('p');empty.className='case-detail-empty';empty.dataset.placeholder='true';
+          analysisPane.replaceChildren(empty);
+        }
+        const message=entity==='bug'&&!view.wave_case_id?'选择关联测试用例后查看波形解读。':'正在读取波形解读…';
+        if(empty.textContent!==message)empty.textContent=message;
+      }
+    }
   }
   tabActions.append(sidebarNav,dedicated,waveNav,document.getElementById('detail-toggle'),toggle);sidebarHeader.remove();tabs.append(tabActions);
   const tabBoundary=document.createElement('span');tabBoundary.className='workspace-tab-boundary';tabBoundary.setAttribute('aria-hidden','true');tabs.append(tabBoundary);
@@ -171,10 +186,10 @@
     view=event.detail.view;
     const item=opened.get(current.project.id+':'+current.testcase.id);
     if(item&&(!current.testcase.entity_type||['case','bug','target'].includes(current.testcase.entity_type))){
-      const {tab,run_id,binding_id}=view;
+      const {tab,run_id,binding_id,wave_case_id}=view;
       const previous=item.view;
-      if(previous?.tab!==tab||previous?.run_id!==run_id||previous?.binding_id!==binding_id){
-        item.view={tab,run_id,binding_id};
+      if(previous?.tab!==tab||previous?.run_id!==run_id||previous?.binding_id!==binding_id||previous?.wave_case_id!==wave_case_id){
+        item.view={tab,run_id,binding_id,wave_case_id};
         saveTabs();
       }
     }

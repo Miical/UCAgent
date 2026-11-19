@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 import re
 import threading
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ucagent.util.waveform_formats import open_waveform_reader
 from .targets import atomic
 
@@ -33,6 +34,23 @@ class WaveAnalysis(BaseModel):
     points: list[WavePoint] = Field(min_length=1, max_length=16)
 
 
+class BugWaveAnalysis(WaveAnalysis):
+    """Summarize this run's evidence about the linked Bug, then anchor it to the trace."""
+    verdict: Literal['reproduced', 'not_reproduced', 'insufficient_evidence']
+    summary: str = Field(min_length=1, max_length=700, description='What the trace shows about the Bug, including the expected versus actual behavior or the missing evidence')
+    signals: list[str] = Field(max_length=32)
+    points: list[WavePoint] = Field(max_length=16)
+
+    @model_validator(mode='after')
+    def validate_evidence(self):
+        """Tie conclusions to visible points and permit an explicit evidence gap."""
+        if not self.points and self.verdict != 'insufficient_evidence':
+            raise ValueError('A reproduction verdict requires at least one waveform evidence point')
+        if set(self.signals) != {signal for point in self.points for signal in point.signals}:
+            raise ValueError('Analysis signals must be the union of the evidence point signals')
+        return self
+
+
 class WaveAnalysisStore:
     """Constrain every inspection and annotation to an owned execution artifact."""
     def __init__(self, root, case_id, run_id, waveform):
@@ -44,7 +62,14 @@ class WaveAnalysisStore:
         if not folder.is_relative_to(self.root):
             raise ValueError('Run storage escapes project')
         self.run = json.loads((folder/(run_id+'.json')).read_text())
-        if self.run.get('case_id') != case_id:
+        self.bug_id = case_id if case_id.startswith('bug_') else None
+        if self.bug_id:
+            from .bugs import Bugs
+            bug = next((row for row in Bugs(self.root).read().targets
+                        if row.id == self.bug_id and row.lifecycle != 'draft'), None)
+            if bug is None or self.run.get('case_id') not in bug.case_ids:
+                raise ValueError('Run does not belong to a test case linked to this Bug')
+        elif self.run.get('case_id') != case_id:
             raise ValueError('Run does not belong to the selected case')
         directory = (folder/run_id).resolve()
         if not directory.is_relative_to(folder):
@@ -53,7 +78,13 @@ class WaveAnalysisStore:
         if not self.wave.is_relative_to(directory) or self.wave.suffix.lower() not in {'.vcd', '.fst'} or not self.wave.is_file():
             raise ValueError('Select an existing VCD/FST artifact within this run')
         self.waveform = self.wave.relative_to(directory).as_posix()
-        self.file = directory/'waveform-analysis.json'
+        if self.bug_id:
+            artifact = hashlib.sha256(self.waveform.encode()).hexdigest()
+            self.file = directory / 'bug-waveform-analysis' / self.bug_id / (artifact + '.json')
+            if self.file.resolve() != self.file:
+                raise ValueError('Bug waveform analysis storage cannot use symlinks')
+        else:
+            self.file = directory / 'waveform-analysis.json'
 
     def fingerprint(self):
         """Bind explanations to exact waveform bytes rather than a reused filename."""
@@ -110,16 +141,17 @@ class WaveAnalysisStore:
             raise ValueError('Wait until this execution ends before analyzing its waveform')
         if not 0 <= offset or not 1 <= limit <= 100:
             raise ValueError('Use offset>=0 and limit=1..100')
+        analysis_model = BugWaveAnalysis if self.bug_id else WaveAnalysis
         before = self.fingerprint()
         with open_waveform_reader(self.wave) as reader:
             if operation == 'inspect':
                 page = reader.get_matched_signals(query, offset=offset, limit=limit)
                 return dict(begin=str(reader.begin_time), end=str(reader.end_time), time_unit='native_ticks',
                             total=page['total'], offset=offset, signals=[dict(name=s.full_name, width=s.width) for s in page['signals'].values()],
-                            saved=self.read(), schema=WaveAnalysis.model_json_schema())
-            selected = WaveAnalysis.model_validate(analysis) if operation == 'save' else None
+                            saved=self.read(), schema=analysis_model.model_json_schema())
+            selected = analysis_model.model_validate(analysis) if operation == 'save' else None
             names = selected.signals if selected else signals or []
-            if not names or len(names) > 32 or len(set(names)) != len(names):
+            if (not names and selected is None) or len(names) > 32 or len(set(names)) != len(names):
                 raise ValueError('Provide 1..32 unique exact signal names')
             descriptors = {}
             for name in names:
@@ -164,7 +196,8 @@ class WaveAnalysisStore:
             current = self.read()
             if current['revision'] != expected_revision:
                 raise ValueError('Analysis revision changed; read and retry')
-            payload = dict(signals=selected.signals, points=points, begin=bounds[0], end=bounds[1])
+            payload = selected.model_dump(exclude={'points'})
+            payload.update(points=points, begin=bounds[0], end=bounds[1])
             atomic(self.file, dict(revision=expected_revision+1, waveform=self.waveform, sha256=before, analysis=payload))
         return self.read()
 
