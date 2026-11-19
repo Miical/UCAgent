@@ -205,8 +205,14 @@ class WorkflowRuntime:
                                 dut = rtl.get('top', '')
                             if not dut:
                                 raise ValueError('Provide dut for the explicitly selected RTL file')
+                project_only = identity == 'sync-testcase-links'
+                if project_only:
+                    if not self.session.get('project_root'):
+                        raise ValueError('Open a FlowCanvas project before synchronizing test cases')
+                    project_root = Path(self.session['project_root']).resolve()
+                    rtl_file = ''
                 spec = attachment(WorkflowInput(workflow_id=identity, rtl_file=rtl_file, dut=dut or 'RTL'))
-                if not spec['rtl_file']:
+                if not spec['rtl_file'] and not project_only:
                     raise ValueError('Provide an existing RTL path')
                 dut = spec['dut']
                 root = (project_root / 'output/flowcanvas/workflow-runs' if project_root else self.service.root / 'workflow_runs') / uuid.uuid4().hex
@@ -222,11 +228,16 @@ class WorkflowRuntime:
                     from .static_bug_workflow import prepare_sources
                     static_sources = await asyncio.to_thread(
                         prepare_sources, project_root, Path(spec['rtl_file']), dut, root)
-                relative = Path(dut) / Path(spec['rtl_file']).name
-                (root / 'workspace' / relative.parent).mkdir(parents=True)
-                shutil.copyfile(spec['rtl_file'], root / 'workspace' / relative)
+                workspace = root / 'workspace'
+                (workspace / dut).mkdir(parents=True)
+                relative = ''
+                if spec['rtl_file']:
+                    relative = (Path(dut) / Path(spec['rtl_file']).name).as_posix()
+                    shutil.copyfile(spec['rtl_file'], workspace / relative)
                 config = next(w.config_file for w in get_plugin().workflows if w.name == identity)
-                request = {'dut': dut, 'rtl': str(relative), 'config': str(config), 'workflow_id': identity}
+                request = {'dut': dut, 'rtl': relative, 'config': str(config), 'workflow_id': identity}
+                if project_only:
+                    request.update(project_root=str(project_root))
                 if static_sources is not None:
                     request.update(static_sources=static_sources,project_root=str(project_root))
                 if identity in {'picker-compile', 'plan-goals'}:

@@ -41,6 +41,8 @@ class Target(BaseModel):
     lifecycle: Literal['draft', 'ready', 'creating', 'updating', 'deleting'] = 'ready'
     operation_status: Literal['running', 'paused'] = 'paused'
     operation_session: str = ''
+    completed_revision: int = Field(default=0, ge=0)
+    completed_at: float = Field(default=0, ge=0)
     origin: Literal['manual', 'ai', 'scan'] = 'manual'
     bindings: list[Binding] = Field(default_factory=list)
 

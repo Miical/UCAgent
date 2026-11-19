@@ -22,7 +22,7 @@ workflows:
     enabled: true
   - id: static-bug-analysis
     name: RTL 静态 Bug 分析
-    description: 分批审查顶层及依赖源码，将有依据的疑似缺陷去重后登记为待验证 Bug。
+    description: 分批审查顶层及依赖源码，将有依据的疑似缺陷去重后登记为待复核 Bug。
     workflow: flowcanvas:static-bug-analysis
     enabled: true
   - id: picker-compile
@@ -34,6 +34,11 @@ workflows:
     name: 规划并实现测试用例
     description: 复用或补齐验证环境，规划并分批登记可运行用例，再通过独立覆盖率冒烟检查执行链路。
     workflow: flowcanvas:build-test-suite
+    enabled: true
+  - id: sync-testcase-links
+    name: 同步测试用例关联
+    description: 核对 Bug 与现有测试用例的关联，参考人工复核填写的预期行为和项目规格，修正受影响用例的断言与预期说明。
+    workflow: flowcanvas:sync-testcase-links
     enabled: true
   - id: generate-testcase
     name: 新增测试用例

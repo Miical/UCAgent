@@ -1,0 +1,54 @@
+template: null
+guide_doc:
+  enable: false
+skill:
+  use_skill: false
+  general_skill_list: []
+mission:
+  name: 同步测试用例关联
+  prompt:
+    system: |
+      核对项目 {PROJECT_ROOT} 中 Bug 与已登记测试用例的关联。先用 bug_records(inspect)、
+      test_cases(inspect) 读取最新版本、记录和绑定源码。在项目内阅读可用规格、人工复核说明、
+      用例实际激励和断言；仅当用例直接触发、检测或覆盖该问题场景时建立关联。
+      同名、同模块、命中同一覆盖指标或仅调用共享组件不足以证明关联。保留仍有依据的关联，
+      移除已确认失效的关联。没有足够证据时保留现状并报告原因，不按猜测新建关联。
+      待复核（unverified）只核对关联，不调整用例预期。设计如此（as_designed）以已批准的
+      设计约定为预期。已确认缺陷（confirmed）以正确规格为预期，保留能检出缺陷的断言，
+      不把已知错误输出改成预期，也不为了通过而削弱断言、添加跳过或预期失败标记。
+      仅在 Bug 已确认缺陷时使用人工填写的 review_expected 作为预期依据。若它已明确当前场景的检查条件或预期，
+      按该部分修改对应断言，不等待无关的规格细节补齐；仍不明确的行为另行列出。
+      Bug 自带的 expected 可能只是分析假设。若权威规格与人工预期相冲突，或该场景没有足够依据，
+      保留断言并在结果中说明待确认事项。已正确的预期不重写。
+      本流程复用已有 ID，不创建或删除 Bug 或用例，不改人工复核结论、RTL、运行模板、
+      覆盖配置或共享检查器。需要改预期时仅编辑该用例已绑定的专属实现，并同步卡片
+      timeline 中相应步骤的 expected。用当前对话的工作区文件工具编辑项目实现。编写与绑定使用现有 test_cases 所有权协议：
+      begin_modify 后才编辑，update 提交变更及核对过的绑定，end_modify 完成。
+      更新 Bug 的 case_ids 使用 bug_records(begin_modify/update/end_modify)，每次使用
+      最新 expected_revision，只提交真实发生变化的关联。已有其他会话负责的条目留待复核。
+      用工作流工具 CurrentTips、SetCurrentStageJournal 和 Complete 推进阶段。
+      默认不运行仿真；静态验收通过只代表关联和修改已核对。最后报告新增和移除的关联、
+      实际修正的预期及尚待确认事项，再调用 Exit。
+tools:
+  selected_tools: [ReadTextFile, CurrentTips, Status, SetCurrentStageJournal, Check, Complete, Exit]
+stage:
+  - name: plan_relationship_sync
+    desc: 核对关联与预期依据
+    task:
+      - "用 Complete 的 stage_args 提交 reviews 和 expectations。先完成本阶段，再执行计划。"
+      - "reviews 覆盖当前所有已登记、非演示的 Bug，每项填 {bug_id, case_ids, reason}，case_ids 为计划保存的完整列表。无 Bug 时传空数组。"
+      - "expectations 仅列确需修正的预期，每项填 {bug_id, case_id, file, expected, basis}；file 为用例已绑定的项目相对实现文件，expected 为拟写入 timeline 的预期，basis 写明已复核的行为依据。无须改预期时传空数组。"
+    checker:
+      - name: relationship_plan
+        clss: flowcanvas.testcase_link_workflow.TestcaseLinkChecker
+        args: {mode: plan}
+  - name: synchronize_relationships
+    desc: 同步关联并核对用例预期
+    task:
+      - "已验收的计划": "{TESTCASE_LINK_PLAN}"
+      - "只执行已通过验收的计划。每批写入前重新 inspect，核对 Bug 的复核结论和依据；有变化时停止对应修改并重新规划。改断言后沿用原绑定 ID 并提交最新 fingerprint。"
+      - "重新 inspect 核对关联、已完成的修改和有效绑定。用 Complete 验收，再报告结果。"
+    checker:
+      - name: relationship_sync
+        clss: flowcanvas.testcase_link_workflow.TestcaseLinkChecker
+        args: {mode: verify}

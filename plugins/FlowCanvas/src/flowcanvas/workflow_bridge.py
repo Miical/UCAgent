@@ -36,7 +36,7 @@ class WorkflowBridge:
         @self.mcp.tool()
         async def run_workflow(workflow_id: str = '', rtl_file: str = '', dut: str = '',
                                card_id: str = '') -> dict:
-            """Start any enabled workflow without prior attachment or separate authorization, or resume this conversation's card. For rtl-summary, picker-compile, plan-goals and static-bug-analysis, omitted rtl_file uses the bound project top module and source; explicit relative paths are project-relative. Provide dut when selecting another RTL module. Returns card_id, instructions and tool argument schemas. Execute tools via call_workflow_tool(card_id, tool_name, arguments), never by calling this tool repeatedly. Inspect cards with list_workflow_runs."""
+            """Start any enabled workflow without prior attachment or separate authorization, or resume this conversation's card. For rtl-summary, picker-compile, plan-goals and static-bug-analysis, omitted rtl_file uses the bound project top module and source; explicit relative paths are project-relative. sync-testcase-links uses the bound project without an RTL selection. Provide dut when selecting another RTL module. Returns card_id, instructions and tool argument schemas. Execute tools via call_workflow_tool(card_id, tool_name, arguments), never by calling this tool repeatedly. Inspect cards with list_workflow_runs."""
             self.call = asyncio.current_task()
             try:
                 return await self.runtime.run(workflow_id, rtl_file, dut, card_id)
@@ -183,7 +183,7 @@ class WorkflowBridge:
                               count: int = 0, ids: list[str] | None = None,
                               cards: list[dict] | None = None, action: str = 'update',
                               files: list[str] | None = None, binding_id: str = '') -> dict:
-            """Manage Bug cards with inspect/apply/begin_modify/update/end_modify. Start with inspect for the guide, live records, source and revision. apply(count) reserves draft IDs. begin_modify(ids,action=update|delete) starts a session-owned operation. update(cards=[{id,name,description,condition,impact,bindings}]) accepts optional source ranges {file,line,line_count} without changing RTL. end_modify(ids) finalizes or deletes those IDs. Writes require current expected_revision and workspace access. Resume using the original IDs; distinguish suspected and confirmed defects."""
+            """Manage Bug cards with inspect/apply/begin_modify/update/end_modify. Start with inspect for the guide, live records, source and revision. apply(count) reserves draft IDs. begin_modify(ids,action=update|delete) starts a session-owned operation. update(cards=[{id,name,description,condition,impact,bindings,case_ids}]) accepts optional source ranges {file,line,line_count} without changing RTL and existing project test case IDs. end_modify(ids) finalizes or deletes those IDs. Writes require current expected_revision and workspace access. Resume using the original IDs; distinguish suspected and confirmed defects."""
             from .bugs import Bugs, execute
             from .target_cards import CardRequest
             root = session.get('project_root')

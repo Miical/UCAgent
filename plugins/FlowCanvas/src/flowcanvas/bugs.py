@@ -3,7 +3,7 @@ from collections import Counter
 import fcntl
 from typing import Literal
 from fastapi import APIRouter, HTTPException
-from pydantic import Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from .testcases import Cases, TestCase, CasesDefinition
 from .target_cards import CardRequest, execute as execute_cards
 from .line_bindings import fingerprint, inspect_files, span
@@ -18,10 +18,15 @@ class BugSourceReference(SourceReference):
     role: Literal['definition','stimulus','check','coverage','rtl','configuration'] = 'rtl'
 
 
+BugReviewStatus = Literal['unverified', 'as_designed', 'confirmed']
+
+
 class Bug(TestCase):
     id: str = Field(pattern=r'^bug_[0-9a-f]{32}$')
     kind: Literal['bug'] = 'bug'
-    status: Literal['unverified','confirmed','fixing','resolved'] = 'unverified'
+    status: BugReviewStatus = 'unverified'
+    review_note: str = ''
+    review_expected: str = ''
     severity: Literal['low','medium','high','critical'] = 'medium'
     condition: str = ''
     impact: str = ''
@@ -33,12 +38,15 @@ class Bug(TestCase):
     case_ids: list[str] = Field(default_factory=list)
     example: bool = False
 
+    @field_validator('status', mode='before')
+    @classmethod
+    def normalize_legacy_status(cls, status):
+        return 'confirmed' if status in ('fixing', 'resolved') else status
+
     @model_validator(mode='after')
-    def evidence_required(self):
+    def validate_example_status(self):
         if self.example and self.status != 'unverified':
             raise ValueError('示例只能标为未验证；真实发现请建立独立记录')
-        if self.status != 'unverified' and not self.evidence.strip():
-            raise ValueError('确认或修复 Bug 必须提供复现或回归证据')
         return self
 
 
@@ -50,6 +58,15 @@ class Request(TargetRequest):
     kind: Literal['bug'] = 'bug'
 
 
+class BugReview(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    expected_revision: int = Field(ge=0)
+    status: BugReviewStatus
+    review_note: str | None = None
+    review_expected: str | None = None
+    evidence: str | None = None
+
+
 class Bugs(Targets):
     definition_model = Definition
     target_model = Bug
@@ -57,12 +74,12 @@ class Bugs(Targets):
 
     instructions = """Manage Bug cards with inspect, apply, begin_modify, update, and end_modify.
 Inspect returns the current revision, records and source; use ids, files or binding_id as needed.
-Create with apply(count), begin_modify(ids), update(cards=[{id,name,description,condition,impact,bindings}]),
+Create with apply(count), begin_modify(ids), update(cards=[{id,name,description,condition,impact,bindings,case_ids}]),
 then end_modify(ids). To delete, begin_modify(ids,action=delete), then end_modify(ids).
 Use the latest expected_revision and resume paused work with the same IDs and conversation.
 A Bug requires a title and description. Source is optional; bindings use file, line and line_count.
 Bind the smallest relevant ranges. The server anchors them without editing the RTL.
-New findings stay unverified unless actual evidence supports confirmation. Demos remain unverified."""
+New findings stay unverified. The Bug panel records the human verdict. For confirmed defects, review_expected holds the optional human-provided expected behavior. Demos remain unverified."""
     editable_fields = {'name','description','condition','impact','source_refs','expected','actual','evidence',
                        'case_ids','status','severity','example'}
 
@@ -164,6 +181,8 @@ New findings stay unverified unless actual evidence supports confirmation. Demos
         """Validate Bug metadata and anchor cited ranges against live source."""
         if set(values)-self.editable_fields:
             raise ValueError('Unsupported Bug fields')
+        if values.get('status', bug.status) != bug.status:
+            raise ValueError('请在 Bug 详情中更新人工复核状态')
         if 'example' in values and bug.lifecycle not in {'draft','creating'} and values['example']!=bug.example:
             raise ValueError('不能将示例直接转为真实 Bug')
         values = dict(values)
@@ -232,6 +251,27 @@ New findings stay unverified unless actual evidence supports confirmation. Demos
         saved = self.save(data, request.expected_revision)
         return {'revision': saved.revision, 'ids': [card['id'] for card in request.cards]}
 
+    def review(self, identity: str, request: BugReview):
+        """Save a human review without overwriting the Bug's other fields."""
+        with LOCK:
+            data = self.read()
+            bug = next((row for row in data.targets if row.id == identity), None)
+            if bug is None or bug.lifecycle != 'ready' or bug.example:
+                raise ValueError('仅可复核已登记的正式 Bug')
+            values = {'status': request.status}
+            if request.review_note is not None:
+                values['review_note'] = request.review_note.strip()
+            if request.review_expected is not None:
+                if request.status != 'confirmed':
+                    raise ValueError('仅在确认缺陷时可填写预期行为')
+                values['review_expected'] = request.review_expected.strip()
+            if request.evidence is not None:
+                values['evidence'] = request.evidence.strip()
+            updated = Bug.model_validate({**bug.model_dump(), **values})
+            data.targets[data.targets.index(bug)] = updated
+            self.save(data, request.expected_revision)
+            return updated.model_dump()
+
     def write_bug(self, request):
         """Keep existing direct record edits compatible with session-owned operations."""
         with LOCK:
@@ -263,7 +303,7 @@ def execute(root, request, owner='manual'):
             result['configuration_schema'] = Definition.model_json_schema()
         return result
     r = Request.model_validate(request) if isinstance(request,dict) else request
-    if r.operation=='guide':return {'instructions':'先 read 获取 revision。delete 使用 target_id 和最新 expected_revision，仅删除指定 Bug 记录。create/update 填写名称、description、condition（触发条件）、impact（可能影响）、source_refs（可选，逐条填写项目相对 file、line、end_line；平台校验并保存，不改写源码）、expected、actual、severity、status、evidence 和 case_ids。未知内容留空，不能把猜测当作确认缺陷。初始状态 unverified；confirmed/fixing/resolved 必须提供证据，resolved 需要修复及回归依据。example=true 仅用于用户要求的演示，保持 unverified，不得转为真实缺陷。inspect/bind 可关联已确认的源码位置，source 查看完整源码；不能给假设 Bug 捏造定位。项目内写操作支持工作区访问和完全访问。','schema':Definition.model_json_schema()}
+    if r.operation=='guide':return {'instructions':'先 read 获取 revision。delete 使用 target_id 和最新 expected_revision，仅删除指定 Bug 记录。create/update 填写名称、description、condition（触发条件）、impact（可能影响）、source_refs（可选，逐条填写项目相对 file、line、end_line；平台校验并保存，不改写源码）、expected、actual、severity、evidence 和 case_ids。未知内容留空，不能把猜测当作确认缺陷。新记录默认待复核，复核状态由用户在 Bug 详情中判定。example=true 仅用于用户要求的演示，保持 unverified，不得转为真实缺陷。inspect/bind 可关联已确认的源码位置，source 查看完整源码；不能给假设 Bug 捏造定位。项目内写操作支持工作区访问和完全访问。','schema':Definition.model_json_schema()}
     if r.operation=='read':return store.status()
     if r.operation in {'create','update'}:return store.write_bug(r)
     if r.operation=='source':return store.source(r.binding_id)
@@ -297,6 +337,13 @@ def routes(projects, sessions=None):
     def read(identity:str):
         try:return store(identity).status()
         except (ValueError,OSError) as exc:raise HTTPException(422,str(exc)) from None
+    @router.post('/{identity}/bugs/{bug_id}/review')
+    def review(identity: str, bug_id: str, request: BugReview):
+        try:
+            return store(identity).review(bug_id, request)
+        except (ValueError, OSError) as exc:
+            raise HTTPException(422, str(exc)) from None
+
     @router.post('/{identity}/bugs')
     def action(identity:str,request:CardRequest | Request):
         try:return execute(root(identity),request)

@@ -18,6 +18,7 @@ def get_plugin() -> Plugin:
                              PluginWorkflow(name="picker-compile", config_file=root / "workflows" / "picker-compile.yaml"),
                              PluginWorkflow(name="generate-testcase", config_file=root / "workflows" / "generate-testcase.yaml"),
                              PluginWorkflow(name="build-test-suite", config_file=root / "workflows" / "build-test-suite.yaml"),
+                             PluginWorkflow(name="sync-testcase-links", config_file=root / "workflows" / "sync-testcase-links.yaml"),
                              PluginWorkflow(name="rtl-summary",
                                             config_file=root / "workflows" / "rtl-summary.yaml"),
                              PluginWorkflow(name="default",

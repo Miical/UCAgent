@@ -3,7 +3,7 @@ import json
 import pytest
 import httpx2
 from fastapi import FastAPI, HTTPException
-from flowcanvas.bugs import Bugs, execute
+from flowcanvas.bugs import BugReview, Bugs, execute
 from flowcanvas.chat import ChatService
 from flowcanvas.case_conversations import routes, CaseView, view_snapshot
 
@@ -100,10 +100,52 @@ def test_bug_batch_lifecycle_is_owned_atomic_and_resumable(tmp_path):
     with pytest.raises(ValueError):
         operation('begin_modify', owner='another', ids=identities)
     operation('begin_modify', ids=identities)
-    operation('end_modify', ids=identities)
+    finished = operation('end_modify', ids=identities)
+    assert all(row.completed_revision == finished['revision'] and row.completed_at > 0
+               for row in store.read().targets)
     ref = store.read().targets[0].source_refs[0]
     assert operation('inspect', ids=[first], binding_id=ref.id)['source']['line'] == 2
     operation('begin_modify', ids=identities, action='delete')
     assert len(store.read().targets) == 2 and all(row.lifecycle == 'deleting' for row in store.read().targets)
     assert operation('end_modify', ids=identities)['deleted'] == sorted(identities)
     assert not store.read().targets and path.read_text() == source
+
+def test_review_changes_only_the_human_verdict(tmp_path):
+    bug = execute(tmp_path, dict(operation='create', name='Output stalls', expected_revision=0,
+                                 values={'description': 'Output stays low'}))
+    store = Bugs(tmp_path)
+    assert bug['status'] == 'unverified'
+    with pytest.raises(ValueError, match='人工复核'):
+        execute(tmp_path, dict(operation='update', target_id=bug['id'], expected_revision=1,
+                               values={'status': 'as_designed'}))
+    with pytest.raises(ValueError, match='仅在确认缺陷时'):
+        store.review(bug['id'], BugReview(expected_revision=1, status='as_designed',
+                                          review_expected='输出应保持高电平'))
+    designed = store.review(bug['id'], BugReview(expected_revision=1, status='as_designed'))
+    assert designed['status'] == 'as_designed' and designed['description'] == bug['description']
+    with pytest.raises(ValueError, match='定义已更新'):
+        store.review(bug['id'], BugReview(expected_revision=1, status='unverified'))
+    confirmed = store.review(bug['id'], BugReview(expected_revision=2, status='confirmed'))
+    assert confirmed['status'] == 'confirmed' and confirmed['review_note'] == ''
+    revised = store.review(bug['id'], BugReview(expected_revision=3, status='confirmed', review_note=' 已复现 ',
+                                              review_expected=' 输出应保持高电平 '))
+    assert revised['review_note'] == '已复现' and revised['evidence'] == bug['evidence']
+    assert revised['review_expected'] == '输出应保持高电平' and revised['expected'] == bug['expected']
+    reopened = store.review(bug['id'], BugReview(expected_revision=4, status='unverified', review_note=''))
+    assert reopened['status'] == 'unverified' and reopened['review_note'] == ''
+    assert reopened['review_expected'] == revised['review_expected']
+
+
+@pytest.mark.parametrize('legacy_status', ['fixing', 'resolved'])
+def test_legacy_repair_status_converges_to_confirmed(tmp_path, legacy_status):
+    bug = execute(tmp_path, dict(operation='create', name='Legacy bug', expected_revision=0,
+                                 values={'description': 'Original report', 'evidence': 'Reproduced'}))
+    store = Bugs(tmp_path)
+    record = json.loads(store.path.read_text())
+    record['targets'][0]['status'] = legacy_status
+    store.path.write_text(json.dumps(record))
+    restored = execute(tmp_path, {'operation': 'inspect'})['targets'][0]
+    assert restored['status'] == 'confirmed' and restored['evidence'] == 'Reproduced'
+    execute(tmp_path, dict(operation='update', target_id=bug['id'], expected_revision=1,
+                           values={'description': 'Updated report'}))
+    assert json.loads(store.path.read_text())['targets'][0]['status'] == 'confirmed'

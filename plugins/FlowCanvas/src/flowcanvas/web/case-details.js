@@ -39,6 +39,12 @@ window.FlowCanvasCoverageGroup=function(container,{label,kind}){
       const link=el('button','coverage-link-row');
       link.type='button';link.disabled=!row.open;
       if(row.open)link.onclick=row.open;
+      if(row.caseResult){
+        const badge=el('span','case-result-badge');
+        badge.dataset.caseResult=row.caseResult;
+        badge.dataset.status='neutral';
+        link.append(badge);
+      }
       link.append(el('span','coverage-link-name',row.label));
       if(row.kind)link.append(el('span','coverage-link-kind',row.kind));
       const arrow=el('span','coverage-link-arrow');

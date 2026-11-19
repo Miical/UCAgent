@@ -762,7 +762,7 @@ const workflowCategories=new Map([
   ['项目导入',['import-project','import-targets','import-testcases']],
   ['设计分析',['rtl-summary','static-bug-analysis']],
   ['验证准备',['picker-compile','plan-goals']],
-  ['测试与验证',['build-test-suite','generate-testcase','default']]
+  ['测试与验证',['build-test-suite','generate-testcase','sync-testcase-links','default']]
 ]);
 /** Close the active folder and optionally return focus to its control. */
 function closeWorkflowFolder(focus=false){

@@ -14,7 +14,7 @@ mission:
       先用 bug_records(operation=inspect) 核对已有 Bug。用 CurrentTips 取得当前批次路径，使用 ReadTextFile 阅读该源码和必要的依赖。结合项目规格和现有验证目标，检查位宽、复位、时钟、状态机、接口协议和控制逻辑。区分规格、源码事实和推断。
       用 Check 的 stage_args 提交每个分析完成的文件。reviewed_file 填工作区快照完整相对路径，例如 DUT_RTL/rtl/top.sv。findings 为数组，无发现时传空数组。
       每条发现填 name（简短标题）、description（问题与预期依据）、condition（触发条件）、impact（可能影响）、category（width、reset、clock、state、protocol、logic、other 之一）和 source_refs。源码引用含 file、line、end_line；file 去掉快照目录前缀，使用项目相对路径。第一条引用必须在当前批次文件，用能定位原因的最小范围，其他引用仅用于直接相关的证据。同一缺陷只提交一次。
-      Check 返回 next_file 时继续分析。全部提交后用 SetCurrentStageJournal 记录阶段摘要，再调用 Complete。验收器会核对源码、去重并将新发现标为待验证，保留已有记录；回复时报告登记结果，再调用 Exit。
+      Check 返回 next_file 时继续分析。全部提交后用 SetCurrentStageJournal 记录阶段摘要，再调用 Complete。验收器会核对源码、去重并将新发现标为待复核，保留已有记录；回复时报告登记结果，再调用 Exit。
       通过 Check/Complete 提交，不直接写项目文件，也不生成分析文档。全程只做静态审查。
 tools:
   selected_tools: [ReadTextFile, CurrentTips, Status, SetCurrentStageJournal, Check, Complete, Exit]

@@ -9,13 +9,14 @@ function fixture(targets){
     classList:{toggle(){},add(){}},setAttribute(key,value){this[key]=value;},
     querySelector(){return this.caption;},append(caption){this.caption=caption;},
   });
-  const buttons=targets.map(fakeButton),detail=[];
-  const context={caseMode:true,batchStarting:false,batch:null,paintBatchSelection(){},panel:{querySelectorAll:selector=>selector==='[data-case-run]'?buttons:[]},
-    document:{querySelectorAll:()=>detail},data:{targets},pendingRun:null,runCases:new Set(),runsLoaded:true,
+  const buttons=targets.map(fakeButton),detail=[],caseBadges=[],linkedBadges=[];
+  const context={caseMode:true,batchStarting:false,batch:null,paintBatchSelection(){},panel:{querySelectorAll:selector=>selector==='[data-case-run]'?buttons:caseBadges},
+    document:{querySelectorAll:selector=>selector.includes('.coverage-link-row ')?linkedBadges:detail},
+    data:{targets},caseResults:new Map(),pendingRun:null,runCases:new Set(),runsLoaded:true,
     el:(_tag,_class,textContent)=>({textContent,setAttribute(){}}),queueMicrotask,
     smallAction:(_label,_path,onclick)=>Object.assign(fakeButton(),{onclick}),
   };
-  vm.createContext(context);vm.runInContext(code,context);return {buttons,detail,context};
+  vm.createContext(context);vm.runInContext(code,context);return {buttons,detail,caseBadges,linkedBadges,context};
 }
 test('per-case runner enables the button without a project-level runner',()=>{
   const f=fixture([{id:'ready',lifecycle:'ready',runner:{command:'pytest {case}'}}]);
@@ -35,6 +36,28 @@ test('active runs, pending starts and unavailable cards remain locked',()=>{
   f.buttons[0].dataset.caseUnavailable='false';f.context.runsLoaded=false;f.context.paintRunButtons();assert.equal(f.buttons[0].disabled,true);
 });
 
+
+test('Linked cases share the testcase result dot, including stale results',()=>{
+  const {context,caseBadges,linkedBadges}=fixture([]);
+  const badge=()=>({dataset:{caseResult:'a'},setAttribute(key,value){this[key]=value;}});
+  caseBadges.push(badge());linkedBadges.push(badge());
+  const cases=[
+    [null,false,'neutral','未运行'],
+    [{result_current:true,test_result:{status:'passed'}},false,'passed','通过'],
+    [{result_current:false,test_result:{status:'passed'}},false,'neutral','暂无当前版本的有效结果'],
+    [{result_current:true,test_result:{status:'failed'}},false,'failed','失败'],
+    [null,true,'running','运行中']
+  ];
+  for(const [run,active,status,label] of cases){
+    context.caseResults=new Map(run?[['a',run]]:[]);
+    context.runCases=new Set(active?['a']:[]);
+    context.paintRunButtons();
+    for(const item of [caseBadges[0],linkedBadges[0]]){
+      assert.equal(item.dataset.status,status);
+      assert.equal(item['aria-label'],label);
+    }
+  }
+});
 
 test('the inspector and list share the run lock and only start one execution',async()=>{
   const node={id:'case',lifecycle:'ready',runner:{command:'pytest {case}'}};

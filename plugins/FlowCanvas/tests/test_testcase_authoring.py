@@ -86,7 +86,10 @@ def test_scoped_authoring_accepts_real_bindings_without_importing(authored):
     assert ok,result
     assert result["simulation_executed"] is False
     assert check("ready")[0] is False
-    __import__('flowcanvas.testcases',fromlist=['execute']).execute(root,dict(operation='end_modify',ids=[identity],expected_revision=cases.read().revision),'owner')
+    finished = __import__('flowcanvas.testcases', fromlist=['execute']).execute(
+        root, dict(operation='end_modify', ids=[identity], expected_revision=cases.read().revision), 'owner')
+    case = next(row for row in cases.read().targets if row.id == identity)
+    assert case.completed_revision == finished['revision'] and case.completed_at > 0
     assert check("ready")[0]
 
 

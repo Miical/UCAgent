@@ -1,10 +1,11 @@
 """Atomic, session-owned batch operations for verification target cards."""
 from collections import Counter
+import time
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .targets import Binding, Definition, LOCK, SKILL, Target, Targets, new_id, re_indent
+from .targets import Binding, Definition, LOCK, SKILL, Targets, new_id, re_indent
 from .line_bindings import MARKER, fingerprint, span, read_source
 
 
@@ -127,6 +128,7 @@ def execute(root, request, owner='manual', store=None):
                 data.targets = [t for t in data.targets if t.id not in deleting]
             else:
                 reports = store.status()['reports']
+                completed_at = time.time()
                 for row in rows:
                     if hasattr(store,'validate_card'):
                         store.validate_card(row)
@@ -140,6 +142,8 @@ def execute(root, request, owner='manual', store=None):
                     row.lifecycle = 'ready'
                     row.operation_status = 'paused'
                     row.operation_session = ''
+                    row.completed_revision = data.revision + 1
+                    row.completed_at = completed_at
         saved = store.save(data, r.expected_revision)
         return {'revision': saved.revision, 'ids': sorted(selected),
                 'deleted': sorted(selected) if r.operation == 'end_modify' and deleting else [],

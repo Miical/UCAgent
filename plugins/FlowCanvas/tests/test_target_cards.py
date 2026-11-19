@@ -23,8 +23,14 @@ def test_apply_and_owned_batch_lifecycle(call, tmp_path):
         call('begin_modify', owner='bob', ids=ids)
     call('begin_modify', ids=ids)
     call('update', cards=[{'id': i, 'kind':'group', 'name': '功能', 'description': '真实验证说明'} for i in ids])
-    call('end_modify', ids=ids, planned=True)
-    assert all(t.lifecycle == 'ready' for t in Targets(tmp_path).read().targets)
+    result = call('end_modify', ids=ids, planned=True)
+    assert all(t.lifecycle == 'ready' and t.completed_revision == result['revision']
+               for t in Targets(tmp_path).read().targets)
+    call('begin_modify', ids=ids)
+    active = call('inspect')['targets']
+    assert all(t['completed_revision'] == result['revision'] for t in active)
+    finished = call('end_modify', ids=ids, planned=True)
+    assert all(t['completed_revision'] == finished['revision'] for t in call('inspect')['targets'])
 
 
 def test_batch_failure_does_not_partially_update(call, tmp_path):

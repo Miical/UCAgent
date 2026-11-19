@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from flowcanvas.bugs import Bugs, execute
+from flowcanvas.bugs import BugReview, Bugs, execute
 from flowcanvas.chat import ChatService
 from flowcanvas.workflow_runtime import WorkflowRuntime
 
@@ -77,7 +77,8 @@ async def test_static_bug_workflow_registers_only_after_acceptance_and_deduplica
                 assert bug.condition == finding['condition'] and bug.impact == finding['impact']
                 assert store.source(bug.source_refs[0].id)['line'] == 2
                 execute(project, dict(operation='update', target_id=bug.id, expected_revision=initial+1,
-                                      values={'name': 'User title', 'status': 'confirmed', 'evidence': 'Reviewed'}))
+                                      values={'name': 'User title'}))
+                store.review(bug.id, BugReview(expected_revision=initial+2, status='confirmed', evidence='Reviewed'))
             else:
                 assert rows[0].id == bug.id and rows[0].status == 'confirmed' and rows[0].name == 'User title'
                 assert store.read().revision == initial
