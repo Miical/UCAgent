@@ -50,9 +50,10 @@ window.FlowCanvasScrollToSourceLine=function(panel,row,endRow=row){
 /** Selected-case inspector with independently selected source bindings and real execution records. */
 window.FlowCanvasCaseDetails=function(host,project){
   const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
-  let selected=null,report=null,tab='overview',runId=null,sourceId=null,revision='',generation=0,offset=0,polling=false;
+  let selected=null,report=null,tab='overview',runId=null,sourceId=null,revision='',generation=0,offset=0,outputRequest=null;
   let wavePanel=null,waveExplanation=null;
-  let runs=[],log=null,resultNote=null,runCommand=null,runSelect=null,wavePath='',waveRevision='',wavePolling=false;
+  let coverageSections=null,coveragePolling=false;
+  let runs=[],log=null,resultNote=null,runCommand=null,runSelect=null,runBadge=null,wavePath='',waveRevision='',wavePolling=false;
   const positions=new Map(),tabPrefix='case-detail-'+Math.random().toString(36).slice(2)+'-';
   const names={overview:'概览',source:'源码',runs:'运行记录',wave:'波形'};
   const statusNames={starting:'启动中',running:'运行中',completed:'已结束',failed:'运行失败',interrupted:'已中断'};
@@ -78,6 +79,66 @@ window.FlowCanvasCaseDetails=function(host,project){
   function section(label,key=label){const node=label==='波形'?el('section','case-section'):window.FlowCanvasDetailSection(host,label,selected.id+':'+tab+':'+key);if(label==='波形')node.append(el('h4','module-section-heading',label));body.append(node);if(label==='AI 解读'&&tab==='wave'){waveExplanation=node;window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,node);}return node;}
   /** Render a labeled value using the shared section layout. */
   function field(label,value,code=false){section(label).append(el(code?'pre':'p','',value||'尚未填写'));}
+  function coverageTree(host,rows,empty){
+    host.replaceChildren();
+    if(!rows.length){host.append(el('p','case-detail-empty',empty));return;}
+    const ids=new Set(rows.map(row=>row.id));
+    const children=new Map();
+    for(const row of rows){
+      const parent=ids.has(row.parent)?row.parent:null;
+      if(!children.has(parent))children.set(parent,[]);
+      children.get(parent).push(row);
+    }
+    const tree=parent=>{
+      const list=el('ul','module-child-list case-coverage-tree');
+      for(const row of children.get(parent)||[]){
+        const item=el('li'),link=el('button','goal-detail-child',row.name);
+        link.type='button';link.disabled=row.available===false;
+        link.onclick=()=>document.dispatchEvent(new CustomEvent('flowcanvas-case-restore',{
+          detail:{project_id:project().id,case_id:row.id,coverageLink:true}
+        }));
+        item.append(link,el('small','case-coverage-kind',({group:'功能组',point:'功能点',testpoint:'测试点'})[row.kind]));
+        if(children.has(row.id))item.append(tree(row.id));
+        list.append(item);
+      }
+      return list;
+    };
+    host.append(tree(null));
+  }
+  function showCoverageOverview(){
+    const part=section('关联验证目标'),planned=el('div','case-coverage-links'),actual=el('div','case-coverage-links');
+    part.append(el('h5','','计划覆盖'),planned,el('h5','','本批实际命中'),actual);
+    coverageSections={planned,actual,signature:''};
+    refreshCoverageLinks();
+  }
+  function showRunCoverage(){
+    const actual=el('div','case-coverage-links');
+    section('本次实际命中').append(actual);
+    coverageSections={actual,signature:''};
+    refreshCoverageLinks();
+  }
+  async function refreshCoverageLinks(){
+    if(!coverageSections||coveragePolling)return;
+    const parts=coverageSections,overview=!!parts.planned;
+    const endpoint=overview?'/testcases/'+encodeURIComponent(selected.id):'/test-runs/'+encodeURIComponent(runId);
+    coveragePolling=true;
+    try{
+      const result=await json(base()+endpoint+'/coverage-links');
+      if(parts!==coverageSections)return;
+      const signature=JSON.stringify(result);
+      if(parts.signature===signature)return;
+      parts.signature=signature;
+      if(overview)coverageTree(parts.planned,result.planned,'尚未登记计划覆盖目标');
+      const empty=({pending:'运行结束后更新',unavailable:'暂无覆盖数据',partial:'暂无可确认的命中'})[result.status]||'暂无命中';
+      coverageTree(parts.actual,overview?result.actual:result.targets,empty);
+    }catch(error){
+      if(parts===coverageSections&&!parts.signature)parts.actual.replaceChildren(el('p','case-detail-empty','暂时无法读取覆盖关联'));
+    }finally{
+      coveragePolling=false;
+      if(parts!==coverageSections&&coverageSections)refreshCoverageLinks();
+    }
+  }
+  const coveragePoll=setInterval(()=>{if(!document.hidden&&!host.closest('[hidden]'))refreshCoverageLinks();},2500);
   function overviewBlock(data){
     for(const [label,value] of [['验证目的',data.purpose],['验证方法',data.method]]){
       section(label).append(el('p',value?'':'case-detail-empty',value||'待补充'));
@@ -143,13 +204,23 @@ window.FlowCanvasCaseDetails=function(host,project){
     return true;
   }
   /** Populate one shared run selector for the log and waveform tabs. */
+  function runLabel(row,index){
+    const time=new Date(row.started*1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+    return time+' · '+(statusNames[row.status]||row.status)+(index===0?' · 最近':'');
+  }
+  function updateRunBadge(row){
+    runBadge.textContent=statusNames[row?.status]||row?.status||'';
+    runBadge.dataset.status=row?.status||'';
+  }
   function picker(){
     const picker=el('div','case-run-picker'),label=el('label','case-run-picker-label','运行记录');
     runSelect=el('select','case-detail-select case-run-select');runSelect.ariaLabel='选择本用例的运行记录';
-    for(const [index,row] of runs.entries()){const time=new Date(row.started*1000).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});const option=el('option','',time+' · '+(statusNames[row.status]||row.status)+(index===0?' · 最近':''));option.value=row.id;runSelect.append(option);}
+    for(const [index,row] of runs.entries()){
+      const option=el('option','',runLabel(row,index));option.value=row.id;runSelect.append(option);
+    }
     runSelect.value=runId;runSelect.onchange=()=>{runId=runSelect.value;render();};
-    const current=runs.find(row=>row.id===runId),badge=el('span','case-run-status',statusNames[current?.status]||current?.status||'');badge.dataset.status=current?.status||'';
-    label.append(runSelect);picker.append(label,badge);body.append(picker);
+    runBadge=el('span','case-run-status');updateRunBadge(runs.find(row=>row.id===runId));
+    label.append(runSelect);picker.append(label,runBadge);body.append(picker);
   }
   /** Show every related source file once, highlighting all of its bound fragments. */
   async function source(token){
@@ -177,13 +248,35 @@ window.FlowCanvasCaseDetails=function(host,project){
   }
   /** Fetch logs incrementally and retain the user's scroll position. */
   async function output(token){
-    const data=await json(base()+'/test-runs/'+encodeURIComponent(runId)+'/output?offset='+offset);
-    if(token!==generation)return;
-    const row=data.run;
-    runCommand.textContent=row.command||'';
-    if(resultNote){const result=row.test_result,status=({passed:'通过',failed:'失败',running:'运行中'})[result?.status];resultNote.textContent=(status?status+' · ':'')+(result?.reason||'');resultNote.dataset.status=result?.status||'';}
-    const follow=body.scrollHeight-body.scrollTop-body.clientHeight<40;
-    if(data.text)log.append(document.createTextNode(data.text));offset=data.offset;if(log.textContent.length>2000000)log.textContent='[较早输出已省略；完整日志保存在本次运行目录]\n'+log.textContent.slice(-1500000);if(follow&&log.parentElement.open)body.scrollTop=body.scrollHeight;
+    if(outputRequest===token)return;
+    outputRequest=token;
+    try{
+      const data=await json(base()+'/test-runs/'+encodeURIComponent(runId)+'/output?offset='+offset);
+      if(token!==generation)return;
+      const row=data.run,index=runs.findIndex(run=>run.id===row.id);
+      if(index>=0&&runs[index].status!==row.status){
+        runs[index]=row;
+        runSelect.options[index].textContent=runLabel(row,index);
+        updateRunBadge(row);
+        refreshCoverageLinks();
+      }
+      if(runCommand.textContent!==(row.command||''))runCommand.textContent=row.command||'';
+      if(resultNote){
+        const result=row.test_result,status=({passed:'通过',failed:'失败',running:'运行中'})[result?.status];
+        const text=(status?status+' · ':'')+(result?.reason||'');
+        if(resultNote.textContent!==text)resultNote.textContent=text;
+        resultNote.dataset.status=result?.status||'';
+      }
+      offset=data.offset;
+      if(!data.text)return;
+      const follow=body.scrollTop>0&&log.parentElement.open&&log.getBoundingClientRect().bottom<=body.getBoundingClientRect().bottom+40
+        &&body.scrollHeight-body.scrollTop-body.clientHeight<40;
+      log.append(document.createTextNode(data.text));
+      if(log.textContent.length>2000000)log.textContent='[较早输出已省略；完整日志保存在本次运行目录]\n'+log.textContent.slice(-1500000);
+      if(follow)body.scrollTop=body.scrollHeight;
+    }finally{
+      if(outputRequest===token)outputRequest=null;
+    }
   }
   /** Present only files discovered inside this execution's managed directory. */
   async function execution(token){
@@ -221,11 +314,12 @@ window.FlowCanvasCaseDetails=function(host,project){
     }
     field('开始时间',new Date(run.started*1000).toLocaleString());
     runCommand=el('pre','case-section-code');section('执行命令').append(runCommand);
+    showRunCoverage();
     log=el('pre','case-detail-log');log.tabIndex=0;log.ariaLabel='所选运行的日志';const resultSection=section('执行结果');resultNote=el('p','case-result-note');resultSection.append(resultNote,log);await output(token);
   }
   /** Replace only the active tab when selection changes, guarding stale asynchronous responses. */
   function render(){
-    const token=++generation;wavePanel?.dispose();wavePanel=null;waveExplanation=null;if(selected)window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,null);offset=0;log=null;resultNote=null;wavePath='';body.onscroll=null;body.replaceChildren();body.dataset.tab=tab;title.replaceChildren();
+    const token=++generation;coverageSections=null;wavePanel?.dispose();wavePanel=null;waveExplanation=null;if(selected)window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,null);offset=0;log=null;resultNote=null;wavePath='';body.onscroll=null;body.replaceChildren();body.dataset.tab=tab;title.replaceChildren();
     for(const button of tabs.children){const active=button.id===tabPrefix+tab;button.setAttribute('aria-selected',String(active));button.tabIndex=active?0:-1;}
     body.setAttribute('role','tabpanel');body.setAttribute('aria-labelledby',tabPrefix+tab);
     if(!selected){title.append(el('strong','','测试用例详情'));body.append(el('p','case-detail-empty','在左侧选择测试用例'));return;}
@@ -234,12 +328,13 @@ window.FlowCanvasCaseDetails=function(host,project){
     if(tab==='overview'){
       const actions=el('div','detail-overview-toolbar');actions.append(taskButton('case-overview','生成用例概览'));body.append(actions);
       overviewBlock(selected.overview||{});
+      showCoverageOverview();
       timeline();
       return;
     }
     (tab==='source'?source(token):execution(token)).catch(error=>{if(token===generation)body.append(el('p','targets-error',error.message));});
   }
-  const runPoll=setInterval(async()=>{if(host.closest('[hidden]')||document.hidden||tab!=='runs'||!runId||!log||polling)return;polling=true;const token=generation;try{await output(token);}catch(error){if(token===generation)log.textContent=error.message;}finally{polling=false;}},1000);
+  const runPoll=setInterval(async()=>{if(host.closest('[hidden]')||document.hidden||tab!=='runs'||!runId||!log)return;const token=generation;try{await output(token);}catch(error){if(token===generation)log.textContent=error.message;}},1000);
   const wavePoll=setInterval(async()=>{
     if(tab!=='wave'||!runId||document.hidden||host.closest('[hidden]')||wavePolling)return;
     wavePolling=true;const token=generation;
@@ -252,11 +347,11 @@ window.FlowCanvasCaseDetails=function(host,project){
       const saved=await json(base()+'/test-runs/'+encodeURIComponent(runId)+'/waveform-analysis?case_id='+encodeURIComponent(selected.id)+'&waveform='+encodeURIComponent(wavePath));if(token===generation&&JSON.stringify([saved.revision,saved.status])!==waveRevision)render();}catch{}finally{wavePolling=false;}
   },2500);
   const onRun=event=>{
-    if(event.detail.project?.id===project()?.id&&event.detail.run?.case_id===selected?.id){runId=event.detail.run.id;tab='runs';render();}
+    if(event.detail.project?.id===project()?.id&&event.detail.run?.case_id===selected?.id){runId=event.detail.run.id;tab='runs';render();body.scrollTop=0;}
   };
   document.addEventListener('flowcanvas-test-run',onRun);
   const onClose=event=>{if(event.detail.case_id===selected?.id){wavePanel?.dispose();wavePanel=null;window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,null);revision='';}};
   document.addEventListener('flowcanvas-case-tab-closed',onClose);
   render();
-  return {dispose(){generation++;wavePanel?.dispose();if(selected)window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,null);clearInterval(runPoll);clearInterval(wavePoll);document.removeEventListener('flowcanvas-test-run',onRun);document.removeEventListener('flowcanvas-case-tab-closed',onClose);host.remove();},context(){return {tab,run_id:runId,binding_id:tab==='source'?sourceId:null};},select(node,bindings,initialView){const next=JSON.stringify([node,bindings]);if(revision===next)return;const changed=selected?.id!==node?.id;selected=node;report=bindings;revision=next;if(changed){const position=positions.get(node?.id)||initialView||{};tab=Object.hasOwn(names,position.tab)?position.tab:'overview';runId=typeof position.run_id==='string'?position.run_id:null;sourceId=typeof position.binding_id==='string'?position.binding_id:null;}render();}};
+  return {dispose(){generation++;coverageSections=null;clearInterval(coveragePoll);wavePanel?.dispose();if(selected)window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,null);clearInterval(runPoll);clearInterval(wavePoll);document.removeEventListener('flowcanvas-test-run',onRun);document.removeEventListener('flowcanvas-case-tab-closed',onClose);host.remove();},context(){return {tab,run_id:runId,binding_id:tab==='source'?sourceId:null};},select(node,bindings,initialView){const next=JSON.stringify([node,bindings]);if(revision===next&&!initialView)return;const changed=selected?.id!==node?.id;selected=node;report=bindings;revision=next;if(changed||initialView){const position=initialView||positions.get(node?.id)||{};tab=Object.hasOwn(names,position.tab)?position.tab:'overview';runId=typeof position.run_id==='string'?position.run_id:null;sourceId=typeof position.binding_id==='string'?position.binding_id:null;}render();}};
 };

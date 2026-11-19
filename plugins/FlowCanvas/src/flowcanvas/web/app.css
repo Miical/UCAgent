@@ -599,7 +599,10 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 .workflow-run .run-track{width:max-content;max-width:100%;box-sizing:border-box;pointer-events:auto;}
 .workflow-run .run-scroll{pointer-events:auto;}
 .workflow-run+#conversation{margin-top:0;padding-top:102px;scroll-padding-top:102px;}
-.workflow-run:not(.is-collapsed)+#conversation{padding-top:12px;scroll-padding-top:12px;}
+.workflow-run:not(.is-collapsed)+#conversation{padding-top:12px;scroll-padding-top:24px;}
+.chat-pane:not(.case-workspace-open) .workflow-run:not(.is-collapsed)+#conversation.is-scrolled{
+  mask-image:linear-gradient(to bottom,transparent,#000 24px);
+}
 
 .run-capsule.same-conversation{border-color:color-mix(in srgb,var(--accent) 30%,var(--border));}
 
@@ -1457,8 +1460,9 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .detail-page-tabs button{font-size:10px}
 
 /* Flat stacked AI entry points retain the corner sparkle on each icon. */
-.targets-empty-ai-actions{display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:16px}
+.targets-empty-ai-actions{display:flex;flex-direction:column;align-items:stretch;gap:8px;width:max-content;margin:16px auto 0}
 .targets-empty-ai-button{display:inline-flex;align-items:center;justify-content:center;gap:9px;box-sizing:border-box;position:relative;width:140px;height:30px;margin:0;padding:0 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;font-weight:500;line-height:1;box-shadow:none;transition:background .15s,border-color .15s}
+.targets-empty-ai-actions>.targets-empty-ai-button{width:auto;min-width:140px;white-space:nowrap}
 .targets-empty-ai-button svg{flex-shrink:0;width:16px;height:16px;color:var(--text-dim)}
 .targets-empty-ai-button:hover{background:color-mix(in srgb,var(--text) 4%,var(--surface));border-color:color-mix(in srgb,var(--text-dim) 40%,var(--border));box-shadow:none}
 .targets-empty-ai-button:active{background:color-mix(in srgb,var(--text) 7%,var(--surface))}
@@ -1647,13 +1651,6 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 
 .coverage-overview-item[aria-pressed="true"]{background:color-mix(in srgb,var(--accent) 5%,var(--surface))}
 .coverage-overview-status{grid-column:1/-1;margin:0;padding:3px 4px 0;color:var(--text-dim);font-size:10px;overflow-wrap:anywhere}
-.toffee-coverage-files{flex:1;min-height:0;overflow:auto}
-.toffee-coverage-empty{margin:0;padding:14px 12px;color:var(--text-dim);font-size:12px}
-.toffee-coverage-file-list{margin:0;padding:8px 0;list-style:none}
-.toffee-coverage-file{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 8px;border:0;border-bottom:1px solid var(--border);background:transparent;color:var(--text);text-align:left;cursor:pointer}
-.toffee-coverage-file:hover{background:var(--surface2)}
-.toffee-coverage-file code{min-width:0;overflow-wrap:anywhere}
-.toffee-coverage-file span{flex:none;color:var(--text-dim);font-variant-numeric:tabular-nums}
 
 .markdown-image-link{display:block;max-width:100%}.markdown-image-link img{display:block;max-width:100%;max-height:480px;object-fit:contain;margin:8px 0;border-radius:6px}.local-image-preview{display:block;max-width:100%;max-height:75vh;object-fit:contain;margin:auto}
 
@@ -2597,3 +2594,7 @@ html[data-theme="light"] .composer-footer .model-trigger>.picker-chevron{color:i
 .detail-index :is(.detail-index-handle,.detail-index-link):focus-visible{outline:1px solid var(--accent);outline-offset:-2px}
 .detail-index:not(.has-motion),.detail-index:not(.has-motion) .detail-index-navigation::before,.detail-index:not(.has-motion) .detail-index-link,.detail-index:not(.has-motion) .detail-index-link::after,.detail-index:not(.has-motion) .detail-index-label{transition:none}
 @media(prefers-reduced-motion:reduce){.detail-index,.detail-index-navigation::before,.detail-index-link,.detail-index-link::after,.detail-index-label{transition:none}}
+
+.case-coverage-tree .case-coverage-tree{padding-inline-start:18px}
+.case-coverage-kind{margin-inline-start:8px;color:var(--text-dim);font-size:10px}
+.case-coverage-links>p{margin:4px 0 12px}

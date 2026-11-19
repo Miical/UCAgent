@@ -1,5 +1,6 @@
 """Read fingerprint-verified build sources for coverage views and conversation context."""
 import hashlib
+import json
 import re
 from pathlib import Path
 from fastapi import HTTPException
@@ -18,7 +19,20 @@ def source_snapshot(project_root, instance, metric='line', file=None):
         if metric not in {"toggle","branch","expr","cond","fsm","assert"}:
             raise HTTPException(422,"Unknown coverage metric")
         items=report.get("code_metrics",{}).get(metric,{}).get("dut",{}).get("items",[])
-        entry=next((item for item in items if (not item.get("hierarchy") or item["hierarchy"]==instance) and (not file or item["file"]==file)),None)
+        candidates=[item for item in items if not file or item["file"]==file]
+        entry=next((item for item in candidates if item.get("hierarchy")==instance),None)
+        if entry is None and (data.get("provider") or report.get("provider")) == "toffee":
+            metadata=Path(project_root)/".flowcanvas/project.json"
+            if metadata.is_file():
+                top=json.loads(metadata.read_text())["rtl"]["top"]
+                for item in candidates:
+                    parts=(item.get("hierarchy") or "").split(".")
+                    path=".".join(parts[parts.index(top):]) if top in parts else top
+                    if path==instance:
+                        entry=item
+                        break
+        if entry is None:
+            entry=next((item for item in candidates if not item.get("hierarchy")),None)
         source={"path":entry["file"],"sha256":entry["sha256"]} if entry else None
         row={"module":(entry or {}).get("module") or instance.split(".")[-1]}
     if not source:raise HTTPException(404,'Coverage report has no matching source mapping')

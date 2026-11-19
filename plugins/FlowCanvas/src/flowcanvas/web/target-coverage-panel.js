@@ -11,10 +11,9 @@ window.FlowCanvasTargetCoveragePanel=function({panel,project,content,refresh,fai
   const tabs=el('nav','target-coverage-tabs');tabs.setAttribute('role','tablist');tabs.setAttribute('aria-label','覆盖率类型');
   const functionalPane=el('div','target-goal-pane'),details=el('div','target-line-pane');
   const frame=el('iframe');frame.title='代码覆盖率明细';
-  const filesPane=el('div','toffee-coverage-files');
   const status=el('p','coverage-overview-status');status.setAttribute('role','status');
   functionalPane.setAttribute('role','tabpanel');functionalPane.append(...content);
-  details.setAttribute('role','tabpanel');details.append(frame,filesPane);
+  details.setAttribute('role','tabpanel');details.append(frame);
   let snapshot=null,isToffee=false,metrics=vcsMetrics,preferred='functional',active='functional';
   const preference='fc-target-coverage-tab:'+project.id;
   try{preferred=localStorage.getItem(preference)||'functional';}catch{}
@@ -60,44 +59,11 @@ window.FlowCanvasTargetCoveragePanel=function({panel,project,content,refresh,fai
     functionalPane.hidden=active!=='functional';details.hidden=active==='functional';
     for(const tab of tabs.children){const selected=tab.dataset.metric===active;tab.classList.toggle('active',selected);tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1;}
     for(const card of overview.querySelectorAll('.coverage-overview-item'))card.setAttribute('aria-pressed',String(card.dataset.metric===active));
-    frame.hidden=isToffee;filesPane.hidden=!isToffee;
     if(active==='functional')return;
-    if(isToffee){
-      if(frame.hasAttribute('src'))frame.removeAttribute('src');
-      renderFiles();
-    }else if(!frame.src||new URL(frame.src).searchParams.get('metric')!==active){
+    if(!frame.src||new URL(frame.src).searchParams.get('metric')!==active){
       const view='/api/chat/projects/'+encodeURIComponent(project.id)+'/rtl-view';
       frame.src='/rtl-viewer/?coverageOnly=1&metric='+encodeURIComponent(active)+'&view='+encodeURIComponent(view);
     }
-  }
-
-  function renderFiles(){
-    const rows=new Map(),report=snapshot?.report;
-    const rowFor=(instance,file)=>{
-      const key=JSON.stringify([instance,file]);
-      if(!rows.has(key))rows.set(key,{instance,file,covered:0,total:0});
-      return rows.get(key);
-    };
-    if(active==='line'){
-      for(const instance of report?.instances||[])for(const file of instance.files||[]){
-        const row=rowFor(instance.path,file.path);
-        row.covered=file.covered_lines?.length||0;
-        row.total=Object.keys(file.line_hits||{}).length||row.covered+(file.uncovered_lines?.length||0);
-      }
-    }else for(const observation of report?.code_metrics?.[active]?.dut?.items||[]){
-      const row=rowFor(observation.hierarchy||observation.module,observation.file);
-      row.covered+=Number(observation.hits>0);row.total++;
-    }
-    const list=el('ul','toffee-coverage-file-list');
-    for(const row of rows.values()){
-      const link=button('',()=>window.FlowCanvasOpenCoverageSource(active,row.instance,row.file),'toffee-coverage-file');
-      link.title=row.file;link.append(el('code','',row.file),el('span','',row.covered+' / '+row.total));
-      const item=el('li');item.append(link);list.append(item);
-    }
-    const empty=active==='line'&&snapshot?.runs?.length
-      ?'本批次没有采集到 DUT 行覆盖点。'
-      :'暂无覆盖率数据。';
-    filesPane.replaceChildren(rows.size?list:el('p','toffee-coverage-empty',empty));
   }
 
   function makeCard(mode,label){

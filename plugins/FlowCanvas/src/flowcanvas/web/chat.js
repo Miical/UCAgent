@@ -762,7 +762,7 @@ const workflowCategories=new Map([
   ['项目导入',['import-project','import-targets','import-testcases']],
   ['设计分析',['rtl-summary','static-bug-analysis']],
   ['验证准备',['picker-compile','plan-goals']],
-  ['测试与验证',['generate-testcase','default']]
+  ['测试与验证',['build-test-suite','generate-testcase','default']]
 ]);
 /** Close the active folder and optionally return focus to its control. */
 function closeWorkflowFolder(focus=false){
@@ -1003,8 +1003,8 @@ window.FlowCanvasAI={
   async startCase({text,current=true,project,requirements,design=null}){
     await globalConversation();
     const model=$('model').value,effort=$('effort').value;
-    const workflowId=design?({'import-project':'import-project','import-testcases':'import-testcases','import-goals':'import-targets','plan-goals':'plan-goals'})[design.kind]||null:'generate-testcase';
-    const taskTitle=design?.kind==='add-bug'?'新增 Bug':design?.kind==='delete-bug'?'删除 Bug':design?.kind==='import-project'?'导入项目':design?.kind==='import-testcases'?'同步测试用例':design?.kind==='plan-goals'?'规划验证目标':design?.kind==='import-goals'?'同步验证目标':design?.kind==='add-goal'?'新增验证目标':design?.kind==='delete-goal'?'删除验证目标':design?.kind==='functional-coverage'?'分析功能覆盖率':design?.kind==='run-testcase'?'运行测试用例':design?.kind==='delete-testcase'?'删除测试用例':design?.kind==='line-coverage'?'分析'+(({line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率'})[design.metric]||'行覆盖率'):design?'解释设计':'新增测试用例';
+    const workflowId=design?({'import-project':'import-project','import-testcases':'import-testcases','import-goals':'import-targets','plan-goals':'plan-goals','build-test-suite':'build-test-suite'})[design.kind]||null:'generate-testcase';
+    const taskTitle=design?.kind==='add-bug'?'新增 Bug':design?.kind==='delete-bug'?'删除 Bug':design?.kind==='import-project'?'导入项目':design?.kind==='import-testcases'?'同步测试用例':design?.kind==='build-test-suite'?'规划并实现测试用例':design?.kind==='plan-goals'?'规划验证目标':design?.kind==='import-goals'?'同步验证目标':design?.kind==='add-goal'?'新增验证目标':design?.kind==='delete-goal'?'删除验证目标':design?.kind==='functional-coverage'?'分析功能覆盖率':design?.kind==='run-testcase'?'运行测试用例':design?.kind==='delete-testcase'?'删除测试用例':design?.kind==='line-coverage'?'分析'+(({line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率'})[design.metric]||'行覆盖率'):design?'解释设计':'新增测试用例';
     if(!model)throw Error('请先选择可用模型');
     let owner=session;
     if(current){

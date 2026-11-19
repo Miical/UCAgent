@@ -64,6 +64,31 @@ async def test_native_extract_uses_fixed_metadata_and_current_sources(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_native_single_run_filters_by_exact_urg_test_name(tmp_path, monkeypatch):
+    """Selecting by case/run ID must never read the cumulative VDB as a single test."""
+    folder, database = native_project(tmp_path)
+    identity = '1' * 32
+    native_name = str(database.with_suffix('')/identity)
+    selections = []
+
+    async def fake_urg(executable, arguments, root, environment, log):
+        if 'availabletests' in arguments:
+            log.write_text(f'Available tests names:\n{native_name}_gen1\n{native_name}\n')
+            return
+        selected = Path(arguments[arguments.index('-tests')+1])
+        selections.extend(selected.read_text().splitlines())
+        assert arguments[arguments.index('-metric')+1] == 'group'
+
+    monkeypatch.setattr('flowcanvas.native_vcs.run_urg', fake_urg)
+    output = folder/'selected/coverage.json'
+    report = await extract(tmp_path, database, output, build_identity(tmp_path), test_id=identity)
+    assert selections == [native_name]
+    assert report['provider'] == 'vcs' and report['instances'] == []
+    with pytest.raises(ValueError, match='exactly one'):
+        await extract(tmp_path, database, output, build_identity(tmp_path), test_id='2'*32)
+
+
+@pytest.mark.asyncio
 async def test_watch_debounce_external_updates_errors_and_reset(tmp_path):
     """Stable external writes trigger extraction; failures retain the accepted panel data."""
     folder,database=native_project(tmp_path);runner=Runs()

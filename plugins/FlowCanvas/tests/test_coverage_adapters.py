@@ -301,7 +301,8 @@ async def test_native_toffee_loads_distinct_runs_without_rewriting_outputs(cover
         raw = run / "raw/coverage.dat"
         raw.parent.mkdir()
         raw.write_text("# SystemC::Coverage-3\n" +
-                       f"C '\x01f\x02Probe.v\x01l\x022\x01n\x021\x01page\x02v_line/Probe\x01h\x02TOP.Probe' {hits}\n")
+                       f"C '\x01f\x02Probe.v\x01l\x022\x01n\x021\x01page\x02v_line/Probe\x01h\x02TOP.Probe' {hits}\n" +
+                       f"C '\x01f\x02Probe.v\x01l\x022\x01page\x02v_toggle/Probe\x01h\x02TOP.Probe_top.Probe' {hits}\n")
 
     snapshot = public(root)
     assert snapshot["provider"] == "toffee"
@@ -310,6 +311,8 @@ async def test_native_toffee_loads_distinct_runs_without_rewriting_outputs(cover
     assert "other-build" in snapshot["ingestion_error"]
     assert store.status()["coverage"]["targets"][ids[-1]]["observations"][0]["bins"][0]["hits"] == 5
     assert source_snapshot(root, "Probe")["file"] == "Probe.v"
+    assert source_snapshot(root, "Probe", "toggle")["file"] == "Probe.v"
+    assert source_snapshot(root, "TOP.Probe_top.Probe", "toggle")["file"] == "Probe.v"
     assert not (root / DATABASE.parent.parent / "state.json").exists()
 
     app = FastAPI()

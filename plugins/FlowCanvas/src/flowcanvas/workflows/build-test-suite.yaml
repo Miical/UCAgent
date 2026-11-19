@@ -1,0 +1,100 @@
+# A panel-backed directed-test workflow, based on UCAgent's default verification stages.
+template: null
+guide_doc:
+  enable: true
+skill:
+  use_skill: false
+  general_skill_list: []
+mission:
+  name: 规划并实现测试用例
+  prompt:
+    system: |
+      为 FlowCanvas 项目 {PROJECT_ROOT} 的 {DUT} 建立可运行的定向测试用例。
+      项目里已有可用的 DUT 包、fixture、Bundle、Mock、参考模型、API、测试或通过记录时，
+      先检查并复用已有内容，再按本次场景修补缺口。保持现有公共接口，禁止修改 RTL、伪造 DUT、
+      运行记录或覆盖证据。没有规格时，区分需求、RTL 实现和待确认行为；预期来自项目规格、
+      独立参考模型或明确推导的结果。
+      项目源码和测试写入项目根目录，阶段记录写入 {OUT}。测试和验证目标以 FlowCanvas
+      面板为准。使用 test_cases 和 verification_targets 检查、登记和更新卡片；
+      写入前核对最新 expected_revision。已有记录沿用原 ID，新增记录先 apply，再 begin_modify，
+      然后 update，完成后 end_modify；暂停后恢复原 ID。不直接编辑 .flowcanvas 管理文件。
+      测试通过 test_case_runs 运行。使用 {case} 表示唯一用例入口，使用 {run_dir} 隔离产物，
+      并让实际运行命令生成 {wave_dir}/waves.vcd。每次启动后读同一 run_id 到结束。
+      用 SetCurrentStageJournal 和 Complete 推进每一个阶段，失败时按当前验收信息修正。
+      最终冒烟阶段通过后调用 Exit。区分基础 API 已验证、普通用例已实现登记和冒烟已通过。
+    tips:
+      always: []
+      random: []
+tools:
+  selected_tools: [ReadTextFile, EditTextFile, RunBashCommand, CurrentTips, Status, SetCurrentStageJournal, Check, Complete, Exit]
+write_dirs: ["{OUT}"]
+stage:
+  - name: dut_wrapper_implementation
+    desc: 实现 DUT 封装和 pytest fixture
+    task:
+      - "读取项目的 DUT 包、测试入口、fixture 和接口说明，核对封装加载的是项目当前构建和顶层。已有封装和 dut fixture 若能满足本次场景，复用并说明依据；否则最小补齐 DUT 创建、时钟和复位、读写和资源清理。缺少可用 DUT 包时，通过 RunBashCommand 使用项目文件列表和既有构建入口编译；纯 RTL 项目使用 Picker 编译，启用 Verilator 行覆盖和 VCD，先核对工具帮助与实际顶层。"
+      - "在 {OUT}/test-environment.json 中保存 dut_files，列出 DUT 封装和 pytest dut fixture 的真实项目相对路径。已有文件可直接列入，不生成重复实现。"
+    reference_files: ["Guide_Doc/dut_fixture.md"]
+    output_files: ["{OUT}/test-environment.json"]
+    checker:
+      - name: dut_fixture
+        clss: flowcanvas.test_suite_workflow.TestSuiteChecker
+        args: {mode: dut}
+  - name: test_environment_implementation
+    desc: 搭建验证环境
+    task:
+      - "检查现有 env fixture、Bundle、Mock 和 API 是否覆盖本次场景。保留可用实现；按需要补 Bundle 端口分组和 env 的初始化、时钟、驱动、采样及清理。已有 Mock 可复用；项目明确启用 Mock 或存在需要独立模拟的交互时，实现真实接口契约与 mock_dut fixture。组合逻辑或简单接口可继续使用更小的现有环境。"
+      - "读取项目的 .ucagent/runtime_config.json（如存在），依据 runtime_options.need_ref_model 选择 env 或 env, ref_model。启用参考模型时复用或补齐真实可调用 fixture；独立 Mock 检查使用 mock_dut，不把它加入普通 DUT 测试签名。"
+      - "在原 test-environment.json 中补 environment_files，记录实际 env fixture、相关 Bundle/Mock、API 以及本次所需参考模型的项目相对源码。"
+    reference_files: ["{OUT}/test-environment.json", "Guide_Doc/dut_fixture.md", "Guide_Doc/dut_api_instruction.md"]
+    checker:
+      - name: environment_fixture
+        clss: flowcanvas.test_suite_workflow.TestSuiteChecker
+        args: {mode: environment}
+  - name: basic_api_functional_test
+    desc: 运行基础 API 功能测试
+    task:
+      - "检查已有 test_api_{DUT}_* 自检及运行记录。若已有正确的源码绑定、当前入口和仍适用的通过记录，直接复用。缺少时新增或最小补齐 API 自检，使用真实 DUT 检查初始化、典型调用、推进与采样，以及本项目必要的超时/边界行为。已有独立 Mock 自检可继续复用，不能用 Mock 结果代替真实 DUT 的 API 检查。"
+      - "将实际执行的 API 自检以独立卡片登记，绑定测试函数并设置 runner。使用 test_case_runs(operation=start,case_id=...,mode=test) 后读取真实结果；处理失败后再推进。已有 coverage 配置时保持此 runner 兼容现有采集。把每个已通过的 case_id、run_id 对写入 test-environment.json 的 api_runs。"
+    reference_files: ["{OUT}/test-environment.json", "Guide_Doc/dut_api_instruction.md", "Guide_Doc/dut_test_case.md"]
+    checker:
+      - name: api_test_receipts
+        clss: flowcanvas.test_suite_workflow.TestSuiteChecker
+        args: {mode: api}
+  - name: create_test_case_templates
+    desc: 规划测试用例并创建模板
+    task:
+      - "先 inspect 验证目标、已有用例和源码。按正常、边界、异常场景制定普通定向测试计划，优先补未覆盖的测试点；已有相同场景时复用原卡片。没有测试点时依据规格和 RTL 自行制定本次用例计划，通过 verification_targets 建立所需功能组、功能点和测试点，并保留相应真实 FG/FC/CK 路径与 ID。"
+      - "为每个新场景通过 test_cases 申请并登记一个 creating 卡片，先写可辨识的中文 title、真实代码入口 name 和场景 description。编写 test_{DUT}_<feature>.py 模板，按项目配置使用 env 或 env, ref_model，并从 {DUT}_api import *。写清激励、预期、断言和拟关联 CK，使用 assert False 作为未实现保护。此时不运行模板、不将占位卡标为 ready。"
+      - "保存 {OUT}/test-suite.json，cases 数组每项包含 case_id、target_ids 和 files；使用真实面板 ID、项目相对源码路径。计划需覆盖本次确定的场景。API 自检和独立冒烟不进入 cases。"
+    reference_files: ["{OUT}/test-environment.json", "Guide_Doc/dut_test_template.md", "Guide_Doc/dut_test_case.md"]
+    output_files: ["{OUT}/test-suite.json"]
+    checker:
+      - name: panel_test_templates
+        clss: flowcanvas.test_suite_workflow.TestSuiteChecker
+        args: {mode: templates}
+  - name: implement_test_cases_in_batches
+    desc: 分批实现并登记测试用例
+    task:
+      - "调用 Check 获取当前批次，用原卡片 ID 逐个把模板实现为真实测试。通过项目 API 驱动 DUT，使用独立预期和真实断言，移除占位 assert False。按场景用真实 fc_cover.mark_function 关联 FG/FC/CK，并让实际采样和报告接通；完成相关测试点及其层级的源码绑定。"
+      - "每张卡片设置独立 runner={command,description}，让 {case} 对应唯一的绑定入口，按真实编译和运行参数隔离产物并开启 VCD。源码只绑定测试入口和该场景必需的激励/检查。完成每个用例后用 test_cases(end_modify) 转成 ready。调用 Check 推进批次，所有用例登记后 Complete；本阶段不跑全量回归。"
+      - |
+        在 test-suite.json 中维护统一 coverage_plan。用 test_case_runs 配置实际后端；已可用的 VCS 或兼容采集可复用。
+        Picker/Toffee 用 provider: toffee、tool: verilator-toffee。启用已编译的行覆盖和真实功能采样；真实 DUT 通过 SetCoverage 将 .dat 写到 {run_dir}/raw，清理时保留 Finish，采集器调用 set_line_coverage 和 set_func_coverage；pytest 开启 --toffee-report --report-dump-json --report-dir {run_dir}/toffee，已有封装可传入等效参数。
+        coverage_plan 记录 adapter（原生 Toffee 为 toffee，其余为 normalized）、line_source、functional_source、mapping_file、build_inputs_file、collector_files，以及 line_enabled、functional_enabled 均为 true。Toffee 使用 {run_dir}/raw、{run_dir}/toffee、verification/coverage/flowcanvas-map.json 和 verification/coverage/build-inputs.json。映射用完整 FG/FC/CK 到面板 ID；构建输入含实际编译产物、RTL 和影响采集的共享源码，普通测试文件不计入。其他后端的两个采集来源也必须位于 {run_dir}。
+    reference_files: ["{OUT}/test-suite.json", "Guide_Doc/dut_test_case.md", "Guide_Doc/dut_function_coverage_def.md"]
+    checker:
+      - name: ready_test_cases
+        clss: flowcanvas.test_suite_workflow.TestSuiteChecker
+        args: {mode: implementation, batch_size: 10}
+  - name: validate_coverage_smoke
+    desc: 创建并验证覆盖率冒烟用例
+    task:
+      - "从本次普通用例中选择一个参考卡片，复用其 runner、编译配置、fixture 和覆盖采集，登记一个独立、短小且有真实断言的冒烟用例。只执行必要的复位和代表性操作。优先复用仍与当前构建、绑定及配置匹配的冒烟卡片和已通过收据。"
+      - "需要新运行时调用 test_case_runs(operation=start,case_id=...,mode=coverage_smoke,ready_pattern=能证明实际执行的日志模式,startup_timeout=120)。用同一 run_id 读日志到自然退出；通过条件是退出码 0、无测试框架错误、真实 VCD 可读、覆盖观测能绑定面板。要求真实的 DUT 行观测；原生 Toffee 若没有可计量行，必须有真实 DUT 其他代码计数和功能覆盖观测，并报告行覆盖不可用。"
+      - "冒烟在独立运行目录内验证产物，不并入累计覆盖率。将 smoke_case_id、smoke_reference_case_id 和 smoke_run_id 写回 test-suite.json。总结 API 自检、普通用例登记与冒烟的实际结果，Complete 后 Exit。"
+    reference_files: ["{OUT}/test-suite.json", "Guide_Doc/dut_test_case.md"]
+    checker:
+      - name: isolated_coverage_smoke
+        clss: flowcanvas.test_suite_workflow.TestSuiteChecker
+        args: {mode: smoke}

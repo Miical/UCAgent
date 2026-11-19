@@ -93,6 +93,27 @@ def read_report(root, run_dir, module, build_id, report_path):
     return report
 
 
+def run_inputs(root, run_dir):
+    """Resolve the native files and DUT for a managed run."""
+    reports, databases = artifact_files(run_dir)
+    if len(reports) != 1 or not databases:
+        raise ValueError("本次运行必须输出一个 Toffee 报告以及 Verilator 覆盖率数据库")
+    module = json.loads((root / ".flowcanvas/project.json").read_text())["rtl"]["top"]
+    return reports[0], databases, module
+
+
+def smoke_report(root, run_dir, expected_build):
+    """Validate the native inputs in place without publishing them to the panel."""
+    root, run_dir = Path(root).resolve(), Path(run_dir).resolve()
+    if not run_dir.is_relative_to(root):
+        raise ValueError("覆盖率产物必须位于项目内")
+    report_path, _, module = run_inputs(root, run_dir)
+    report = read_report(root, run_dir, module, expected_build, report_path)
+    if build_identity(root) != expected_build:
+        raise ValueError("运行期间覆盖率构建已变化")
+    return report
+
+
 def publish_run(root, run_dir, expected_build):
     """Publish a completed run atomically, retaining its original artifacts."""
     root, run_dir = Path(root).resolve(), Path(run_dir).resolve()
@@ -101,9 +122,7 @@ def publish_run(root, run_dir, expected_build):
         raise ValueError("覆盖率产物必须位于项目内")
     if build_identity(root) != expected_build:
         raise ValueError("运行期间覆盖率构建已变化")
-    reports, databases = artifact_files(run_dir)
-    if len(reports) != 1 or not databases:
-        raise ValueError("本次运行必须输出一个 Toffee 报告以及 Verilator 覆盖率数据库")
+    report_path, databases, module = run_inputs(root, run_dir)
     destination = database / run_dir.name
     receipt = destination / "run.json"
     if destination.is_symlink() or receipt.is_symlink():
@@ -113,16 +132,17 @@ def publish_run(root, run_dir, expected_build):
             return destination
         raise ValueError("同一运行已发布到另一个构建")
     database.mkdir(parents=True, exist_ok=True)
-    module = json.loads((root / ".flowcanvas/project.json").read_text())["rtl"]["top"]
     with tempfile.TemporaryDirectory(prefix=".publish-", dir=database) as temporary:
         staged = Path(temporary) / run_dir.name
-        for source in [*reports, *databases]:
+        for source in [report_path, *databases]:
             target = staged / source.relative_to(run_dir)
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, target)
-        read_report(root, staged, module, expected_build, staged / reports[0].relative_to(run_dir))
+        report = read_report(root, staged, module, expected_build, staged / report_path.relative_to(run_dir))
         if build_identity(root) != expected_build:
             raise ValueError("发布期间覆盖率构建已变化")
+        from .coverage_links import save_hits
+        save_hits(run_dir, report, root)
         atomic(staged / "run.json", {"build_id": expected_build})
         staged.rename(destination)
     return destination

@@ -30,6 +30,11 @@ workflows:
     description: 用 Picker 将指定 RTL 编译为 Python DUT 包，检查加载并保存到项目 verification/<模块名>/，供后续验证使用。
     workflow: flowcanvas:picker-compile
     enabled: true
+  - id: build-test-suite
+    name: 规划并实现测试用例
+    description: 复用或补齐验证环境，规划并分批登记可运行用例，再通过独立覆盖率冒烟检查执行链路。
+    workflow: flowcanvas:build-test-suite
+    enabled: true
   - id: generate-testcase
     name: 新增测试用例
     description: 复用现有接口，边写用例边补齐所需验证环境，核对覆盖关联并登记源码绑定

@@ -1,11 +1,10 @@
 """Validate imported cards and one complete, isolated coverage-smoke receipt."""
 import json
-import re
 from pathlib import Path
 
 from ucagent.checkers.base import Checker
 from .import_absence import skipped_import, absent_coverage
-from .smoke_runs import case_identity, coverage_identity, startup_error, validate_smoke_report
+from .smoke_runs import validate_coverage_smoke_receipt
 from .testcases import Cases
 
 
@@ -94,43 +93,8 @@ class CaseImportChecker(Checker):
                 reference=scope.get('smoke_reference_case_id')
                 if identity not in ids or reference not in ids or identity==reference:
                     raise ValueError('Record a dedicated smoke_case_id and an imported smoke_reference_case_id')
-                card,reference_card=cards[identity],cards[reference]
-                if card.runner!=reference_card.runner:
-                    raise ValueError('Smoke must use the same runner/build path as its reference case')
-                run_id=scope.get('smoke_run_id','')
-                if not isinstance(run_id,str) or not re.fullmatch('[0-9a-f]{32}',run_id):
-                    raise ValueError('Record the completed coverage smoke run ID')
-                folder=store.root/'output/flowcanvas/test-runs'
-                run=json.loads((folder/(run_id+'.json')).read_text())
-                if (run.get('mode')!='coverage_smoke' or run.get('case_id')!=identity or
-                        run.get('smoke_status')!='passed' or run.get('status')!='completed' or
-                        run.get('exit_code')!=0 or run.get('stop_reason')!='natural_exit' or
-                        run.get('coverage_status')!='validated' or not run.get('ended')):
-                    raise ValueError('Complete the short smoke naturally and validate real coverage extraction')
-                from .run_waveform import validate_run_waveform
-                if run.get('waveform_status')!='validated' or run.get('waveform_receipt')!=validate_run_waveform(store.root,run):
-                    raise ValueError('Complete a smoke with a readable, unchanged primary VCD waveform')
-                if run.get('case_identity')!=case_identity(card):
-                    raise ValueError('Smoke command or source changed; repeat coverage smoke')
-                if data.coverage is None or run.get('coverage_identity')!=coverage_identity(data.coverage.model_dump()):
-                    raise ValueError('Coverage configuration changed; repeat coverage smoke')
-                if data.coverage.provider=='vcs':
-                    from .native_vcs import metadata_identity
-                    if run.get('native_coverage_identity')!=metadata_identity(store.root):
-                        raise ValueError('Native build or coverage mappings changed; repeat coverage smoke')
-                database=Path(run['coverage_db']).resolve()
-                run_dir=Path(run['run_dir']).resolve()
-                if not database.is_relative_to(run_dir) or not run_dir.is_relative_to(folder):
-                    raise ValueError('Smoke database must be isolated inside its managed run directory')
-                artifact=Path(run.get('coverage_artifact','')).resolve()
-                if not artifact.is_relative_to(run_dir):
-                    raise ValueError('Smoke coverage artifact must belong to the managed run')
-                report=validate_smoke_report(store.root,json.loads(artifact.read_text()))
-                if report['build_id']!=run.get('build_id'):
-                    raise ValueError('Smoke coverage build does not match the executed build')
-                log=(folder/(run_id+'.log')).read_text(errors='replace')
-                if startup_error(log) or not re.search(run['ready_pattern'],log):
-                    raise ValueError('Smoke log lacks valid execution evidence')
+                validate_coverage_smoke_receipt(store.root,cards[identity],cards[reference],data.coverage,
+                                                scope.get('smoke_run_id',''))
             return True,{'cards':len(ids),'coverage_smoke_checked':self.mode=='smoke'}
         except (OSError,ValueError,KeyError,TypeError) as exc:
             return False,{'error_code':'CASE_IMPORT_INCOMPLETE','error':str(exc),

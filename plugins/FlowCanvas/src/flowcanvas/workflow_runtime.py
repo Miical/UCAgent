@@ -187,7 +187,7 @@ class WorkflowRuntime:
                 return {'card': card, 'accepted': True}
             if card is None:
                 project_root = None
-                if identity in {'rtl-summary', 'picker-compile', 'plan-goals', 'static-bug-analysis', 'generate-testcase', 'import-targets', 'import-testcases', 'import-project', 'default'}:
+                if identity in {'rtl-summary', 'picker-compile', 'plan-goals', 'static-bug-analysis', 'generate-testcase', 'build-test-suite', 'import-targets', 'import-testcases', 'import-project', 'default'}:
                     if not self.session.get('project_root'):
                         raise ValueError('Open a FlowCanvas project before running this RTL workflow')
                     project_root = Path(self.session['project_root']).resolve()
@@ -262,7 +262,7 @@ class WorkflowRuntime:
                     request.update(project_root=str(project_root), conversation_id=self.session['id'],
                                    target_baseline=[row.id for row in baseline],
                                    target_snapshot=[row.model_dump() for row in baseline])
-                if identity in {'generate-testcase','import-testcases','import-project'}:
+                if identity in {'generate-testcase','build-test-suite','import-testcases','import-project'}:
                     from .testcases import Cases
                     baseline=Cases(project_root).read().targets
                     request.update(project_root=str(project_root), conversation_id=self.session['id'],

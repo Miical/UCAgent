@@ -45,12 +45,22 @@ def context(row):
 
 
 async def collect(runner,row,log):
+    from .coverage_links import save_hits
     config=row['coverage_config']
     if config.get('provider')=='toffee':
         import asyncio
-        from .native_toffee import publish_run
-        artifact=await asyncio.to_thread(publish_run,row['cwd'],row['run_dir'],row['build_id'])
-        row.update(coverage_status='published',coverage_artifact=str(artifact))
+        from .native_toffee import publish_run, smoke_report
+        if row.get('mode')=='coverage_smoke':
+            from .smoke_runs import validate_smoke_report
+            raw=await asyncio.to_thread(smoke_report,row['cwd'],row['run_dir'],row['build_id'])
+            report=validate_smoke_report(row['cwd'],raw,native_toffee=True)
+            artifact=Path(row['run_dir'])/'coverage.json'
+            atomic(artifact,report)
+            await asyncio.to_thread(save_hits,row['run_dir'],report,row['cwd'])
+            row.update(coverage_status='validated',coverage_artifact=str(artifact))
+        else:
+            artifact=await asyncio.to_thread(publish_run,row['cwd'],row['run_dir'],row['build_id'])
+            row.update(coverage_status='published',coverage_artifact=str(artifact))
         return
     values=context(row)
     row['coverage_status']='extracting'
@@ -67,8 +77,20 @@ async def collect(runner,row,log):
         report=validate_smoke_report(row['cwd'],json.loads(artifact.read_text()))
         if report['build_id']!=row['build_id']:
             raise ValueError('Smoke report does not match executed build')
+        save_hits(row['run_dir'],report,row['cwd'])
         row.update(coverage_status='validated',coverage_artifact=str(artifact))
         return
+    from .coverage_schema import validate_report
+    if config.get('provider')=='vcs' and (Path(row['cwd'])/'output/flowcanvas/coverage/targets.json').is_file():
+        try:
+            single=await extract(row['cwd'],row['coverage_db'],
+                Path(row['run_dir'])/'functional-urg/coverage.json',row['build_id'],test_id=row['id'])
+            save_hits(row['run_dir'],single,row['cwd'])
+        except (OSError, ValueError, KeyError, TimeoutError) as exc:
+            row['functional_hits_error']=str(exc)
+            log.write(('\n[单次功能覆盖] '+str(exc)+'\n').encode())
+    elif config.get('mode','per_run')=='per_run':
+        save_hits(row['run_dir'],validate_report(json.loads(artifact.read_text()),row['build_id']),row['cwd'])
     async with runner.lock:
         current=state(row['cwd'])
         if current['epoch']!=row['coverage_epoch']:
@@ -79,7 +101,6 @@ async def collect(runner,row,log):
         if row['id'] in [r['id'] for r in current['runs']]:return
         inputs=current['runs']+[dict(id=row['id'],artifact=str(artifact))]
         if config.get('mode', 'per_run') == 'shared':
-            from .coverage_schema import validate_report
             report=validate_report(json.loads(artifact.read_text()),row['build_id'])
             current.update(build_id=row['build_id'],runs=inputs,report=report,updated=time.time())
             if config.get('provider')=='vcs':
@@ -96,7 +117,6 @@ async def collect(runner,row,log):
         row['coverage_status']='merging'
         await runner.coverage_command(render(config['merge_command'],values),row,log)
         report=json.loads(Path(config['report_path'].format(**values)).read_text())
-        from .coverage_schema import validate_report
         report=validate_report(report,row['build_id'])
         current.update(build_id=row['build_id'],runs=inputs,report=report,updated=time.time())
         atomic(Path(row['cwd'])/'output/flowcanvas/coverage/state.json',current)

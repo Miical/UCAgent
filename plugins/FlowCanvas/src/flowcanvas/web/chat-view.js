@@ -23,7 +23,10 @@ export class ConversationView {
     document.addEventListener('selectionchange',()=>{const selection=window.getSelection();quoted=selection&&messageBody(selection.anchorNode)&&messageBody(selection.anchorNode)===messageBody(selection.focusNode)?selection.toString().trim():'';this.quote.hidden=!quoted;if(quoted&&selection.rangeCount){const rect=selection.getRangeAt(0).getBoundingClientRect();this.quote.style.left=Math.max(10,Math.min(window.innerWidth-150,rect.left))+'px';this.quote.style.top=Math.max(10,Math.min(window.innerHeight-45,rect.bottom+8))+'px';}});
     this.quote.onmousedown=event=>event.preventDefault();
     this.quote.onclick=()=>{if(quoted)root.dispatchEvent(new CustomEvent('compose-quote',{detail:quoted}));this.quote.hidden=true;window.getSelection()?.removeAllRanges();};
-    root.addEventListener('scroll',()=>{this.jump.hidden=root.scrollHeight-root.scrollTop-root.clientHeight<130;});
+    root.addEventListener('scroll',()=>{
+      root.classList.toggle('is-scrolled',root.scrollTop>0);
+      this.jump.hidden=root.scrollHeight-root.scrollTop-root.clientHeight<130;
+    });
     this.timer=setInterval(()=>this.tick(),1000);
   }
   /** Collapse running and completed details until the user explicitly expands them. */

@@ -95,8 +95,9 @@ class TestRuns:
             store=Cases(root); data=store.read()
             if any(r['status'] in {'starting','running'} for r in self.list(root)):
                 raise ValueError('本项目已有命令运行中，请等待完成，避免覆盖共享构建和日志')
-            if mode=='coverage_smoke' and (data.coverage is None or data.coverage.mode!='shared'):
-                raise ValueError('Coverage smoke requires configured shared coverage')
+            if mode=='coverage_smoke' and (data.coverage is None or
+                    (data.coverage.mode!='shared' and data.coverage.provider!='toffee')):
+                raise ValueError('Coverage smoke requires configured shared coverage or native Toffee coverage')
             case=next((n for n in data.targets if n.id==case_id),None)
             if not case: raise ValueError('测试用例不存在')
             template=case.runner
@@ -138,7 +139,7 @@ class TestRuns:
                            startup_timeout=startup_timeout,case_identity=case_identity(case))
             if data.coverage and mode in {'test','coverage_smoke'}:
                 row.update(coverage_config=data.coverage.model_dump(),coverage_status='pending')
-                if data.coverage.provider!='toffee':
+                if data.coverage.provider!='toffee' and mode=='test':
                     from .coverage_runtime import state
                     row['coverage_epoch']=state(root)['epoch']
                 if mode=='coverage_smoke':
@@ -198,7 +199,7 @@ class TestRuns:
                         raise ValueError(startup_error(text) or 'Coverage smoke exited with code '+str(row['exit_code']))
                     if not re.search(row['ready_pattern'],text):
                         raise ValueError('Coverage smoke lacks actual test-execution evidence')
-                    if row['coverage_config'].get('provider')=='vcs':
+                    if provider in {'vcs','toffee'}:
                         actual=await asyncio.to_thread(build_identity,row['cwd'])
                     else:
                         actual=(await self.coverage_command(render(row['coverage_config']['build_id_command'],context(row)),row,log)).strip()
@@ -306,6 +307,31 @@ def routes(projects,runner):
     async def start(identity:str,request:RunRequest):
         try:return await runner.start(root(identity),request.case_id)
         except (ValueError,OSError,SyntaxError) as exc:raise HTTPException(422,str(exc)) from None
+
+    def coverage_links(identity, item_id, loader):
+        project=root(identity)
+        try:
+            return loader(project,item_id,runner.list(project))
+        except LookupError as exc:
+            raise HTTPException(404,str(exc)) from None
+        except (ValueError,OSError) as exc:
+            raise HTTPException(422,str(exc)) from None
+
+    @router.get('/{identity}/testcases/{case_id}/coverage-links')
+    def testcase_coverage_links(identity:str,case_id:str):
+        from .coverage_links import case_links
+        return coverage_links(identity,case_id,case_links)
+
+    @router.get('/{identity}/test-runs/{run_id}/coverage-links')
+    def execution_coverage_links(identity:str,run_id:str):
+        from .coverage_links import run_links
+        return coverage_links(identity,run_id,run_links)
+
+    @router.get('/{identity}/targets/{target_id}/coverage-links')
+    def target_coverage_links(identity:str,target_id:str):
+        from .coverage_links import target_links
+        return coverage_links(identity,target_id,target_links)
+
     def waveform_directory(identity, run_id):
         """Resolve an existing execution directory without accepting user-supplied roots."""
         project=Path(root(identity)).resolve()

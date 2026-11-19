@@ -3,6 +3,7 @@ import asyncio
 import hashlib
 import json
 import os
+from pathlib import Path
 import re
 import signal
 import time
@@ -106,12 +107,16 @@ def coverage_identity(config):
     return hashlib.sha256(json.dumps(config,sort_keys=True).encode()).hexdigest()
 
 
-def validate_smoke_report(root, report):
-    """Require measured line and source-bound functional data without demanding full coverage."""
+def validate_smoke_report(root, report, *, native_toffee=False):
+    """Require native DUT metrics and source-bound functional data without demanding full coverage."""
     from .coverage_schema import validate_report
     from .targets import Targets
     report=validate_report(report)
-    if report['line_status']!='available' or not any(i['total']>0 for i in report['instances']):
+    measured_line = report['line_status']=='available' and any(i['total']>0 for i in report['instances'])
+    native_without_lines = native_toffee and report['line_status']=='unavailable' and any(
+        metric.get('dut', {}).get('total', 0) > 0 for metric in report.get('code_metrics', {}).values()
+    )
+    if not (measured_line or native_without_lines):
         raise ValueError('Coverage smoke requires native executable line observations')
     observations=report['functional']['observations']
     if report['functional']['status']!='available' or not observations:
@@ -125,4 +130,53 @@ def validate_smoke_report(root, report):
             raise ValueError('Coverage smoke source fingerprints do not match panel bindings')
     if not any(o.get('total',len(o.get('bins',[])))>0 for o in observations):
         raise ValueError('Coverage smoke has no measurable functional coverage goals')
+    return report
+
+
+def managed_run(root, run_id):
+    """Read a service-owned run receipt and its log from the bound project."""
+    if not isinstance(run_id, str) or not re.fullmatch('[0-9a-f]{32}', run_id):
+        raise ValueError('Record the completed managed run ID')
+    folder = root / 'output/flowcanvas/test-runs'
+    return json.loads((folder/(run_id+'.json')).read_text()), (folder/(run_id+'.log')).read_text(errors='replace')
+
+
+def validate_coverage_smoke_receipt(root, card, reference, config, run_id):
+    """Validate the identified smoke case, coverage, VCD and current build without rerunning."""
+    if card.id == reference.id or card.runner != reference.runner:
+        raise ValueError('Use a dedicated smoke case with the same runner/build path as its reference case')
+    run, log = managed_run(root, run_id)
+    if (run.get('mode')!='coverage_smoke' or run.get('case_id')!=card.id or
+            run.get('smoke_status')!='passed' or run.get('status')!='completed' or
+            run.get('exit_code')!=0 or run.get('stop_reason')!='natural_exit' or
+            run.get('coverage_status')!='validated' or not run.get('ended')):
+        raise ValueError('Complete the short smoke naturally and validate real coverage extraction')
+    from .run_waveform import validate_run_waveform
+    if run.get('waveform_status')!='validated' or run.get('waveform_receipt')!=validate_run_waveform(root,run):
+        raise ValueError('Complete a smoke with a readable, unchanged primary VCD waveform')
+    if run.get('case_identity')!=case_identity(card):
+        raise ValueError('Smoke command or source changed; repeat coverage smoke')
+    if config is None or run.get('coverage_identity')!=coverage_identity(config.model_dump()):
+        raise ValueError('Coverage configuration changed; repeat coverage smoke')
+    if config.provider=='vcs':
+        from .native_vcs import metadata_identity
+        if run.get('native_coverage_identity')!=metadata_identity(root):
+            raise ValueError('Native build or coverage mappings changed; repeat coverage smoke')
+    database=Path(run['coverage_db']).resolve()
+    run_dir=Path(run['run_dir']).resolve()
+    if run_dir != (root/'output/flowcanvas/test-runs'/run_id).resolve() or not database.is_relative_to(run_dir):
+        raise ValueError('Smoke database must be isolated inside its managed run directory')
+    artifact=Path(run.get('coverage_artifact','')).resolve()
+    if not artifact.is_relative_to(run_dir):
+        raise ValueError('Smoke coverage artifact must belong to the managed run')
+    report=json.loads(artifact.read_text())
+    native = config.provider=='toffee'
+    if native:
+        from .native_toffee import smoke_report
+        report=smoke_report(root,run_dir,run['build_id'])
+    report=validate_smoke_report(root,report,native_toffee=native)
+    if report['build_id']!=run.get('build_id'):
+        raise ValueError('Smoke coverage build does not match the executed build')
+    if startup_error(log) or not re.search(run['ready_pattern'],log):
+        raise ValueError('Smoke log lacks valid execution evidence')
     return report

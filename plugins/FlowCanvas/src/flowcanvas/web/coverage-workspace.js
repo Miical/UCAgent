@@ -75,7 +75,6 @@ window.FlowCanvasCoverageCode={
   function sourceNode(metric,instance,file){
     return {id:'cov_'+encodeURIComponent(metric+':'+instance+':'+file),entity_type:'coverage',title:names[metric]+' · '+instance.split('.').at(-1),instance,coverage_metric:metric,coverage_file:file};
   }
-  window.FlowCanvasOpenCoverageSource=(metric,instance,file)=>open(sourceNode(metric,instance,file));
   window.addEventListener('message',event=>{
     const frame=document.querySelector('.target-line-pane iframe'),value=event.data;
     if(event.origin!==location.origin||event.source!==frame?.contentWindow||value?.type!=='flowcanvas-open-coverage-source'||!project||!names[value.metric]||typeof value.instance!=='string'||typeof value.data?.content!=='string')return;

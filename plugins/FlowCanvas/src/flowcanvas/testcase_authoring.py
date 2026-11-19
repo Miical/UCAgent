@@ -35,12 +35,25 @@ class TestcaseAuthoringChecker(Checker):
         try:
             work = Path(self.workspace)
             request = json.loads((work.parent / "request.json").read_text())
-            root = Path(request["project_root"]).resolve()
             plan = json.loads((work / "summary/testcase_plan.json").read_text())
+        except (OSError, ValueError, TypeError) as exc:
+            return self.incomplete(exc)
+        return self.check_plan(request, plan)
+
+    @staticmethod
+    def incomplete(exc):
+        return False, {"error_code": "TESTCASE_AUTHORING_INCOMPLETE", "error": str(exc),
+                       "next_action": "Repair the original case, its minimal dependencies and source bindings. "
+                                      "Follow Guide_Doc/dut_test_case.md; do not run DUT tests or create a duplicate case."}
+
+    def check_plan(self, request, plan, *, allow_existing=False):
+        """Apply the authoring contract to one plan entry."""
+        try:
+            root = Path(request["project_root"]).resolve()
             store = Cases(root)
             definition = store.read()
             case = next((row for row in definition.targets if row.id == plan["case_id"]), None)
-            if case is None or case.id in request["testcase_baseline"]:
+            if case is None or (case.id in request["testcase_baseline"] and not allow_existing):
                 raise ValueError("Plan must identify a newly reserved case, not a preexisting case")
             if not case.title.strip() or not case.description.strip():
                 raise ValueError("Case needs a readable title and source-grounded description")
@@ -217,6 +230,4 @@ class TestcaseAuthoringChecker(Checker):
             return True, {"case_id": case.id, "files": files, "testpoints": targets,
                           "acceptance": "static_only", "simulation_executed": False}
         except (OSError, ValueError, KeyError, TypeError, SyntaxError) as exc:
-            return False, {"error_code": "TESTCASE_AUTHORING_INCOMPLETE", "error": str(exc),
-                           "next_action": "Repair the original case, its minimal dependencies and source bindings. "
-                                          "Follow Guide_Doc/dut_test_case.md; do not run DUT tests or create a duplicate case."}
+            return self.incomplete(exc)

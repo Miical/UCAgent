@@ -224,13 +224,15 @@ def test_report_directory_must_match_toffee_output_contract(authored):
 
 
 @pytest.mark.asyncio
-async def test_authored_native_case_publishes_artifacts_after_run(authored):
-    """The normal run entry publishes native data, even when a DUT assertion fails."""
+@pytest.mark.parametrize("mode", ["test", "coverage_smoke"])
+async def test_authored_native_case_collects_artifacts_after_run(authored, mode):
+    """Formal tests publish native data, while passing smokes keep it private."""
     from shlex import quote
     import sys
 
     from flowcanvas.coverage_runtime import public
-    from flowcanvas.native_toffee import DATABASE
+    from flowcanvas.coverage_links import case_links, run_links, target_links
+    from flowcanvas.native_toffee import DATABASE, reset
     from flowcanvas.targets import atomic
     from flowcanvas.test_runner import TestRuns
     from flowcanvas.testcases import execute
@@ -252,23 +254,45 @@ report.parent.mkdir(parents=True)
 report.write_text(json.dumps({"coverages": {"functional": {"groups": [
     {"name": "FG-API", "points": [{"name": "FC-ADD", "bins": [{"name": "CK-ZERO", "hints": 3}]}]}
 ]}}}))
-raise SystemExit(1)
+if argv[4] == "coverage_smoke":
+    (Path(argv[2]) / "waves.vcd").write_text(
+        "$timescale 1 ns $end\\n$scope module Probe $end\\n$var wire 1 ! a $end\\n"
+        "$upscope $end\\n$enddefinitions $end\\n#0\\n0!\\n#5\\n1!\\n")
+    print("1 passed in 0.1s")
+else:
+    raise SystemExit(1)
 """)
     data = cases.read()
-    data.targets[0].runner.command = f"{quote(sys.executable)} {quote(str(launcher))} {{run_dir}} {{wave_dir}} {{case}}"
+    data.targets[0].runner.command = f"{quote(sys.executable)} {quote(str(launcher))} {{run_dir}} {{wave_dir}} {{case}} {mode}"
     cases.save(data, data.revision)
     ok, result = check()
     assert ok, result
     execute(root, dict(operation="end_modify", ids=[case_id], expected_revision=cases.read().revision), "owner")
     assert public(root)["provider"] == "toffee"
     assert public(root)["report"] is None
+    planned = case_links(root, case_id, [])
+    assert {row["kind"] for row in planned["planned"]} == {"group", "point", "testpoint"}
+    assert not planned["actual"]
     runner = TestRuns()
     try:
-        run = await runner.start(root, case_id)
+        run = await runner.start(root, case_id, mode=mode, ready_pattern=r"1 passed in")
         await runner.tasks[run["id"]]
     finally:
         await runner.close()
     result = runner.list(root)[0]
+    history = run_links(root, run["id"], [result])
+    assert history["case_id"] == case_id and history["status"] == "available"
+    assert {row["kind"] for row in history["targets"]} == {"group", "point", "testpoint"}
+    testpoint = next(row["id"] for row in history["targets"] if row["kind"] == "testpoint")
+    if mode == "coverage_smoke":
+        assert result["smoke_status"] == "passed", result
+        assert result["coverage_status"] == "validated"
+        assert result["waveform_status"] == "validated"
+        assert Path(result["coverage_artifact"]).parent == Path(run["run_dir"])
+        assert public(root)["runs"] == []
+        assert not target_links(root, testpoint, [result])
+        assert not (root / DATABASE).exists()
+        return
     assert result["status"] == "failed" and result["exit_code"] == 1
     assert result["coverage_status"] == "published", result
     assert (root / DATABASE / run["id"] / "run.json").is_file()
@@ -278,3 +302,10 @@ raise SystemExit(1)
     assert snapshot["report"]["instances"][0]["files"][0]["line_hits"] == {"2": 4}
     assert snapshot["report"]["functional"]["observations"][-1]["bins"][0]["hits"] == 3
     assert not (root / DATABASE.parent.parent / "state.json").exists()
+    assert case_links(root, case_id, [result])["actual"]
+    assert target_links(root, testpoint, [result])[0]["runs"][0]["run_id"] == run["id"]
+    reset(root)
+    assert case_links(root, case_id, [result])["actual"] == []
+    assert case_links(root, case_id, [result])["planned"] == planned["planned"]
+    assert not target_links(root, testpoint, [result])
+    assert run_links(root, run["id"], [result]) == history

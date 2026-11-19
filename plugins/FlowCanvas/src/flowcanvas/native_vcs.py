@@ -104,7 +104,19 @@ def map_functional(root, groups):
     return dict(observations=observations),warnings
 
 
-async def extract(root, database, output, build_id):
+async def run_urg(executable, arguments, root, environment, log_path):
+    with log_path.open('wb') as log:
+        process=await asyncio.create_subprocess_exec(executable,*arguments,cwd=root,env=environment,
+            stdout=log,stderr=asyncio.subprocess.STDOUT,start_new_session=True)
+        try:
+            await asyncio.wait_for(process.wait(),180)
+        finally:
+            if process.returncode is None:
+                os.killpg(process.pid,signal.SIGKILL);await process.wait()
+    if process.returncode:raise ValueError('URG extraction failed; see '+str(log_path))
+
+
+async def extract(root, database, output, build_id, *, test_id=None):
     """Run native URG and convert one stable database snapshot into the shared schema."""
     root=Path(root).resolve();output=Path(output);output.parent.mkdir(parents=True,exist_ok=True)
     config=configuration(root);folder=root/'output/flowcanvas/coverage'
@@ -123,22 +135,27 @@ async def extract(root, database, output, build_id):
     if tool.parent.name=='bin' and tool.name=='urg':
         environment.setdefault('VCS_HOME',str(tool.parent.parent))
     report_dir=output.parent/'urg-report'
-    with (output.parent/'urg.log').open('wb') as log:
-        process=await asyncio.create_subprocess_exec(executable,'-full64','-dir',*databases,
-            '-metric','line+tgl+branch+cond+fsm+assert+group','-format','text','-nomdacmp','-show','ratios','-group','show_bin_values',
-            '-group','lrm_bin_name','-report',str(report_dir),cwd=root,env=environment,
-            stdout=log,stderr=asyncio.subprocess.STDOUT,start_new_session=True)
-        try:
-            await asyncio.wait_for(process.wait(),180)
-        finally:
-            if process.returncode is None:
-                os.killpg(process.pid,signal.SIGKILL);await process.wait()
-    if process.returncode:raise ValueError('URG extraction failed; see '+str(output.parent/'urg.log'))
-    project=json.loads((root/'.flowcanvas/project.json').read_text())
-    rtl=project['rtl'];text=(report_dir/'modinfo.txt').read_text()
-    scope=config.get('dut_instance')
-    if not scope:raise ValueError('Configure the native DUT instance in coverage/config.json')
-    instances,metrics=read_code(text,root,scope,rtl['top'],rtl['files'])
+    arguments=['-full64','-dir',*databases]
+    if test_id is not None:
+        inventory=output.parent/'available-tests.log'
+        await run_urg(executable,[*arguments,'-show','availabletests'],root,environment,inventory)
+        candidates=[line.strip() for line in inventory.read_text(errors='replace').splitlines()
+                    if line.strip().rsplit('/',1)[-1]==test_id]
+        if len(candidates)!=1:
+            raise ValueError('URG did not find exactly one matching coverage test name')
+        selection=output.parent/'selected-tests.txt'
+        selection.write_text(candidates[0]+'\n')
+        arguments.extend(['-tests',str(selection)])
+    metric='group' if test_id is not None else 'line+tgl+branch+cond+fsm+assert+group'
+    await run_urg(executable,[*arguments,'-metric',metric,'-format','text','-nomdacmp','-show','ratios',
+        '-group','show_bin_values','-group','lrm_bin_name','-report',str(report_dir)],
+        root,environment,output.parent/'urg.log')
+    instances,metrics=[],{}
+    if test_id is None:
+        rtl=json.loads((root/'.flowcanvas/project.json').read_text())['rtl']
+        scope=config.get('dut_instance')
+        if not scope:raise ValueError('Configure the native DUT instance in coverage/config.json')
+        instances,metrics=read_code((report_dir/'modinfo.txt').read_text(),root,scope,rtl['top'],rtl['files'])
     group_file=report_dir/'grpinfo.txt'
     functional,warnings=map_functional(root,read_groups(group_file.read_text())) if group_file.exists() else (dict(observations=[]),[])
     if (folder/'targets.json').exists() and not functional['observations']:
