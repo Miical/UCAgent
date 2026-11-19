@@ -205,10 +205,10 @@ class WorkflowRuntime:
                                 dut = rtl.get('top', '')
                             if not dut:
                                 raise ValueError('Provide dut for the explicitly selected RTL file')
-                project_only = identity == 'sync-testcase-links'
+                project_only = identity in {'sync-testcase-links', 'regression-review', 'coverage-improvement'}
                 if project_only:
                     if not self.session.get('project_root'):
-                        raise ValueError('Open a FlowCanvas project before synchronizing test cases')
+                        raise ValueError('Open a FlowCanvas project before running this workflow')
                     project_root = Path(self.session['project_root']).resolve()
                     rtl_file = ''
                 spec = attachment(WorkflowInput(workflow_id=identity, rtl_file=rtl_file, dut=dut or 'RTL'))
@@ -238,6 +238,9 @@ class WorkflowRuntime:
                 request = {'dut': dut, 'rtl': relative, 'config': str(config), 'workflow_id': identity}
                 if project_only:
                     request.update(project_root=str(project_root))
+                if identity == 'regression-review':
+                    from .regression_workflow import regression_scope
+                    request['regression_cases'] = await asyncio.to_thread(regression_scope, project_root)
                 if static_sources is not None:
                     request.update(static_sources=static_sources,project_root=str(project_root))
                 if identity in {'picker-compile', 'plan-goals'}:
@@ -286,6 +289,8 @@ class WorkflowRuntime:
                 card = {'id': root.name, 'conversation_id': self.session['id'], 'workflow_id': identity,
                         'name': spec['name'], 'root': str(root), 'workspace': str(root / 'workspace'),
                         'status': 'starting', 'stages': [], 'current_stage': '', 'started_at': time.time()}
+                if identity in {'regression-review', 'coverage-improvement'}:
+                    card['project_root'] = str(project_root)
                 if report:
                     card.update(project_root=str(project_root), source_file=spec['rtl_file'],
                                 top_module=dut, report_file=str(report))
@@ -341,6 +346,14 @@ class WorkflowRuntime:
                         card['startup'].update(completed=True, ended_at=time.time())
                         project_startup_stage(card)
                         self.publish()
+                    if identity == 'regression-review' and not tool_name:
+                        try:
+                            await self.start_regression_batch(card)
+                        except (ValueError, OSError) as exc:
+                            card.update(status='paused', pause_reason=str(exc))
+                            await self.stop_host(card)
+                            self.publish()
+                            return {'card': card}
                     result = None
                     if tool_name:
                         tool = next((t for t in catalog.tools if t.name == tool_name), None)
@@ -353,6 +366,11 @@ class WorkflowRuntime:
                                 for error in errors[:5])
                             raise ValueError(f'Invalid arguments for {tool_name}: {details}')
                         result = (await client.call_tool(tool_name, arguments, read_timeout_seconds=read_timeout)).model_dump(mode='json')
+                    if identity == 'coverage-improvement' and tool_name in {'', 'Check', 'Complete'}:
+                        from .coverage_improvement import queued_batch
+                        queued = queued_batch(root)
+                        if queued:
+                            await self.start_workflow_batch(Path(card['project_root']), queued['scope'], queued['id'])
                     await self.inspect()
                     if tool_name:
                         return {'card': card, 'result': result}
@@ -361,6 +379,28 @@ class WorkflowRuntime:
                     return {'card': card, 'instruction': json.loads((root / 'ready.json').read_text())['instruction'],
                             'tools': [t.model_dump(mode='json') for t in catalog.tools], 'result': result,
                             'next': 'Execute these instructions yourself. Use call_workflow_tool(card_id, tool_name, arguments) with this card ID and the returned tool schemas. Do not call stage tools directly or reconnect to load them. run_workflow is only for lifecycle operations. Continue through all stages in the same turn; a successful stage Complete is not workflow completion. Use progress messages for partial updates. End only after final acceptance and Exit, a user stop/change, or a concrete blocker requiring user input or external action. Completion requires host acceptance.'}
+
+    async def start_regression_batch(self, card):
+        request = json.loads((Path(card['root']) / 'request.json').read_text())
+        await self.start_workflow_batch(Path(card['project_root']), request['regression_cases'], card['id'])
+
+    async def start_workflow_batch(self, project, scope, identity):
+        """Start a persisted workflow batch once using the shared scheduling policy."""
+        from .regression_workflow import batch_path
+        from .testcases import Cases
+        batches = self.service.test_runs.batches
+        if batch_path(project, identity).exists():
+            batches.recover(project, identity)
+            return
+        ids = [row['case_id'] for row in scope if not row.get('blocked')]
+        if not ids:
+            return
+        cards = {row.id: row for row in Cases(project).read().targets}
+        private_paths = ('{run_dir}', '{wave_dir}', '{coverage_db}')
+        isolated = all(case_id in cards and cards[case_id].runner and
+                       any(token in cards[case_id].runner.command for token in private_paths)
+                       for case_id in ids)
+        await batches.start(project, ids, 'auto' if isolated else 1, identity=identity)
 
     async def close(self):
         """Stop all owned process groups and retirement tasks without deleting records."""

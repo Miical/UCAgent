@@ -36,7 +36,7 @@ class WorkflowBridge:
         @self.mcp.tool()
         async def run_workflow(workflow_id: str = '', rtl_file: str = '', dut: str = '',
                                card_id: str = '') -> dict:
-            """Start any enabled workflow without prior attachment or separate authorization, or resume this conversation's card. For rtl-summary, picker-compile, plan-goals and static-bug-analysis, omitted rtl_file uses the bound project top module and source; explicit relative paths are project-relative. sync-testcase-links uses the bound project without an RTL selection. Provide dut when selecting another RTL module. Returns card_id, instructions and tool argument schemas. Execute tools via call_workflow_tool(card_id, tool_name, arguments), never by calling this tool repeatedly. Inspect cards with list_workflow_runs."""
+            """Start any enabled workflow without prior attachment or separate authorization, or resume this conversation's card. For rtl-summary, picker-compile, plan-goals and static-bug-analysis, omitted rtl_file uses the bound project top module and source; explicit relative paths are project-relative. sync-testcase-links, regression-review and coverage-improvement use the bound project without an RTL selection. regression-review starts and owns one project test batch. Provide dut when selecting another RTL module. Returns card_id, instructions and tool argument schemas. Execute tools via call_workflow_tool(card_id, tool_name, arguments), never by calling this tool repeatedly. Inspect cards with list_workflow_runs."""
             self.call = asyncio.current_task()
             try:
                 return await self.runtime.run(workflow_id, rtl_file, dut, card_id)

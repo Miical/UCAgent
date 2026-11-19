@@ -19,6 +19,8 @@ def get_plugin() -> Plugin:
                              PluginWorkflow(name="generate-testcase", config_file=root / "workflows" / "generate-testcase.yaml"),
                              PluginWorkflow(name="build-test-suite", config_file=root / "workflows" / "build-test-suite.yaml"),
                              PluginWorkflow(name="sync-testcase-links", config_file=root / "workflows" / "sync-testcase-links.yaml"),
+                             PluginWorkflow(name="regression-review", config_file=root / "workflows" / "regression-review.yaml"),
+                             PluginWorkflow(name="coverage-improvement", config_file=root / "workflows" / "coverage-improvement.yaml"),
                              PluginWorkflow(name="rtl-summary",
                                             config_file=root / "workflows" / "rtl-summary.yaml"),
                              PluginWorkflow(name="default",

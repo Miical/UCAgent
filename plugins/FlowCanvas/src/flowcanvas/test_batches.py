@@ -29,7 +29,7 @@ class TestBatches:
         """Atomically save the current queue and run IDs."""
         atomic(self.runner.folder(root)/'batches'/(batch['id']+'.json'), batch)
 
-    async def start(self, root, case_ids, concurrency):
+    async def start(self, root, case_ids, concurrency, *, identity=None):
         """Reserve the project and begin up to the requested number of cases."""
         root = Path(root).resolve()
         async with self.runner.lock:
@@ -59,7 +59,7 @@ class TestBatches:
                 if lanes > 1 and not any(token in card.runner.command for token in ('{run_dir}', '{wave_dir}', '{coverage_db}')):
                     raise ValueError('并发用例的运行命令须使用独立产物路径：'+(card.title or card.name))
                 items.append(dict(case_id=case_id, name=card.title or card.name, status='queued'))
-            batch = dict(id=uuid.uuid4().hex, status='running', started=time.time(),
+            batch = dict(id=identity or uuid.uuid4().hex, status='running', started=time.time(),
                          concurrency=lanes, requested_concurrency=concurrency, items=items)
             self.save(root,batch)
             self.active[root] = batch, asyncio.create_task(self.execute(root,batch))
@@ -97,6 +97,22 @@ class TestBatches:
             self.save(root,batch)
             self.active.pop(root,None)
 
+    def recover(self, root, identity):
+        """Mark a saved batch interrupted when its coordinator no longer exists."""
+        root = Path(root).resolve()
+        active = self.active.get(root)
+        if active and active[0]['id'] == identity:
+            return active[0]
+        path = self.runner.folder(root) / 'batches' / (identity + '.json')
+        batch = json.loads(path.read_text())
+        if batch['status'] in {'running','stopping'}:
+            batch.update(status='interrupted',ended=time.time())
+            for item in batch['items']:
+                if item['status']=='queued':
+                    item['status']='cancelled'
+            self.save(root,batch)
+        return batch
+
     def latest(self, root):
         """Return the latest persisted batch with its individual run outcomes."""
         root = Path(root).resolve()
@@ -108,13 +124,7 @@ class TestBatches:
             file = max(files,key=lambda path:path.stat().st_mtime_ns,default=None)
             if not file:
                 return None
-            batch = json.loads(file.read_text())
-            if batch['status'] in {'running','stopping'}:
-                batch.update(status='interrupted',ended=time.time())
-                for item in batch['items']:
-                    if item['status']=='queued':
-                        item['status']='cancelled'
-                self.save(root,batch)
+            batch = self.recover(root, file.stem)
         runs = {row['id']:row for row in self.runner.list(root)}
         items = []
         for item in batch['items']:

@@ -1,0 +1,51 @@
+template: null
+guide_doc:
+  enable: false
+skill:
+  use_skill: false
+  general_skill_list: []
+mission:
+  name: 运行回归并整理 Bug
+  prompt:
+    system: |
+      对项目 {PROJECT_ROOT} 执行完整用例回归。启动工作流时平台已自动运行本项目登记的可运行用例，
+      使用项目现有 runner 和覆盖配置。不要另外启动用例或批次。
+      用第一个阶段的 Check 查看本批进度。可以用 test_case_runs(read,run_id,offset) 获取真实日志；
+      等本批用例都结束后用 Complete 验收并推进。只使用当前批次的运行记录。
+      失败可能来自断言、激励、fixture、构建、环境或 DUT。先核对独立规格预期、实际结果、运行日志与
+      源码，再分类为 dut_defect、test_issue、environment_issue 或 unresolved。退出码本身不能证明设计缺陷。
+      只有正确用例实际触发了违反规格的行为且已有充分证据时填 dut_defect，否则报告缺失证据或具体阻塞。
+      可以核对已有波形和人工复核说明。保持原有 RTL、测试断言和复核状态；本次只运行、分析及同步记录。
+      用 bug_records(inspect) 查看已有 Bug。同一根因合并多个失败用例，找到已有适用记录就提交 bug_id；
+      新发现登记为待复核。设计如此的记录不得当作已确认缺陷复用。没有 DUT 缺陷时提交空 findings 数组。
+      用 SetCurrentStageJournal 和 Complete 推进。完成后的摘要必须分别报告通过、失败、无有效结果和未运行，
+      以及测试问题、环境问题、待查项和同步的 Bug。需要用户复核的记录保持待复核。结束后调用 Exit。
+tools:
+  selected_tools: [ReadTextFile, CurrentTips, Status, SetCurrentStageJournal, Check, Complete, Exit]
+stage:
+  - name: run_project_testcases
+    desc: 运行项目回归用例
+    task:
+      - "Check 读取绑定本工作流的批次。用同一批次的 run_id 等候和读取日志，不重复启动。记录无法执行的用例及原因，批次结束后 Complete。"
+    checker:
+      - name: regression_runs
+        clss: flowcanvas.regression_workflow.RegressionChecker
+        args: {mode: runs}
+  - name: analyze_regression_failures
+    desc: 分析失败并复核回归结果
+    task:
+      - "本次执行记录": "{REGRESSION_RESULTS}"
+      - "Complete 的 stage_args 填 diagnoses 和 findings 数组。每个失败运行填写一项 diagnoses: {run_id, classification, reason}。中断、未运行或无有效结果只列为待查。"
+      - "dut_defect 必须由 findings 覆盖，每个 finding 填 {name, description, condition, expected, actual, source_refs, runs, bug_id}。bug_id 仅在复用已有记录时填写。source_refs 为项目相对 RTL 文件范围 {file,line,end_line}。runs 为 [{run_id, log_excerpt}]，日志片段须来自对应失败运行，提供与现象直接相关的证据。"
+    checker:
+      - name: regression_diagnoses
+        clss: flowcanvas.regression_workflow.RegressionChecker
+        args: {mode: analysis}
+  - name: publish_regression_bugs
+    desc: 同步 Bug 并生成回归总结
+    task:
+      - "用 Complete 发布已核验的发现并得到最终统计。工作流会合并同一根因、保留复核结论并关联本次失败用例。根据实际统计与记录 ID 总结。"
+    checker:
+      - name: regression_bug_publish
+        clss: flowcanvas.regression_workflow.RegressionChecker
+        args: {mode: publish}

@@ -9,6 +9,7 @@ const view=new ConversationView($('conversation'));
 const active=new Set(['starting','running','stopping']);
 let session=null, models=[], unsubscribe=null, busy=false, selected=null, switchNumber=0;
 let sessionRows=[],showArchived=false,backendCatalogs=[],backendWorkspace=null,catalogNumber=0;
+let catalogPending=false,catalogError='',workflowMenuActions=[];
 let backendChoice=localStorage.getItem('flowcanvas.backend')||'codex';
 let caseContext=null,caseSwitch=0,caseSwitching=false,ordinarySession=null,caseReady=Promise.resolve();
 let conversationScope='global';
@@ -68,9 +69,17 @@ function paintBackends(){
 /** Refresh availability independently, keeping histories usable when one provider is offline. */
 async function loadBackends(){
   const owner=selected,workspace=session?.workspace,number=++catalogNumber;
-  const rows=await request('/backends'+(owner?'?session_id='+encodeURIComponent(owner):''));
-  if(number!==catalogNumber||selected!==owner)return;
-  backendCatalogs=rows;backendWorkspace=workspace;selectBackendModels(session?.backend||backendChoice);controls();
+  catalogPending=true;catalogError='';updateWorkflowMenuActions();
+  try{
+    const rows=await request('/backends'+(owner?'?session_id='+encodeURIComponent(owner):''));
+    if(number!==catalogNumber||selected!==owner)return;
+    backendCatalogs=rows;backendWorkspace=workspace;selectBackendModels(session?.backend||backendChoice);controls();
+  }catch(exc){
+    if(number===catalogNumber&&selected===owner)catalogError=exc.message;
+    throw exc;
+  }finally{
+    if(number===catalogNumber){catalogPending=false;updateWorkflowMenuActions();}
+  }
 }
 
 /** Restore browser preferences without trusting stale model capabilities. */
@@ -438,6 +447,7 @@ function controls(){
   const backend=backendCatalogs.find(row=>row.id===backendChoice);
   $('connection').textContent=running?(backend?.name||backendChoice)+' 正在处理':(backend?.name||backendChoice)+' · '+(models.length?'已连接':backend?.error?'不可用':'连接中');
   $('connection').classList.toggle('working',running);
+  updateWorkflowMenuActions();
 }
 /** Persist permission choices before sending; never optimistically grant access. */
 function paintPermissions(){
@@ -762,7 +772,7 @@ const workflowCategories=new Map([
   ['项目导入',['import-project','import-targets','import-testcases']],
   ['设计分析',['rtl-summary','static-bug-analysis']],
   ['验证准备',['picker-compile','plan-goals']],
-  ['测试与验证',['build-test-suite','generate-testcase','sync-testcase-links','default']]
+  ['测试与验证',['build-test-suite','generate-testcase','sync-testcase-links','regression-review','coverage-improvement','default']]
 ]);
 /** Close the active folder and optionally return focus to its control. */
 function closeWorkflowFolder(focus=false){
@@ -789,9 +799,30 @@ window.addEventListener('resize',()=>{
 });
 $('workflow-options').addEventListener('scroll',()=>closeWorkflowFolder());
 
+/** Keep the open menu in sync with asynchronous model and conversation discovery. */
+function updateWorkflowMenuActions(){
+  if($('attach-popover').hidden)return;
+  const backendError=backendCatalogs.find(row=>row.id===backendChoice)?.error;
+  for(const {item,row,attach,direct} of workflowMenuActions){
+    const canAttach=item.can_start&&Boolean(session)&&['workspace','full'].includes(session?.permission_mode);
+    const directHint=!item.can_start?'工作流暂不可用'
+      :models.length?'直接运行'
+      :catalogPending?'正在加载模型…'
+      :catalogError||backendError?'当前后端暂不可用，重新打开菜单可重试'
+      :'当前后端没有可用模型';
+    direct.disabled=!item.can_start||!models.length;
+    direct.title=directHint;
+    direct.ariaLabel=direct.disabled?item.name+' · '+directHint:'直接运行 '+item.name;
+    row.tabIndex=canAttach?0:-1;
+    row.classList.toggle('can-attach',canAttach);
+    attach.classList.toggle('is-disabled',!canAttach);
+  }
+}
+
 /** Read the curated menu and group workflows by their purpose in the composer. */
 async function loadWorkflowMenu(){
-  const host=$('workflow-options');closeWorkflowFolder();host.replaceChildren();
+  const host=$('workflow-options');closeWorkflowFolder();host.replaceChildren();workflowMenuActions=[];
+  if(!models.length&&!catalogPending)loadBackends().catch(()=>{});
   try{
     const {workflows}=await request('/workflows');
     const remaining=new Map(workflows.map(item=>[item.id,item]));
@@ -831,18 +862,19 @@ async function loadWorkflowMenu(){
         const name=document.createElement('div');name.className='workflow-menu-name';name.textContent=item.name;
         const description=document.createElement('p');description.textContent=item.description;
         const footer=document.createElement('div');footer.className='workflow-choice-footer';
-        const canAttach=item.can_start&&Boolean(session)&&['workspace','full'].includes(session?.permission_mode);
-        const attach=document.createElement('span');attach.className='workflow-attach-action';attach.classList.toggle('is-disabled',!canAttach);
+        const attach=document.createElement('span');attach.className='workflow-attach-action';
         const label=document.createElement('span');label.textContent='附加到当前对话';
         const plus=document.createElementNS('http://www.w3.org/2000/svg','svg');plus.setAttribute('viewBox','0 0 20 20');plus.setAttribute('aria-hidden','true');const path=document.createElementNS(plus.namespaceURI,'path');path.setAttribute('d','m7 11 5-5a2.1 2.1 0 0 1 3 3l-7 7a3.5 3.5 0 0 1-5-5l7-7a4.9 4.9 0 0 1 7 7l-6 6');plus.append(path);attach.append(plus,label);footer.append(attach);
-        const direct=document.createElement('button');direct.className='workflow-direct';direct.type='button';direct.title='直接运行';direct.ariaLabel='直接运行 '+item.name;const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');const circle=document.createElementNS(icon.namespaceURI,'circle');circle.setAttribute('cx','12');circle.setAttribute('cy','12');circle.setAttribute('r','9');const triangle=document.createElementNS(icon.namespaceURI,'path');triangle.setAttribute('d','m10 8 6 4-6 4Z');icon.append(circle,triangle);direct.append(icon);direct.disabled=!item.can_start||!models.length;direct.onclick=event=>{event.stopPropagation();configureWorkflow(item,true);};
-        row.tabIndex=canAttach?0:-1;row.setAttribute('aria-label','附加 '+item.name+' 到当前对话');
-        row.onclick=()=>{if(canAttach)configureWorkflow(item,false);};
-        row.onkeydown=event=>{if(event.target===row&&(event.key==='Enter'||event.key===' ')){event.preventDefault();if(canAttach)configureWorkflow(item,false);}};
+        const direct=document.createElement('button');direct.className='workflow-direct';direct.type='button';const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.setAttribute('viewBox','0 0 24 24');icon.setAttribute('aria-hidden','true');const circle=document.createElementNS(icon.namespaceURI,'circle');circle.setAttribute('cx','12');circle.setAttribute('cy','12');circle.setAttribute('r','9');const triangle=document.createElementNS(icon.namespaceURI,'path');triangle.setAttribute('d','m10 8 6 4-6 4Z');icon.append(circle,triangle);direct.append(icon);direct.onclick=event=>{event.stopPropagation();configureWorkflow(item,true);};
+        row.setAttribute('aria-label','附加 '+item.name+' 到当前对话');
+        row.onclick=()=>{if(row.tabIndex===0)configureWorkflow(item,false);};
+        row.onkeydown=event=>{if(event.target===row&&(event.key==='Enter'||event.key===' ')){event.preventDefault();row.click();}};
         info.append(name,description);
-        row.classList.toggle('can-attach',canAttach);row.append(info,direct,footer);section.append(row);
+        row.append(info,direct,footer);section.append(row);
+        workflowMenuActions.push({item,row,attach,direct});
       }
     }
+    updateWorkflowMenuActions();
     if(!workflows.length){const empty=document.createElement('p');empty.className='session-empty';empty.textContent='暂无可用工作流';host.append(empty);}
   }catch{const notice=document.createElement('p');notice.className='session-empty';notice.textContent='工作流列表加载失败，请重新打开菜单重试。';host.append(notice);}
 }

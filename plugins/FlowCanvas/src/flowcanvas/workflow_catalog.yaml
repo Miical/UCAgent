@@ -40,6 +40,16 @@ workflows:
     description: 核对 Bug 与现有测试用例的关联，参考人工复核填写的预期行为和项目规格，修正受影响用例的断言与预期说明。
     workflow: flowcanvas:sync-testcase-links
     enabled: true
+  - id: regression-review
+    name: 运行回归并整理 Bug
+    description: 批量运行项目用例，分析失败原因，关联已有 Bug 并登记有证据的新问题。
+    workflow: flowcanvas:regression-review
+    enabled: true
+  - id: coverage-improvement
+    name: 覆盖率驱动补强
+    description: 按功能覆盖和行覆盖缺口补充定向或可重放随机用例，分轮复跑并比较同一构建的覆盖增量。
+    workflow: flowcanvas:coverage-improvement
+    enabled: true
   - id: generate-testcase
     name: 新增测试用例
     description: 复用现有接口，边写用例边补齐所需验证环境，核对覆盖关联并登记源码绑定

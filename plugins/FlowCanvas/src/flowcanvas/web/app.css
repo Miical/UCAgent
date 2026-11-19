@@ -369,7 +369,7 @@ button.workflow-menu-item:hover,button.workflow-menu-item[aria-pressed="true"]{b
 .workflow-choice{display:flex;align-items:center;gap:8px;}.workflow-attach{flex:1;min-width:0;text-align:left;border:0;background:none;color:var(--text);padding:0;font:inherit;}.workflow-direct{flex:none;border:1px solid var(--border);border-radius:7px;padding:6px 8px;background:var(--surface);color:var(--text);font-size:11px;}.workflow-choice:hover{background:var(--surface2);}
 
 
-.workflow-direct{display:grid;place-items:center;width:32px;height:32px;padding:3px;border:0;border-radius:50%;background:transparent;color:var(--text-dim);}.workflow-direct svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.4;}.workflow-direct path{fill:currentColor;stroke:none;}.workflow-direct:hover{background:color-mix(in srgb,var(--accent) 8%,transparent);color:var(--accent);}
+.workflow-direct{display:grid;place-items:center;width:32px;height:32px;padding:3px;border:0;border-radius:50%;background:transparent;color:var(--text-dim);}.workflow-direct svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.4;}.workflow-direct path{fill:currentColor;stroke:none;}.workflow-direct:enabled:hover{background:color-mix(in srgb,var(--accent) 8%,transparent);color:var(--accent);}
 
 /* Workflow capsules occupy the conversation top; expanded details overlay its body. */
 .workflow-run{position:relative;z-index:8;display:flex;flex-wrap:wrap;gap:10px;padding:10px 20px 18px;flex-shrink:0;background:var(--surface);overflow:visible;}

@@ -1,0 +1,56 @@
+template: null
+guide_doc:
+  enable: false
+skill:
+  use_skill: false
+  general_skill_list: []
+mission:
+  name: 覆盖率驱动补强
+  prompt:
+    system: |
+      使用 FlowCanvas 的真实覆盖数据为项目 {PROJECT_ROOT} 补强测试。先读取当前基线，再针对明确缺口
+      每轮实现、登记和运行少量测试。按用户要求设置功能覆盖率目标、行覆盖率目标和轮次上限；
+      用户未指定时执行一轮，百分比不默认设为 100%。同一场景可能对应多个测试点和源码行，
+      优先合并为一条有明确预期的定向用例。输入组合、状态或时序序列适合有约束的随机测试；
+      明确生成约束和独立断言，并让用例把实际 seed 打印为 FLOWCANVAS_SEED=<十进制整数>。
+      如果 pytest 捕获了输出，为该随机用例的运行入口开启 -s 或等效日志选项，确保运行记录能看到 seed。
+      用当前对话的文件工具在项目内编辑用例，用 test_cases 的 inspect/apply/begin_modify/update/end_modify
+      登记或维护原卡片。复用有效的 runner、fixture 和构建。不要修改 RTL、覆盖定义、采集配置或清空累计，
+      不为追逐数字而削弱断言或跳过检查。已确认缺陷的断言保留正确预期。
+      工作流会自动排队运行基线或本轮用例。不要自行另开批次或重复开始运行。用同一批次和 test_case_runs(read)
+      查看真实日志，待 Check 返回可继续再补下一轮。有测试失败时停止开启新轮次，覆盖命中与正确性分开报告，并在最后阶段复核失败、同步有依据的 Bug。
+      规格有歧义、选定指标不可用、覆盖不可比较或没有可补的缺口时如实说明，不伪造增量。
+      达到目标、到轮次或时间预算、没有新增命中时结束。报告本轮新增命中的测试点和源码行、失败及剩余缺口。
+      用 SetCurrentStageJournal 和 Complete 推进，最终调用 Exit。
+tools:
+  selected_tools: [ReadTextFile, CurrentTips, Status, SetCurrentStageJournal, Check, Complete, Exit]
+stage:
+  - name: establish_coverage_baseline
+    desc: 建立覆盖率基线
+    task:
+      - "首次 Check 可用 stage_args.settings 设置 {max_rounds, functional_target, line_target, time_budget_minutes}。max_rounds 默认 1；覆盖率目标按 0–100 的百分数填写，可省略；时间预算仅限制开启下一轮。"
+      - "当前构建没有可用基线且已配置采集时，平台会尝试运行一次现有用例。用 Check 观察并在基线确认后调用 Complete。"
+    checker:
+      - name: coverage_baseline
+        clss: flowcanvas.coverage_improvement.CoverageImprovementChecker
+        args: {mode: baseline}
+  - name: improve_and_measure_coverage
+    desc: 分轮补测并复核覆盖率
+    task:
+      - "Check 返回当前覆盖摘要和缺口，可用 stage_args.offset 翻页。核对缺口对应的规格、测试点、源码和已有用例；根据实际场景决定定向或随机补测。"
+      - "完成登记后用 Check(stage_args={proposals:[...]}) 提交本轮。每项为 {case_id,strategy,target_ids,lines,seeds,reason}。strategy 为 directed 或 random；lines 每项填 {instance,file,line}。至少选一个当前缺口。随机用例须填可重放的 seeds。"
+      - "平台批量运行提交的用例。逐轮用 Check 观察进度和增量。没有可安全补测的缺口时，Complete 的 stage_args 可填写 stop_reason。其他停止条件满足后直接 Complete。"
+    checker:
+      - name: coverage_rounds
+        clss: flowcanvas.coverage_improvement.CoverageImprovementChecker
+        args: {mode: rounds}
+  - name: review_coverage_failures
+    desc: 复核失败并整理 Bug
+    task:
+      - "用 Check 获取本次基线或补测中的失败。无失败时直接 Complete。有失败时用 Complete 的 stage_args 提交 diagnoses 和 findings。"
+      - "每个失败运行填 diagnoses 项 {run_id, classification, reason}，分类为 dut_defect、test_issue、environment_issue 或 unresolved。只在实际违反独立预期且有日志与 RTL 依据时分类 dut_defect。"
+      - "每个 DUT 缺陷填 findings 项 {name,description,condition,expected,actual,source_refs,runs,bug_id}。source_refs 填项目内 RTL 的 {file,line,end_line}；runs 填 {run_id,log_excerpt}。已有同根因 Bug 用 bug_id 复用，新发现登记为待复核。无 DUT 缺陷时传空 findings。"
+    checker:
+      - name: coverage_failure_review
+        clss: flowcanvas.coverage_improvement.CoverageImprovementChecker
+        args: {mode: failures}
