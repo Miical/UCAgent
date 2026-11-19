@@ -51,7 +51,7 @@ def parse_groups(text, source):
 def revision(root):
     from . import native_toffee
     if native_toffee.enabled(root):
-        return native_toffee.public(root)['revision']
+        return native_toffee.revision(root)
     path=Path(root)/'output/flowcanvas/coverage/state.json'
     if not path.exists(): return ''
     s=json.loads(path.read_text())

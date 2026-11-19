@@ -277,10 +277,12 @@ async def test_metric_source_preview_is_limited_to_reported_files(coverage_proje
 
 
 @pytest.mark.asyncio
-async def test_native_toffee_loads_distinct_runs_without_rewriting_outputs(coverage_project):
+async def test_native_toffee_loads_distinct_runs_without_rewriting_outputs(coverage_project, monkeypatch):
     from fastapi import FastAPI
     import httpx2
+    from flowcanvas import native_toffee
     from flowcanvas.coverage_runtime import public
+    from flowcanvas.functional_coverage import revision
     from flowcanvas.coverage_sources import source_snapshot
     from flowcanvas.native_toffee import BUILD_INPUTS, DATABASE, MAPPING
     from flowcanvas.test_runner import TestRuns, routes
@@ -305,6 +307,9 @@ async def test_native_toffee_loads_distinct_runs_without_rewriting_outputs(cover
                        f"C '\x01f\x02Probe.v\x01l\x022\x01page\x02v_toggle/Probe\x01h\x02TOP.Probe_top.Probe' {hits}\n")
 
     snapshot = public(root)
+    with monkeypatch.context() as patch:
+        patch.setattr(native_toffee, "read_runs", None)
+        assert revision(root) == snapshot["revision"]
     assert snapshot["provider"] == "toffee"
     assert [run["id"] for run in snapshot["runs"]] == ["first", "second"]
     assert snapshot["report"]["instances"][0]["files"][0]["line_hits"] == {"2": 1}

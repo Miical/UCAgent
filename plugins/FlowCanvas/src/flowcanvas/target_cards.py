@@ -127,7 +127,8 @@ def execute(root, request, owner='manual', store=None):
                     raise ValueError('Include all registered children in the deletion batch')
                 data.targets = [t for t in data.targets if t.id not in deleting]
             else:
-                reports = store.status()['reports']
+                status_options = {'include_coverage': False} if 'group' in store.prefixes else {}
+                reports = store.status(**status_options)['reports']
                 completed_at = time.time()
                 for row in rows:
                     if hasattr(store,'validate_card'):

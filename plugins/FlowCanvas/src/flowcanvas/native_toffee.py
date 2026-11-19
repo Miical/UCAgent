@@ -172,26 +172,46 @@ def read_runs(root, module, build_id, runs):
     return merged, accepted, errors[0] if errors else ""
 
 
+def coverage_inputs(root, folders):
+    """Fingerprint the current coverage inputs without parsing run reports."""
+    module = json.loads((root / ".flowcanvas/project.json").read_text())["rtl"]["top"]
+    build_id = build_identity(root)
+    runs = []
+    for folder in folders:
+        manifest = folder / "run.json"
+        reports, databases = artifact_files(folder)
+        if not manifest.resolve().is_relative_to(folder):
+            raise ValueError("覆盖率产物必须在所属运行目录内")
+        runs.append((folder, tuple(map(file_stamp, [manifest, *reports, *databases]))))
+    revision = hashlib.sha256(repr((module, build_id, runs)).encode()).hexdigest()
+    return module, build_id, tuple(runs), revision
+
+
+def accumulated_runs(root):
+    """List published runs in the current accumulation window."""
+    database = root / DATABASE
+    excluded = cleared_runs(database)
+    return [folder for folder in completed_runs(database) if folder.name not in excluded]
+
+
+def revision(root):
+    """Return the same revision as the coverage snapshot without merging runs."""
+    try:
+        root = Path(root).resolve()
+        return coverage_inputs(root, accumulated_runs(root))[-1]
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        return str(exc)
+
+
 def public(root):
     """Load published run directories without changing their logs or native artifacts."""
     root = Path(root).resolve()
-    database = root / DATABASE
     result = dict(provider="toffee", native_artifacts=True, runs=[], report=None, build_id=None, revision="")
     try:
-        excluded = cleared_runs(database)
-        folders = [folder for folder in completed_runs(database) if folder.name not in excluded]
+        folders = accumulated_runs(root)
         result["can_reset"] = bool(folders)
-        module = json.loads((root / ".flowcanvas/project.json").read_text())["rtl"]["top"]
-        build_id = build_identity(root)
-        runs = []
-        for folder in folders:
-            manifest = folder / "run.json"
-            reports, databases = artifact_files(folder)
-            if not manifest.resolve().is_relative_to(folder):
-                raise ValueError("覆盖率产物必须在所属运行目录内")
-            runs.append((folder, tuple(map(file_stamp, [manifest, *reports, *databases]))))
-        report, accepted, error = read_runs(root, module, build_id, tuple(runs))
-        revision = hashlib.sha256(repr((module, build_id, runs)).encode()).hexdigest()
+        module, build_id, runs, revision = coverage_inputs(root, folders)
+        report, accepted, error = read_runs(root, module, build_id, runs)
         result.update(build_id=build_id, report=report, runs=accepted, revision=revision)
         if error:
             result["ingestion_error"] = error

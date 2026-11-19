@@ -85,7 +85,7 @@ def native_verilator_metrics(root, directory, module):
     for path in sources:
         if path.is_relative_to(root) and path.is_file():
             files_by_hash.setdefault(hashlib.sha256(path.read_bytes()).hexdigest(), []).append(path)
-    records = {}
+    records, source_metadata = {}, {}
     for database in sorted(Path(directory).rglob("*.dat")):
         if not database.resolve().is_relative_to(Path(directory).resolve()):
             raise ValueError("Coverage database escapes the run directory")
@@ -102,20 +102,25 @@ def native_verilator_metrics(root, directory, module):
             kind = fields.get("page", "").split("/", 1)[0].removeprefix("v_")
             if kind not in {"line", "toggle", "branch", "expr", "fsm", "cond"}:
                 continue
-            file = (root / fields["f"]).resolve()
-            if not file.is_relative_to(root) or not file.is_file():
-                raise ValueError("Native coverage source must exist in the project")
-            sha = hashlib.sha256(file.read_bytes()).hexdigest()
-            cache = root / "output/flowcanvas/coverage/sources" / (sha + file.suffix)
-            if not cache.is_file():
-                cache.parent.mkdir(parents=True,exist_ok=True)
-                cache.write_bytes(file.read_bytes())
-            scope = "dut" if (sha in files_by_hash if files_by_hash else file.stem == module) else "generated"
-            matches = files_by_hash.get(sha, [])
-            if len(matches) == 1:
-                file = matches[0]
+            source_name = fields["f"]
+            if source_name not in source_metadata:
+                file = (root / source_name).resolve()
+                if not file.is_relative_to(root) or not file.is_file():
+                    raise ValueError("Native coverage source must exist in the project")
+                raw = file.read_bytes()
+                sha = hashlib.sha256(raw).hexdigest()
+                matches = files_by_hash.get(sha, [])
+                scope = "dut" if (matches if files_by_hash else file.stem == module) else "generated"
+                canonical = matches[0] if len(matches) == 1 else file
+                for suffix in {file.suffix, canonical.suffix}:
+                    cache = root / "output/flowcanvas/coverage/sources" / (sha + suffix)
+                    if not cache.is_file():
+                        cache.parent.mkdir(parents=True,exist_ok=True)
+                        cache.write_bytes(raw)
+                source_metadata[source_name] = str(canonical.relative_to(root)), sha, scope
+            file, sha, scope = source_metadata[source_name]
             key = hashlib.sha256(match[1].encode()).hexdigest()
-            item = records.setdefault(key, dict(id=key,kind=kind,scope=scope,file=str(file.relative_to(root)),
+            item = records.setdefault(key, dict(id=key,kind=kind,scope=scope,file=file,
                 line=int(fields["l"]),sha256=sha,hits=0,hierarchy=fields.get("h",""),
                 module=fields.get("page","").partition("/")[2]))
             item["hits"] += int(match[2])
@@ -130,10 +135,6 @@ def native_verilator_metrics(root, directory, module):
     for item in records.values():
         if item["kind"] != "line" or item["scope"] != "dut":
             continue
-        file = root / item["file"]
-        cache = root / "output/flowcanvas/coverage/sources" / (item["sha256"] + file.suffix)
-        cache.parent.mkdir(parents=True,exist_ok=True)
-        cache.write_bytes(file.read_bytes())
         row = line_files.setdefault(item["file"],dict(path=item["file"],sha256=item["sha256"],line_hits={}))
         for line in set(item["lines"]):
             row["line_hits"][str(line)] = row["line_hits"].get(str(line),0) + item["hits"]

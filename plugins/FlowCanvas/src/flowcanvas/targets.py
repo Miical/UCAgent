@@ -340,14 +340,25 @@ class Targets:
             return {**row.model_dump(),'revision':saved.revision}
 
     def reconcile_operations(self, sessions):
+        """Only acquire the write lock when an interrupted operation needs pausing."""
         from .subagents import execution_active
+        def interrupted(row):
+            """Check whether a running AI operation still has a live owner."""
+            return (row.lifecycle != 'ready' and row.operation_status == 'running'
+                    and row.operation_session != 'manual'
+                    and not execution_active(sessions.get(row.operation_session) or {}))
+
+        if not any(interrupted(row) for row in self.read().targets):
+            return
         with LOCK:
-            data=self.read();changed=False
+            data = self.read()
+            changed = False
             for row in data.targets:
-                if row.lifecycle!='ready' and row.operation_status=='running' and row.operation_session != 'manual':
-                    owner=sessions.get(row.operation_session)
-                    if not owner or not execution_active(owner):row.operation_status='paused';changed=True
-            if changed:self.save(data,data.revision)
+                if interrupted(row):
+                    row.operation_status = 'paused'
+                    changed = True
+            if changed:
+                self.save(data, data.revision)
 
     def delete(self, target_id, expected_revision, cascade=False):
         with LOCK:
