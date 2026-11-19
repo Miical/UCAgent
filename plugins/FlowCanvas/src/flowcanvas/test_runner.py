@@ -317,6 +317,16 @@ def routes(projects,runner):
         except (ValueError,OSError) as exc:
             raise HTTPException(422,str(exc)) from None
 
+    @router.get('/{identity}/testcases/filter-targets')
+    def filter_targets(identity: str):
+        """Return project-wide target links for testcase filtering."""
+        from .coverage_links import case_target_filters
+        project = root(identity)
+        try:
+            return case_target_filters(project, runner.list(project))
+        except (ValueError, OSError) as exc:
+            raise HTTPException(422, str(exc)) from None
+
     @router.get('/{identity}/testcases/{case_id}/coverage-links')
     def testcase_coverage_links(identity:str,case_id:str):
         from .coverage_links import case_links

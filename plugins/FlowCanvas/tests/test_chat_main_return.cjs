@@ -60,3 +60,39 @@ test('waveform view updates do not cancel a pending dedicated conversation',asyn
   resolve();
   await ready;
 });
+
+test('classification returns from the side pane and sends to the main session',async()=>{
+  const start=source.indexOf('async function globalConversation()');
+  const code=source.slice(start,source.indexOf('/** Attach source-backed case context',start));
+  let page={testcase:{id:'case'}};
+  const main={id:'main',status:'idle'},calls=[],chosen=[];
+  const context=vm.createContext({
+    caseReady:Promise.resolve(),caseContext:null,caseSwitching:false,busy:false,
+    session:{id:'side',case_binding:{case_id:'case'}},sessionRows:[main],
+    $:()=>({value:'default'}),speedMode:false,active:new Set(),
+    CustomEvent:class {constructor(type){this.type=type;}},
+    document:{dispatchEvent(event){
+      assert.equal(event.type,'flowcanvas-case-ordinary');
+      page=null;
+    }},
+    window:{FlowCanvasCaseWorkspace:{context:()=>page}},
+    list:async()=>[main],
+    choose:async(id)=>{chosen.push(id);context.session=main;},
+    request:async(path,value)=>{
+      calls.push([path,value]);
+      // A detail tab can reopen while the send is awaiting the response.
+      page={testcase:{id:'case'}};
+      return {id:'main'};
+    },
+  });
+  vm.runInContext(code,context);
+  await context.window.FlowCanvasAI.startCase({
+    text:'classify',project:{name:'Adder'},requirements:'',design:{kind:'classify-testcases',instance:'Adder'},
+  });
+  assert.equal(page,null);
+  assert.deepEqual(chosen,['main','main']);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0][0],'/sessions/main/messages');
+  assert.equal(calls[0][1].task_card.title,'测试用例分类');
+  assert.equal(calls[0][1].case_view,undefined);
+});

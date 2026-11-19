@@ -231,7 +231,7 @@ async def test_authored_native_case_collects_artifacts_after_run(authored, mode)
     import sys
 
     from flowcanvas.coverage_runtime import public
-    from flowcanvas.coverage_links import case_links, run_links, target_links
+    from flowcanvas.coverage_links import case_links, case_target_filters, run_links, target_links
     from flowcanvas.native_toffee import DATABASE, reset
     from flowcanvas.targets import atomic
     from flowcanvas.test_runner import TestRuns
@@ -284,7 +284,12 @@ else:
     assert history["case_id"] == case_id and history["status"] == "available"
     assert {row["kind"] for row in history["targets"]} == {"group", "point", "testpoint"}
     testpoint = next(row["id"] for row in history["targets"] if row["kind"] == "testpoint")
+    filtered = case_target_filters(root, [result])
+    target_ids = {row["id"] for row in planned["planned"]}
+    assert set(filtered["planned"][case_id]) == target_ids
+    assert {row["id"] for row in filtered["targets"]} == target_ids
     if mode == "coverage_smoke":
+        assert filtered["actual"] == {}
         assert result["smoke_status"] == "passed", result
         assert result["coverage_status"] == "validated"
         assert result["waveform_status"] == "validated"
@@ -304,7 +309,10 @@ else:
     assert not (root / DATABASE.parent.parent / "state.json").exists()
     assert case_links(root, case_id, [result])["actual"]
     assert target_links(root, testpoint, [result])[0]["runs"][0]["run_id"] == run["id"]
+    assert set(filtered["actual"][case_id]) == target_ids
     reset(root)
+    after = case_target_filters(root, [result])
+    assert after["actual"] == {} and after["planned"] == filtered["planned"]
     assert case_links(root, case_id, [result])["actual"] == []
     assert case_links(root, case_id, [result])["planned"] == planned["planned"]
     assert not target_links(root, testpoint, [result])

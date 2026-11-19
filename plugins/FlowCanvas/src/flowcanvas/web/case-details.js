@@ -48,7 +48,7 @@ window.FlowCanvasScrollToSourceLine=function(panel,row,endRow=row){
 };
 
 /** Selected-case inspector with independently selected source bindings and real execution records. */
-window.FlowCanvasCaseDetails=function(host,project){
+window.FlowCanvasCaseDetails=function(host,project,createRunButton){
   const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
   let selected=null,report=null,tab='overview',runId=null,sourceId=null,revision='',generation=0,offset=0,outputRequest=null;
   let wavePanel=null,waveExplanation=null;
@@ -324,7 +324,14 @@ window.FlowCanvasCaseDetails=function(host,project){
     body.setAttribute('role','tabpanel');body.setAttribute('aria-labelledby',tabPrefix+tab);
     if(!selected){title.append(el('strong','','测试用例详情'));body.append(el('p','case-detail-empty','在左侧选择测试用例'));return;}
     publish();
-    title.append(el('strong','',selected.title||selected.name),el('code','',selected.name));
+    const heading=el('div','case-detail-heading');
+    heading.append(el('strong','',selected.title||selected.name),el('code','',selected.name));
+    if(createRunButton){
+      const error=el('p','targets-error case-detail-run-error');error.setAttribute('role','alert');
+      const actions=el('div','case-detail-header-actions');
+      actions.append(createRunButton(selected,message=>{error.textContent=message;}));
+      title.append(heading,actions,error);
+    }else title.append(heading);
     if(tab==='overview'){
       const actions=el('div','detail-overview-toolbar');actions.append(taskButton('case-overview','生成用例概览'));body.append(actions);
       overviewBlock(selected.overview||{});

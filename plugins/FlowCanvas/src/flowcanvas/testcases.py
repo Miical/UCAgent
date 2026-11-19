@@ -87,6 +87,11 @@ class TestCase(BaseModel):
     name: str = Field(min_length=1, max_length=200, description='代码中的测试类名或函数名，不作为可读标题')
     title: str = Field(default='', max_length=200, description='用例的可读标题；新建和导入必须填写，概括测试场景')
     description: str = ''
+    category: Literal[
+        'basic_api', 'directed', 'data_pattern', 'boundary', 'state_sequence',
+        'invariants', 'random', 'bug_regression', 'unclassified',
+    ] = 'unclassified'
+    smoke: bool = False
     timeline: list[TimelineStep] = Field(default_factory=list, max_length=100)
     overview: CaseOverview | None = None
     runner: RunTemplate | None = None
@@ -178,9 +183,23 @@ class Cases(Targets):
 
     instructions = """Use inspect/apply/begin_modify/update/end_modify in batches. inspect reads cards and raw files.
 apply(count) allocates draft IDs. begin_modify(ids,action=update|delete) registers this session's work.
-update(cards=[{id,name,title,description,runner,bindings}]) sets the code entry, readable Chinese title,
+update(cards=[{id,name,title,description,category,smoke,runner,bindings}]) sets the code entry, readable Chinese title,
 source-grounded description and complete bindings. Python name is the pytest entry without the
 file prefix (test_name or TestClass::test_name); UVM name is the actual runnable test class.
+Choose one category from the primary assertion and the stimulus that makes it meaningful:
+- basic_api: DUT access, fixture, drive/step/sample, or coverage collection pipeline checks.
+- directed: an ordinary specified functional scenario with explicit expected results.
+- data_pattern: systematic bit or data patterns such as walking ones, alternating bits, or carry chains.
+- boundary: extremes, width limits, overflow, empty/full limits, or invalid inputs.
+- state_sequence: reset, state transitions, ordering, timing, or multi-step protocol behavior.
+- invariants: a property checked across related inputs, such as symmetry, equivalence, or history independence.
+- random: randomized exploration is the main strategy; random setup alone does not determine the category.
+- bug_regression: a focused regression for a documented defect.
+- unclassified: source and description do not establish a primary purpose.
+Use directed for ordinary functional scenarios after considering the more specific categories. Read the
+bound entry, the stimulus and the assertions when reviewing existing cases. Change an existing category
+when the evidence supports a better fit; leave appropriate categories as they are. For classification
+updates send only {id,category} through the same lifecycle. Omitted fields retain their values.
 Each binding is {file,line,line_count,role}; existing markers use id instead of line.
 Use role=definition for the actual executable case entry and stimulus for its concrete sequence or
 virtual sequence. Bind only fragments that directly define this case's scenario. Add a case-specific

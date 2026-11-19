@@ -11,6 +11,7 @@ mission:
     system: |
       为 FlowCanvas 当前项目新增一个真实、可独立运行的测试用例。项目根目录为 {PROJECT_ROOT}，顶层为 {DUT}；工作流隔离目录仅保存阶段记录，测试及共享环境代码写入项目。
       遵循 Guide_Doc/dut_test_case.md、dut_fixture.md、dut_api_instruction.md、dut_function_coverage_def.md 的接口与覆盖关联规范。
+      按 test_cases 返回的用途分类规范填写 category。
       本流程按单个场景增量建设：优先复用项目已有的测试目录、运行命令、API、dut/env fixture、Bundle、参考模型和覆盖模型；只补齐该场景需要的缺口，不要求先实现完整环境、全部API或全部功能覆盖；但当前用例的行覆盖率与功能覆盖率采集链路都必须配置完成。
       不修改 RTL，不伪造 DUT、fc_cover 或预期值，不为适配错误结果削弱断言。规格缺失时依据实际设计分析，区分实现事实和待确认需求，不把可疑 RTL 自动当成正确规格。
       编写代码前先 test_cases(inspect/apply/begin_modify) 登记占位，始终复用该 ID；不通过 import 重复登记。修改既有卡片及绑定先 begin_modify，结束后 end_modify；创建中沿用原 ID，暂停后 begin_modify。

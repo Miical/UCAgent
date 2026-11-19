@@ -131,3 +131,39 @@ async def test_two_cases_run_their_own_commands(api):
         await runner.close()
     with pytest.raises(ValueError):
         configure(root,{'runner':{'command':'echo {case}','description':'removed'}},Cases(root).read().revision)
+
+
+def test_classification_defaults_and_metadata_only_updates(api):
+    """Classifying legacy cases leaves their source, runner and run identity intact."""
+    from flowcanvas.smoke_runs import case_identity
+
+    root, call = api
+    source = root / 'test_demo.py'
+    source.write_text('def test_ok():\n    assert True\n')
+    ids = call('apply', count=1)['ids']
+    call('begin_modify', ids=ids)
+    call('update', cards=[dict(id=ids[0], name='test_ok', title='Check', description='Test',
+                              runner={'command': 'pytest {case}', 'description': 'Pytest'},
+                              bindings=[dict(file=source.name, line=1, line_count=2)])])
+    call('end_modify', ids=ids)
+
+    store = Cases(root)
+    persisted = json.loads(store.path.read_text())
+    del persisted['targets'][0]['category']
+    del persisted['targets'][0]['smoke']
+    store.path.write_text(json.dumps(persisted))
+    original = store.read().targets[0]
+    before = source.read_bytes()
+    assert original.category == 'unclassified' and not original.smoke
+    call('begin_modify', ids=ids)
+    with pytest.raises(ValueError):
+        call('update', cards=[dict(id=ids[0], category='unsupported')])
+    call('update', cards=[dict(id=ids[0], category='directed')])
+    call('end_modify', ids=ids)
+    call('begin_modify', ids=ids)
+    call('update', cards=[dict(id=ids[0], category='boundary')])
+    call('end_modify', ids=ids)
+    result = store.status()['targets'][0]
+    assert result['category'] == 'boundary'
+    assert source.read_bytes() == before
+    assert case_identity(store.read().targets[0]) == case_identity(original)

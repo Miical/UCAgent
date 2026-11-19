@@ -28,6 +28,7 @@ mission:
       base classes. Python cases use explicit pytest entries. Select existing runnable scenarios.
       Write concise Chinese titles/descriptions based on documentation and verified against source;
       without documentation derive them from real stimulus and checks. Do not invent passing results.
+      Classify new cases using the category rules in test_cases inspect.
       Use test_cases inspect/apply/begin_modify/update/end_modify. Reuse existing IDs; each card needs
       name, title, description, its own runner={command,description}, and definition line bindings.
       Keep project build flow and required dependencies. All generated build outputs go under output/flowcanvas/build; reuse existing compiled inputs without moving them. Place each run's outputs under {run_dir}, expanded by the platform to output/flowcanvas/test-runs/<run_id>.

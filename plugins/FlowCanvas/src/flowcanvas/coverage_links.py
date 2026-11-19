@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 from textwrap import dedent
 
+from .line_bindings import fingerprint, read_source
 from .targets import Targets, atomic
 from .testcases import Cases
 
@@ -84,7 +85,7 @@ def literal_marks(content, name):
             yield from (f"{group}/{point}/{check}" for check in checks if isinstance(check, str))
 
 
-def planned_targets(root, cases, case, target_status):
+def planned_targets(root, cases, case, target_status, case_reports, source_lines):
     """Combine current literal Toffee plans and explicit source-reviewed registrations."""
     from .native_toffee import MAPPING
 
@@ -100,9 +101,14 @@ def planned_targets(root, cases, case, target_status):
             for binding in case.bindings:
                 if binding.role != "definition" or not binding.file.endswith(".py"):
                     continue
-                source = cases.source(binding.id)
-                if source["status"] == "bound":
-                    for tag in literal_marks(source["content"], case.name.replace("::", ".").split(".")[-1]):
+                source = next((row for row in case_reports[case.id]["bindings"] if row["id"] == binding.id), None)
+                if source and source["status"] == "bound":
+                    if binding.file not in source_lines:
+                        source_lines[binding.file] = read_source(cases.file(binding.file)).splitlines()
+                    content = "\n".join(source_lines[binding.file][source["line"]-1:source["end_line"]])
+                    if fingerprint(content) != binding.fingerprint:
+                        continue
+                    for tag in literal_marks(content, case.name.replace("::", ".").split(".")[-1]):
                         identity = mapping.get(tag)
                         if identity in targets and targets[identity]["kind"] == "testpoint":
                             direct.add(identity)
@@ -142,7 +148,7 @@ def case_links(root, case_id, runs):
     if not case:
         raise LookupError("测试用例不存在")
     target_status = Targets(root).status(include_coverage=False)
-    planned = planned_targets(root, cases, case, target_status)
+    planned = planned_targets(root, cases, case, target_status, cases.status()["reports"], {})
     valid = {row["id"]:row for row in target_status["targets"]}
     actual, statuses = {}, []
     for run, result in batch_snapshots(root, (run for run in runs if run.get("case_id") == case_id)):
@@ -155,6 +161,37 @@ def case_links(root, case_id, runs):
               else "available" if all(s == "available" for s in statuses) else "partial")
     return {"planned": planned, "actual": list(actual.values()), "status": status}
 
+
+
+def case_target_filters(root, runs):
+    """Project both target association types in one pass for the case list."""
+    root = Path(root).resolve()
+    cases = Cases(root)
+    case_status = cases.status()
+    target_status = Targets(root).status(include_coverage=False)
+    targets = {card["id"]: card for card in target_status["targets"] if card["lifecycle"] != "draft"}
+    source_lines = {}
+    planned = {}
+    for row in case_status["targets"]:
+        if row["lifecycle"] == "draft":
+            continue
+        case = cases.target_model.model_validate(row)
+        links = planned_targets(root, cases, case, target_status, case_status["reports"], source_lines)
+        planned[case.id] = [hit["id"] for hit in links if hit["id"] in targets]
+    actual = {}
+    for run, result in batch_snapshots(root, (run for run in runs if run.get("case_id") in planned)):
+        for hit in result["targets"]:
+            card = targets.get(hit["id"])
+            if card and is_current(hit, card, target_status["reports"][card["id"]]):
+                ids = actual.setdefault(run["case_id"], set())
+                while card and card["id"] not in ids:
+                    ids.add(card["id"])
+                    card = targets.get(card["parent"])
+    return {
+        "targets": [{key: card[key] for key in ("id", "name", "parent", "kind")} for card in targets.values()],
+        "planned": planned,
+        "actual": {case_id: sorted(ids) for case_id, ids in actual.items()},
+    }
 
 def run_links(root, run_id, runs):
     if not re.fullmatch(r"[a-f0-9]{32}", run_id):

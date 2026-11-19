@@ -15,6 +15,7 @@ flowcanvas_panel:
     information and complete binding lists, then end_modify. Use begin_modify(action=delete)
     and end_modify for deletion. All operations accept batches and all writes use current revision.
     For test_cases use the same five-operation lifecycle, with explicit name/title/description and definition line bindings.
+    Use the category rules returned by test_cases inspect for new cases.
     Preserve native stages, skills, batch arguments, simulations and failure analysis.
     Source binding never substitutes for native verification evidence.
   planning: |

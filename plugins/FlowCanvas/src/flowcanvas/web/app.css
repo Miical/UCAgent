@@ -1715,9 +1715,18 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 :is(.testcase-workbench,.bug-workbench) .target-header{flex-wrap:nowrap;min-height:30px}
 :is(.testcase-workbench,.bug-workbench) .target-header>.target-card-head{max-width:none;flex:1 1 0;min-width:0;padding:5px 6px}
 :is(.testcase-workbench,.bug-workbench) .target-header>.target-header-actions{flex:0 0 auto;margin:0 3px 0 auto;gap:1px}
+.testcase-workbench .case-classify-action{display:grid;flex:none;place-items:center;width:25px;height:25px;margin-left:auto;padding:4px;border:0;border-radius:5px;background:transparent;color:var(--text-dim);opacity:1}
+.testcase-workbench .case-classify-action[hidden]{display:none}
+.testcase-workbench .case-classify-action:hover,.testcase-workbench .case-classify-action:focus-visible{background:color-mix(in srgb,var(--accent) 5%,var(--surface));color:var(--text)}
 :is(.testcase-workbench,.bug-workbench) .targets-tree>:is(.target-case,.target-bug):has(>.target-header.is-selected){background:color-mix(in srgb,var(--accent) 6%,var(--surface));box-shadow:inset 0 0 0 1px var(--border);border-radius:6px}
 .testcase-detail-pane{display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--surface)}
 .case-detail-title{display:flex;flex-direction:column;gap:5px;padding:16px 18px 12px;flex:none;overflow-wrap:anywhere}
+.case-detail-title:has(>.case-detail-header-actions){display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:12px}
+.case-detail-heading{display:grid;gap:3px;min-width:0}
+.case-detail-run-error{grid-column:1/-1;margin:0}
+.case-detail-run-error:empty{display:none}
+.case-detail-run{position:relative;opacity:1;white-space:nowrap}
+.case-detail-run.is-case-running::after{inset-inline-start:15px}
 .case-detail-title strong{font-size:15px}.case-detail-title code{font-size:11px;color:var(--text-dim)}
 .case-detail-tabs{display:flex;gap:20px;padding:0 18px;border-bottom:1px solid var(--border);flex:none}
 .case-detail-tabs button{border:0;border-bottom:2px solid transparent;background:none;font-size:12px;padding:9px 0;color:var(--text-dim)}
@@ -2002,6 +2011,32 @@ textarea.case-inline-input{min-height:72px;resize:vertical}
 .case-send-pending .case-workspace-tabs button{pointer-events:none}
 
 /* Final case-workbench rhythm: quiet selection, readable content and consistent controls. */
+.case-grouping-switcher{display:flex;flex:none;flex-wrap:wrap;align-items:center;gap:8px;padding:0 2px 9px}
+.case-grouping-modes{display:flex;align-items:stretch;gap:1px;min-width:0;margin:0;padding:2px;border:0;border-radius:7px;background:color-mix(in srgb,var(--text) 5%,var(--surface))}
+.case-grouping-legend,.case-grouping-option input{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.case-grouping-option{display:flex;min-width:0;cursor:pointer}
+.case-grouping-option span{padding:4px 8px;border-radius:5px;color:var(--text-dim);font-size:11px;line-height:16px;white-space:nowrap;transition:background .14s,color .14s}
+.case-grouping-option:hover span{color:var(--text)}
+.case-grouping-option input:checked+span{color:var(--text);background:var(--surface);box-shadow:0 1px 2px #00000014}
+.case-grouping-option input:focus-visible+span,.case-group-heading:focus-visible{outline:1px solid var(--accent);outline-offset:1px}
+.case-target-grouping-options{display:flex;flex:0 0 100%;flex-direction:column;align-items:flex-start;gap:8px;min-width:0}
+.case-target-grouping-row{display:flex;flex-wrap:wrap;align-items:center;gap:7px}
+.case-target-grouping-options[hidden]{display:none}
+.case-grouping-repeat{display:inline-flex;align-items:center;gap:4px;color:var(--text-dim);font-size:11px;white-space:nowrap;cursor:pointer}
+.case-grouping-repeat input{width:12px;height:12px;margin:0;accent-color:var(--accent);cursor:pointer}
+.case-list-group+.case-list-group{margin-top:10px}
+.case-group-rows>.case-list-group+.case-list-group{margin-top:3px}
+.case-group-heading{display:flex;align-items:center;gap:8px;padding:5px 9px;border-radius:4px;color:var(--text-dim);font-size:11px;font-weight:550;line-height:18px;cursor:pointer;list-style:none}
+.case-group-heading:hover{background:color-mix(in srgb,var(--text) 4%,var(--surface));color:var(--text)}
+.case-group-heading::-webkit-details-marker{display:none}
+.case-group-heading::before{content:'';flex:none;width:5px;height:5px;margin:0 2px 0 1px;border:solid currentColor;border-width:0 1px 1px 0;transform:rotate(-45deg);transition:transform .14s}
+.case-list-group[open]>.case-group-heading::before{transform:translateY(-2px) rotate(45deg)}
+.case-group-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.case-group-count{margin-left:auto;color:var(--text-dim);font-size:10px;font-variant-numeric:tabular-nums;font-weight:400}
+.case-group-rows{margin:2px 0 0 11px;padding-left:5px;border-left:1px solid var(--border)}
+.testcase-workbench .targets-tree .case-group-rows>.target-case{margin:0 0 2px;border-radius:4px}
+@media(prefers-reduced-motion:reduce){.case-grouping-option span,.case-group-heading::before{transition:none}}
+.case-other-groups{flex:none;color:var(--text-dim);font-size:10px;font-variant-numeric:tabular-nums;opacity:.75}
 .testcase-list-pane{padding:12px 10px}
 :is(.testcase-workbench,.bug-workbench) .targets-toolbar{flex-wrap:nowrap;gap:6px;margin:0 0 10px}
 :is(.testcase-workbench,.bug-workbench) .targets-search{height:32px;padding:6px 9px;border-radius:5px;font-size:12px;box-sizing:border-box}
@@ -2326,11 +2361,11 @@ body:has(.workspace>.case-workspace-open:not(.case-chat-collapsed)) .workspace-d
 .case-workspace-open .detail-section>.case-detail-source{margin:0;padding:8px 0}
 .case-workspace-open .detail-section>.case-detail-log{padding:8px 0;min-height:0}
 .detail-overview-toolbar{display:flex;align-items:center;margin:0 0 16px}
-:is(.testcase-detail-pane,.case-wave-sidebar) .detail-ai-task,:is(.testcase-detail-pane,.case-wave-sidebar) .case-overview-actions .detail-ai-task{display:inline-flex;align-items:center;justify-content:center;gap:9px;width:auto;height:auto;min-height:32px;padding:6px 14px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;font-weight:600;line-height:18px;cursor:pointer;transition:background .15s,border-color .15s}
-:is(.testcase-detail-pane,.case-wave-sidebar) .detail-ai-task svg{flex:none;width:17px;height:17px;color:var(--text-dim)}
-:is(.testcase-detail-pane,.case-wave-sidebar) .detail-ai-task:hover{background:color-mix(in srgb,var(--text) 4%,var(--surface));border-color:color-mix(in srgb,var(--text-dim) 40%,var(--border))}
-:is(.testcase-detail-pane,.case-wave-sidebar) .detail-ai-task:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
-:is(.testcase-detail-pane,.case-wave-sidebar) .detail-ai-task:disabled{opacity:.4;cursor:default}
+:is(.testcase-detail-pane,.case-wave-sidebar) :is(.detail-ai-task,.case-detail-run),:is(.testcase-detail-pane,.case-wave-sidebar) .case-overview-actions .detail-ai-task{display:inline-flex;align-items:center;justify-content:center;gap:9px;width:auto;height:auto;min-height:32px;padding:6px 14px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:12px;font-weight:600;line-height:18px;cursor:pointer;transition:background .15s,border-color .15s}
+:is(.testcase-detail-pane,.case-wave-sidebar) :is(.detail-ai-task,.case-detail-run) svg{flex:none;width:17px;height:17px;color:var(--text-dim)}
+:is(.testcase-detail-pane,.case-wave-sidebar) .detail-ai-task:hover,.testcase-detail-pane .case-detail-run:enabled:hover{background:color-mix(in srgb,var(--text) 4%,var(--surface));border-color:color-mix(in srgb,var(--text-dim) 40%,var(--border))}
+:is(.testcase-detail-pane,.case-wave-sidebar) :is(.detail-ai-task,.case-detail-run):focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+:is(.testcase-detail-pane,.case-wave-sidebar) .detail-ai-task:disabled,.testcase-detail-pane .case-detail-run:disabled:not(.is-case-running){opacity:.4;cursor:default}
 .detail-section>.module-section-heading>.case-overview-actions{margin-left:12px}
 .case-workspace-open .case-detail-body[data-tab="source"]>.case-section-source{display:block;flex:none}
 .target-goal-pane .targets-toolbar .targets-search,.testcase-workbench .targets-toolbar .targets-search,.bug-workbench .targets-toolbar .targets-search{box-sizing:border-box;height:22px;min-width:0;padding:3px 6px;border-radius:4px;font-size:11px;line-height:14px}

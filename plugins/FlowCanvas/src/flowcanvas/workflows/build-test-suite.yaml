@@ -18,6 +18,7 @@ mission:
       面板为准。使用 test_cases 和 verification_targets 检查、登记和更新卡片；
       写入前核对最新 expected_revision。已有记录沿用原 ID，新增记录先 apply，再 begin_modify，
       然后 update，完成后 end_modify；暂停后恢复原 ID。不直接编辑 .flowcanvas 管理文件。
+      新用例按 test_cases 返回的用途分类规范登记，API 自检用 basic_api。
       测试通过 test_case_runs 运行。使用 {case} 表示唯一用例入口，使用 {run_dir} 隔离产物，
       并让实际运行命令生成 {wave_dir}/waves.vcd。每次启动后读同一 run_id 到结束。
       用 SetCurrentStageJournal 和 Complete 推进每一个阶段，失败时按当前验收信息修正。
