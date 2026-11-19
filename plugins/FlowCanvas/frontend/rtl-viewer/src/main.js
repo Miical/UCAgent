@@ -14,6 +14,8 @@ import { createPinia } from 'pinia'
 import './theme.css'
 import './tokens.css'
 import './app.css'
+import '../../../src/flowcanvas/web/search-field.css'
+import '../../../src/flowcanvas/web/sidebar-disclosure.css'
 import App from './App.vue'
 import { useViewerStore } from './store.js'
 import { applyStoredThemePreference } from './theme.js'
@@ -21,6 +23,7 @@ import { applyStoredThemePreference } from './theme.js'
 // Before mount: a remembered ``data-theme`` pin has to be on <html>
 // for the first paint, or the page flashes the OS palette first.
 applyStoredThemePreference()
+document.documentElement.classList.toggle('flowcanvas-project-sidebar',new URLSearchParams(location.search).get('sidebar')==='1')
 
 const app = createApp(App)
 const pinia = createPinia()

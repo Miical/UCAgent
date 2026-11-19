@@ -1007,7 +1007,7 @@ window.FlowCanvasAI={
     await globalConversation();
     const model=$('model').value,effort=$('effort').value;
     const workflowId=design?({'import-project':'import-project','import-testcases':'import-testcases','import-goals':'import-targets','plan-goals':'plan-goals','build-test-suite':'build-test-suite'})[design.kind]||null:'generate-testcase';
-    const taskTitle=design?.kind==='classify-testcases'?'测试用例分类':design?.kind==='add-bug'?'新增 Bug':design?.kind==='delete-bug'?'删除 Bug':design?.kind==='import-project'?'导入项目':design?.kind==='import-testcases'?'同步测试用例':design?.kind==='build-test-suite'?'规划并实现测试用例':design?.kind==='plan-goals'?'规划验证目标':design?.kind==='import-goals'?'同步验证目标':design?.kind==='add-goal'?'新增验证目标':design?.kind==='delete-goal'?'删除验证目标':design?.kind==='functional-coverage'?'分析功能覆盖率':design?.kind==='run-testcase'?'运行测试用例':design?.kind==='delete-testcase'?'删除测试用例':design?.kind==='line-coverage'?'分析'+(({line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率'})[design.metric]||'行覆盖率'):design?'解释设计':'新增测试用例';
+    const taskTitle=design?.kind==='delete-testcases'?'删除所选测试用例':design?.kind==='classify-testcases'?'测试用例分类':design?.kind==='add-bug'?'新增 Bug':design?.kind==='delete-bug'?'删除 Bug':design?.kind==='import-project'?'导入项目':design?.kind==='import-testcases'?'同步测试用例':design?.kind==='build-test-suite'?'规划并实现测试用例':design?.kind==='plan-goals'?'规划验证目标':design?.kind==='import-goals'?'同步验证目标':design?.kind==='add-goal'?'新增验证目标':design?.kind==='delete-goal'?'删除验证目标':design?.kind==='functional-coverage'?'分析功能覆盖率':design?.kind==='run-testcase'?'运行测试用例':design?.kind==='delete-testcase'?'删除测试用例':design?.kind==='line-coverage'?'分析'+(({line:'行覆盖率',toggle:'翻转覆盖率',branch:'分支覆盖率',expr:'表达式覆盖率',cond:'条件覆盖率',fsm:'状态机覆盖率'})[design.metric]||'行覆盖率'):design?'解释设计':'新增测试用例';
     if(!model)throw Error('请先选择可用模型');
     let owner=session;
     if(current){
@@ -1023,7 +1023,7 @@ window.FlowCanvasAI={
     const result=await request('/sessions/'+owner.id+'/messages',{text,model,effort,speed:speedMode,
       task_card:{title:taskTitle,workflow:workflowId?taskTitle:'',workflow_id:workflowId,project:project.name,requirements:design?(design.instance||'')+(requirements?'\n'+requirements:''):requirements||''}});
     await list();
-    if(design?.kind==='classify-testcases'&&(caseContext||window.FlowCanvasCaseWorkspace?.context())){
+    if(['classify-testcases','delete-testcases'].includes(design?.kind)&&(caseContext||window.FlowCanvasCaseWorkspace?.context())){
       document.dispatchEvent(new CustomEvent('flowcanvas-case-ordinary'));
       await caseReady;
     }

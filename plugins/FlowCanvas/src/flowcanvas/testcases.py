@@ -217,7 +217,10 @@ is unavailable for cases. Resume with the original IDs. Running cases cannot be 
 Import by reading existing source, choosing real runnable cases and using this same lifecycle;
 do not register environment-only base classes. Prefer existing documentation for concise Chinese
 text, otherwise derive it from actual stimuli and checks. Never infer passing results from bindings.
-Each case runner is {command,description} and is set via update. Shared coverage settings use
+Each case runner is {command,description} and is set via update. Reuse compiled artifacts as read-only
+inputs. Isolate writable simulation files under {run_dir}; native VCS must write {coverage_db}
+with a unique {coverage_name} per run. The platform merges completed native VDBs.
+Shared coverage settings use
 test_case_runs(operation=configure,settings={coverage}); inspect returns the existing settings. Each runner command requires standalone {case}, expanded and
 shell-quoted once by the server; Python entries include the absolute file path. Reports use {run_dir}.
 Waveforms use {wave_dir}, an existing per-run directory at {run_dir}/waveforms. Forward it to the

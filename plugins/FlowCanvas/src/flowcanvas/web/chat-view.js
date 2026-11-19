@@ -23,11 +23,18 @@ export class ConversationView {
     document.addEventListener('selectionchange',()=>{const selection=window.getSelection();quoted=selection&&messageBody(selection.anchorNode)&&messageBody(selection.anchorNode)===messageBody(selection.focusNode)?selection.toString().trim():'';this.quote.hidden=!quoted;if(quoted&&selection.rangeCount){const rect=selection.getRangeAt(0).getBoundingClientRect();this.quote.style.left=Math.max(10,Math.min(window.innerWidth-150,rect.left))+'px';this.quote.style.top=Math.max(10,Math.min(window.innerHeight-45,rect.bottom+8))+'px';}});
     this.quote.onmousedown=event=>event.preventDefault();
     this.quote.onclick=()=>{if(quoted)root.dispatchEvent(new CustomEvent('compose-quote',{detail:quoted}));this.quote.hidden=true;window.getSelection()?.removeAllRanges();};
-    root.addEventListener('scroll',()=>{
-      root.classList.toggle('is-scrolled',root.scrollTop>0);
-      this.jump.hidden=root.scrollHeight-root.scrollTop-root.clientHeight<130;
-    });
+    const updateEdges=()=>this.updateScrollEdges();
+    root.addEventListener('scroll',updateEdges);
+    root.addEventListener('toggle',updateEdges,true);
+    new ResizeObserver(updateEdges).observe(root);
     this.timer=setInterval(()=>this.tick(),1000);
+  }
+  updateScrollEdges(){
+    const {scrollHeight,scrollTop,clientHeight}=this.root;
+    const remaining=scrollHeight-scrollTop-clientHeight;
+    this.root.classList.toggle('is-scrolled',scrollTop>0);
+    this.root.classList.toggle('has-more-below',remaining>2);
+    this.jump.hidden=remaining<130;
   }
   /** Collapse running and completed details until the user explicitly expands them. */
   foldDetails(){for(const entry of [...this.nodes.values(),...this.groups.values()])if(entry.root.tagName==='DETAILS'){entry.touched=true;entry.root.open=false;}}
@@ -138,7 +145,7 @@ export class ConversationView {
             for(const text of copy.slice(2)){const button=element('button','welcome-prompt',text);button.type='button';button.onclick=()=>this.root.dispatchEvent(new CustomEvent('compose-reuse',{detail:text}));prompts.append(button);}welcome.append(prompts);
             const note=element('p','case-chat-empty-context');note.innerHTML='<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 2h5l3 3v9H3V2ZM10 2v4h3M5.5 9h5M5.5 11h3"/></svg>';const noteText=element('span','case-chat-context-copy');noteText.append(element('strong','','当前页面已关联'),element('span','','，提问时无需重复说明。'));note.append(noteText);welcome.append(note);
           }
-          this.root.append(welcome);return;
+          this.root.append(welcome);this.updateScrollEdges();return;
         }
         const welcome=element('div','chat-welcome');welcome.dataset.welcomeKey=welcomeKey;welcome.append(element('div','welcome-mark','✦'),element('span','welcome-eyebrow','UCAgent FlowCanvas'),element('h3','','一起，把验证想清楚。'),element('p','','分析设计、梳理场景，或从一个问题开始。'));
         if(session.welcome_prompt_kind){
@@ -160,6 +167,7 @@ export class ConversationView {
         }
         this.root.append(welcome);
       }
+      this.updateScrollEdges();
       return;
     }
     this.root.querySelector('.chat-welcome,.case-chat-empty')?.remove();
@@ -288,6 +296,7 @@ export class ConversationView {
     this.liveIcon.textContent=active?'':session.status==='error'?'!':session.status==='interrupted'?'−':'✓';
     this.liveLabel.textContent=session.status==='stopping'?'正在停止':session.status==='starting'?'正在连接模型':session.status==='error'?'本轮未完成':session.status==='interrupted'?'已停止生成':!active?'本轮已完成':last?.kind==='tool'&&runningStatuses.has(last.status)?'正在执行工具':last?.kind==='text'&&runningStatuses.has(last.status)?'正在回复':last?.kind==='reasoning'&&runningStatuses.has(last.status)?'正在思考':'正在处理';
     this.tick();
-    if(atBottom||switched){this.root.scrollTop=this.root.scrollHeight;this.jump.hidden=true;}
+    if(atBottom||switched)this.root.scrollTop=this.root.scrollHeight;
+    this.updateScrollEdges();
   }
 }

@@ -1,17 +1,19 @@
 <template>
   <div class="hierarchy-tree">
     <div class="tree-filter">
-      <input
-        ref="filterEl"
-        type="text"
-        class="tree-filter-input"
-        placeholder="筛选模块实例…（/）"
-        aria-label="筛选模块实例"
-        v-model="query"
-        @keydown.enter.prevent="selectFirstMatch"
-        @keydown.esc.prevent.stop="onFilterEscape"
-        @keydown.down.prevent="enterTreeFromFilter"
-      />
+      <label class="tree-filter-search flowcanvas-search">
+        <input
+          ref="filterEl"
+          type="text"
+          class="tree-filter-input"
+          placeholder="筛选模块实例…（/）"
+          aria-label="筛选模块实例"
+          v-model="query"
+          @keydown.enter.prevent="selectFirstMatch"
+          @keydown.esc.prevent.stop="onFilterEscape"
+          @keydown.down.prevent="enterTreeFromFilter"
+        />
+      </label>
       <!-- ``2 / 6`` while filtering, a bare instance count otherwise —
            "6 / 6" on an unfiltered tree is a ratio that answers a
            question nobody asked. -->
@@ -376,6 +378,7 @@ defineExpose({ focusFilter })
   gap: 0.35rem;
   padding: 0.15rem 0.25rem 0.35rem;
 }
+.tree-filter-search { display: flex; flex: 1; min-width: 0; }
 .tree-filter-input {
   flex: 1 1 auto;
   min-width: 0;

@@ -23,10 +23,10 @@ output/flowcanvas/coverage/
   config.json                 # provider, native DUT hierarchy, optional URG executable
   build.json                  # compiled inputs used to identify the build
   targets.json                # explicit native functional selectors -> panel bindings
-  database/coverage.vdb/       # accumulated runtime observations
+  database/coverage.vdb/       # optional database written by external runners
   database/compile.vdb/        # optional matching compile metadata (copy or project-local symlink)
   sources/                    # exact source snapshots for panel source viewing
-  reports/                    # platform-generated URG/normalized report snapshots
+  reports/                    # generated URG reports and merged VDB snapshots
   state.json                  # last accepted panel publication and ingestion state
 ```
 
@@ -48,20 +48,18 @@ Updating titles does not infer or change selectors. The project supplies metadat
 not executable parser code.
 
 Normal test runners forward `{coverage_db}` and `{coverage_name}` to VCS
-`-cm_dir` and `-cm_name`. The service expands these to the fixed runtime database
-and a unique run ID. Native coverage must already be enabled at compilation.
-A completed managed run triggers immediate platform extraction; an independent
-background watcher also detects database updates from external runners. It polls
-configured recent projects, debounces changes, avoids active managed/VCS writers,
-and checks database/build stability again before publishing. Updates during
-extraction are discarded and retried after quiescence. A failed extraction retains
-the last accepted report and records `ingestion_error`; it does not publish empty
-success data. Identical snapshots are not re-extracted across service restarts.
+`-cm_dir` and `-cm_name`. The service supplies `{run_dir}/coverage.vdb` and
+a unique run ID. Native coverage must already be enabled at compilation.
+The platform serializes URG publication, merging the accepted independent VDBs
+and any stable external database. The published report and `merged_database`
+path are written together to `state.json`. The watcher waits for external
+writers to finish and verifies database and build stability before publication.
+A failed publication preserves the last accepted report and cumulative VDB.
 
-The browser reads normalized API data, never binary VDB files. Published snapshots
-represent the whole native database; they are not summed again. A changed build
-is rejected until accumulated coverage is cleared. The native database, run names
-and accepted reports remain separate from test assertion outcomes.
+The browser reads normalized API data. Published reports represent native
+coverage across accepted runs. Build changes require clearing the existing
+coverage epoch. The run database and accepted report remain independent of
+test assertion outcomes.
 
 Clear accumulated coverage deletes runtime `database/coverage.vdb` and generated
 publication directories. It preserves compile metadata, configuration, mappings,

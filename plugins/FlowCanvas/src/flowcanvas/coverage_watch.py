@@ -1,12 +1,12 @@
 """Debounced native database ingestion, independent of test command completion callbacks."""
 import asyncio
-import json
 from pathlib import Path
+import shutil
 import time
 import uuid
 
 from .coverage_runtime import state
-from .native_vcs import build_identity, configuration, extract, fingerprint, writer_active
+from .native_vcs import accumulate, build_identity, configuration, external_test_ids, extract, fingerprint, managed_databases, writer_active
 from .targets import atomic
 
 
@@ -21,7 +21,7 @@ class CoverageWatch:
         """Ingest a changed snapshot only after quiescence and without an active managed run."""
         root=Path(root).resolve();folder=root/'output/flowcanvas/coverage'
         if not (folder/'config.json').exists():return
-        if any(r['id'] in self.runner.tasks or r['status'] in {'starting','running'} for r in self.runner.list(root)):return
+        if root in self.runner.batches.active or any(r['id'] in self.runner.tasks for r in self.runner.list(root)):return
         if await asyncio.to_thread(writer_active,root):return
         config=configuration(root)
         if config.get('provider')!='vcs':return
@@ -33,27 +33,37 @@ class CoverageWatch:
         if now-previous[1]<self.settle_seconds:return
         if current.get('failed_fingerprint')==token and time.time()-current.get('failed_at',0)<30:return
         async with self.runner.lock:
-            if any(r['id'] in self.runner.tasks for r in self.runner.list(root)):return
+            if root in self.runner.batches.active or any(r['id'] in self.runner.tasks for r in self.runner.list(root)):return
             current=state(root);epoch=current['epoch']
             output=folder/'reports'/uuid.uuid4().hex/'coverage.json'
             try:
                 identity=await asyncio.to_thread(build_identity,root)
                 if current['build_id'] not in (None,identity):
                     raise ValueError('Coverage build changed; clear accumulated coverage before publishing')
-                report=await extract(root,folder/'database/coverage.vdb',output,identity)
+                external=folder/'database/coverage.vdb'
+                managed=managed_databases(root,current['runs'])
+                if managed:
+                    report,merged=await accumulate(root,external,managed,output,identity,token)
+                else:
+                    report=await extract(root,external,output,identity)
+                    merged=None
                 if await asyncio.to_thread(writer_active,root) or await asyncio.to_thread(fingerprint,root)!=token or await asyncio.to_thread(build_identity,root)!=identity:
                     self.observed.pop(str(root),None);return
                 latest=state(root)
                 if latest['epoch']!=epoch:return
-                tests=folder/'database/coverage.vdb/snps/coverage/db/testdata'
                 runs=list(latest['runs']);known={r['id'] for r in runs}
-                for path in sorted(tests.iterdir()):
-                    if path.is_dir() and path.name not in known:
-                        runs.append(dict(id=path.name,artifact=str(output),origin='database'))
+                runs.extend(dict(id=identity,artifact=str(output),origin='database')
+                            for identity in external_test_ids(external) if identity not in known)
+                previous_database=latest.get('merged_database')
                 latest.update(report=report,build_id=identity,mode='shared',runs=runs,updated=time.time(),
                               database_fingerprint=token,ingestion_status='ready')
+                if merged:latest['merged_database']=merged
                 for key in ('ingestion_error','failed_fingerprint','failed_at'):latest.pop(key,None)
                 atomic(folder/'state.json',latest)
+                if merged and previous_database:
+                    previous=Path(previous_database)
+                    if previous.parent.parent==folder/'reports':
+                        await asyncio.to_thread(shutil.rmtree,previous,True)
             except Exception as exc:
                 latest=state(root)
                 if latest['epoch']==epoch:

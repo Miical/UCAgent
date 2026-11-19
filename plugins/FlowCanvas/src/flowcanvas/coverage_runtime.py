@@ -2,6 +2,7 @@
 import json
 import shutil
 from pathlib import Path
+import tempfile
 import time
 import uuid
 from .targets import atomic
@@ -21,6 +22,13 @@ def reset(root):
             continue
         if child.name=='database' and child.is_dir() and not child.is_symlink():
             database=child/'coverage.vdb'
+            compile_db=child/'compile.vdb'
+            if not compile_db.exists() and not compile_db.is_symlink() and (database/'snps/coverage/db/design').is_dir():
+                from .native_vcs import copy_compile_metadata
+                with tempfile.TemporaryDirectory(prefix='.compile-',dir=child) as staging:
+                    metadata=Path(staging)/'compile.vdb'
+                    copy_compile_metadata(database,metadata)
+                    metadata.rename(compile_db)
             if database.is_symlink() or database.is_file():database.unlink()
             elif database.is_dir():shutil.rmtree(database)
             continue  # Compile metadata must survive reset for the next simulation.
@@ -81,15 +89,7 @@ async def collect(runner,row,log):
         row.update(coverage_status='validated',coverage_artifact=str(artifact))
         return
     from .coverage_schema import validate_report
-    if config.get('provider')=='vcs' and (Path(row['cwd'])/'output/flowcanvas/coverage/targets.json').is_file():
-        try:
-            single=await extract(row['cwd'],row['coverage_db'],
-                Path(row['run_dir'])/'functional-urg/coverage.json',row['build_id'],test_id=row['id'])
-            save_hits(row['run_dir'],single,row['cwd'])
-        except (OSError, ValueError, KeyError, TimeoutError) as exc:
-            row['functional_hits_error']=str(exc)
-            log.write(('\n[单次功能覆盖] '+str(exc)+'\n').encode())
-    elif config.get('mode','per_run')=='per_run':
+    if config.get('provider')=='vcs' or config.get('mode','per_run')=='per_run':
         save_hits(row['run_dir'],validate_report(json.loads(artifact.read_text()),row['build_id']),row['cwd'])
     async with runner.lock:
         current=state(row['cwd'])
@@ -100,13 +100,36 @@ async def collect(runner,row,log):
         if current['build_id'] not in (None,row['build_id']):raise ValueError('构建版本变化，请清空累计后重新运行')
         if row['id'] in [r['id'] for r in current['runs']]:return
         inputs=current['runs']+[dict(id=row['id'],artifact=str(artifact))]
+        if config.get('provider')=='vcs':
+            import asyncio
+            from .native_vcs import accumulate, external_test_ids, fingerprint, managed_databases, writer_active
+            folder=Path(row['cwd'])/'output/flowcanvas/coverage'
+            if await asyncio.to_thread(writer_active,row['cwd']):
+                raise ValueError('Wait for the external VCS writer to finish before publishing coverage')
+            token=await asyncio.to_thread(fingerprint,row['cwd'])
+            inputs[-1]['isolated_vdb']=True
+            output=folder/'reports'/uuid.uuid4().hex/'coverage.json'
+            external=folder/'database/coverage.vdb'
+            report, database=await accumulate(row['cwd'],external,
+                managed_databases(row['cwd'],inputs),output,row['build_id'],token)
+            previous_database=current.get('merged_database')
+            if token:
+                known={run['id'] for run in inputs}
+                inputs.extend(dict(id=identity,artifact=str(output),origin='database')
+                              for identity in external_test_ids(external) if identity not in known)
+            current.update(build_id=row['build_id'],runs=inputs,report=report,updated=time.time(),
+                           database_fingerprint=token,merged_database=database,ingestion_status='ready')
+            for key in ('ingestion_error','failed_fingerprint','failed_at'):current.pop(key,None)
+            atomic(folder/'state.json',current)
+            if previous_database:
+                previous=Path(previous_database)
+                if previous.parent.parent==folder/'reports':
+                    await asyncio.to_thread(shutil.rmtree,previous,True)
+            row.update(coverage_status='merged',coverage_artifact=str(artifact))
+            return
         if config.get('mode', 'per_run') == 'shared':
             report=validate_report(json.loads(artifact.read_text()),row['build_id'])
             current.update(build_id=row['build_id'],runs=inputs,report=report,updated=time.time())
-            if config.get('provider')=='vcs':
-                from .native_vcs import fingerprint
-                current.update(database_fingerprint=fingerprint(row['cwd']),ingestion_status='ready')
-                for key in ('ingestion_error','failed_fingerprint','failed_at'):current.pop(key,None)
             atomic(Path(row['cwd'])/'output/flowcanvas/coverage/state.json',current)
             row['coverage_status']='merged'
             return

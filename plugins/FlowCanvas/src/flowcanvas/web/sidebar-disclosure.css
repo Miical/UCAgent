@@ -1,0 +1,20 @@
+/* Flat, full-width expandable footer in the project sidebar. */
+.sidebar-disclosure{
+  --disclosure-text:var(--text,var(--fg));
+  --disclosure-muted:var(--text-dim,var(--fg-muted));
+  --disclosure-surface:var(--surface,var(--panel));
+  font-size:11px;
+}
+.sidebar-disclosure>summary{
+  display:flex;align-items:center;gap:7px;min-height:38px;padding:6px 12px;
+  box-sizing:border-box;color:var(--disclosure-text);cursor:pointer;list-style:none;
+}
+.sidebar-disclosure>summary::-webkit-details-marker{display:none}
+.sidebar-disclosure>summary:hover{background:color-mix(in srgb,var(--disclosure-text) 2%,var(--disclosure-surface))}
+.sidebar-disclosure>summary:focus-visible{outline:1px solid var(--accent);outline-offset:-1px}
+.sidebar-disclosure-chevron{display:grid;place-items:center;flex:none;width:12px;color:var(--disclosure-muted)}
+.sidebar-disclosure-chevron svg{width:10px;height:10px;fill:none;stroke:currentColor;stroke-width:1.5;transition:transform .15s}
+.sidebar-disclosure[open]>summary .sidebar-disclosure-chevron svg{transform:rotate(90deg)}
+.sidebar-disclosure-title{font-weight:600;white-space:nowrap}
+.sidebar-disclosure-count{margin-inline-start:auto;color:var(--disclosure-muted);font-size:10px;font-variant-numeric:tabular-nums;text-align:right}
+@media(prefers-reduced-motion:reduce){.sidebar-disclosure-chevron svg{transition:none}}

@@ -1,31 +1,41 @@
 <template>
-  <section class="overlay-panel">
+  <section class="overlay-panel" :class="{ 'sidebar-coverage-panel': inCoverageSidebar }">
     <div v-if="coverageUrl && store.graph" class="project-line-coverage">
-      <div class="line-coverage-toolbar"><input v-model="filter" class="line-coverage-search" placeholder="筛选模块…" aria-label="筛选模块" @keydown.esc.prevent.stop="filter=''" /></div>
+      <div class="line-coverage-toolbar">
+        <label class="line-coverage-search-field flowcanvas-search">
+          <input v-model="filter" class="line-coverage-search" placeholder="筛选模块…" aria-label="筛选模块" @keydown.esc.prevent.stop="filter=''" />
+        </label>
+      </div>
       <div class="line-coverage-summary">
         <span>{{ coverageRows.length }} 模块</span>
         <button type="button" class="line-coverage-toggle" :title="allExpanded ? '全部折叠' : '全部展开'" :aria-label="allExpanded ? '全部折叠' : '全部展开'" :disabled="!coverageRows.length" @click="toggleAll">{{ allExpanded ? '全部折叠' : '全部展开' }}</button>
       </div>
       <div v-if="coverageRows.length" class="line-coverage-list tree-scroll">
         <div class="line-coverage-columns"><span>模块实例</span><span>含子模块</span><span>自身</span></div>
-        <div v-for="row in visibleCoverageRows" :key="row.path" class="tree-row coverage-tree-row" :data-instance="row.path" :style="{ paddingLeft: (10 + row.depth * 14) + 'px' }" :class="{ 'is-selected': row.path === store.selection, 'has-children': row.hasChildren, 'is-root': row.depth === 0 }" role="button" tabindex="0" :aria-pressed="row.path === store.selection" :aria-expanded="row.hasChildren ? !collapsedCoverage.has(row.path) : undefined" @click="openSource(row)" @dblclick.stop="openSource(row,undefined,true)" @keydown.enter.self.prevent="openSource(row)" @keydown.space.self.prevent="openSource(row)">
-          <button v-if="row.hasChildren" type="button" class="tree-caret" :aria-label="(collapsedCoverage.has(row.path) ? '展开 ' : '折叠 ') + row.path" @click.stop="toggleCoverageRow(row)" @dblclick.stop><svg viewBox="0 0 16 16" aria-hidden="true" :class="{expanded: !collapsedCoverage.has(row.path)}"><path d="m5 3 6 5-6 5Z"/></svg></button>
+        <div v-for="row in visibleCoverageRows" :key="row.path" class="tree-row coverage-tree-row" :data-instance="row.path" :style="{ '--coverage-depth': row.depth }" :class="{ 'is-selected': row.path === store.selection, 'has-children': row.hasChildren, 'is-root': row.depth === 0 }" role="button" tabindex="0" :aria-pressed="row.path === store.selection" :aria-expanded="row.hasChildren ? !collapsedCoverage.has(row.path) : undefined" @click="openSource(row)" @dblclick.stop="openSource(row,undefined,true)" @keydown.enter.self.prevent="openSource(row)" @keydown.space.self.prevent="openSource(row)">
+          <button v-if="row.hasChildren" type="button" class="tree-caret" :aria-label="(collapsedCoverage.has(row.path) ? '展开 ' : '折叠 ') + row.path" @click.stop="toggleCoverageRow(row)" @dblclick.stop><svg viewBox="0 0 16 16" aria-hidden="true" :class="{expanded: !collapsedCoverage.has(row.path)}"><path d="m6 4 4 4-4 4"/></svg></button>
           <span v-else class="tree-caret tree-caret-leaf" aria-hidden="true"></span>
           <span class="coverage-row-name">
             <span class="tree-inst" :title="row.path">{{ row.path.split('.').at(-1) }}</span>
           </span>
           <span class="coverage-tree-values">
             <span v-for="(metric,index) in [row.subtree,row]" :key="index" class="line-coverage-score" :title="(index ? '自身' : '含子模块') + '：' + metric.covered + '/' + metric.total + ' 覆盖点'">
-              <span class="line-coverage-percent">{{ percentage(metric) }}</span><small>{{ metric.covered }}/{{ metric.total }}</small>
+              <span class="line-coverage-percent" :class="{ 'is-unmeasured': !metric.total }">{{ percentage(metric) }}</span><small v-if="metric.total">{{ metric.covered }}/{{ metric.total }}</small>
               <span class="line-coverage-meter" aria-hidden="true" :style="{'--coverage': (metric.total ? Math.min(100,100*metric.covered/metric.total) : 0) + '%'}"></span>
             </span>
           </span>
         </div>
       </div>
-      <p v-else>当前模块暂无覆盖率数据</p>
+      <p v-else class="line-coverage-empty">当前模块暂无覆盖率数据</p>
       <p v-if="metric==='assert' && coverageRows.length">上方比例表示已尝试的断言，不能代替断言通过结果。</p>
-      <details v-if="metricItems.length" class="metric-details" :open="metric==='assert'">
-        <summary>{{ metric==='assert' ? '断言结果' : '覆盖点明细' }}（{{ metricItems.length }}）</summary>
+      <details v-if="metricItems.length" class="metric-details sidebar-disclosure" :open="metric==='assert'">
+        <summary>
+          <span class="sidebar-disclosure-chevron">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 4 4 4-4 4"/></svg>
+          </span>
+          <span class="sidebar-disclosure-title">{{ metric==='assert' ? '断言结果' : '覆盖点明细' }}</span>
+          <span class="sidebar-disclosure-count">{{ metricItems.length }}</span>
+        </summary>
         <div class="metric-details-scroll"><table>
           <thead><tr><th>实例 / 覆盖点</th><th>源码行</th><template v-if="metric==='assert'"><th>尝试</th><th>真实成功</th><th>失败</th><th>未完成</th></template><th v-else>状态</th></tr></thead>
           <tbody><tr v-for="item in metricItems" :key="item.id" :class="{'metric-failed':item.failures>0}">
@@ -49,7 +59,9 @@ import { computed, ref, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useViewerStore } from '../store.js'
 import { coverageMetricRows, coverageMetricDetails } from '../coverageMetricRows.js'
 const store = useViewerStore()
-const metric = new URLSearchParams(location.search).get('metric') || 'line'
+const params = new URLSearchParams(location.search)
+const metric = params.get('metric') || 'line'
+const inCoverageSidebar = params.get('sidebar') === '1' && params.get('coverageOnly') === '1'
 const projectCoverage = computed(()=>store.projectCoverageState)
 const coverageError = computed(()=>store.projectCoverageError)
 const coverageUrl = (() => {
@@ -177,6 +189,7 @@ onBeforeUnmount(() => { sourceRequest++ })
 .overlay-panel{min-height:100vh;display:flex;flex-direction:column;background:var(--panel);font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
 .project-line-coverage{display:flex;flex-direction:column;flex:1;padding:10px 12px 0}
 .line-coverage-toolbar{display:flex;margin-bottom:9px}
+.line-coverage-search-field{flex:1;min-width:0}
 .line-coverage-search{box-sizing:border-box;min-width:0;width:100%;border:1px solid var(--line);border-radius:5px;padding:6px 9px;background:color-mix(in srgb,var(--accent) 3%,var(--panel));color:var(--fg);font:12px system-ui,-apple-system,"Segoe UI",sans-serif;outline-offset:2px}
 .line-coverage-summary{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;margin:0 -12px;padding:0 12px 7px;border-bottom:1px solid var(--line);color:var(--fg-muted);font-size:11px}
 .line-coverage-summary button{font:inherit;color:var(--fg-muted);background:none;border:0;cursor:pointer;padding:3px 4px;border-radius:4px;margin:0}
@@ -184,7 +197,7 @@ onBeforeUnmount(() => { sourceRequest++ })
 .line-coverage-summary button:disabled{opacity:.45;cursor:default}
 .line-coverage-summary .line-coverage-toggle{margin-left:auto;font-family:inherit;font-size:9px;font-weight:400;white-space:nowrap}
 .line-coverage-list.tree-scroll{flex:1;max-height:none;overflow:visible;margin:0 -12px;padding:8px 12px 28px;background:var(--panel)}
-.coverage-tree-row{box-sizing:border-box;min-height:32px;margin:0;border-radius:4px;gap:6px;padding-top:5px;padding-bottom:5px;outline:1px solid transparent;outline-offset:-1px}
+.coverage-tree-row{box-sizing:border-box;min-height:32px;margin:0;border-radius:4px;gap:6px;padding-inline-start:calc(10px + var(--coverage-depth)*14px);padding-top:5px;padding-bottom:5px;outline:1px solid transparent;outline-offset:-1px}
 .coverage-tree-row:hover{background:color-mix(in srgb,var(--accent) 4%,var(--panel))}
 .coverage-tree-row.is-selected{background:color-mix(in srgb,var(--accent) 7%,var(--panel));outline:0}
 .coverage-tree-row.is-selected .tree-inst{color:var(--fg)}
@@ -193,11 +206,12 @@ onBeforeUnmount(() => { sourceRequest++ })
 .coverage-tree-row.is-root .tree-inst{font-weight:650}
 .coverage-tree-row .tree-module{display:none}
 .coverage-tree-row .tree-caret{width:12px;height:16px;display:grid;place-items:center}
-.tree-caret svg{width:10px;height:10px;fill:currentColor}
+.tree-caret svg{width:10px;height:10px;fill:none;stroke:currentColor;stroke-width:1.5;transition:transform .15s}
 .tree-caret svg.expanded{transform:rotate(90deg)}
 .coverage-tree-values{display:flex;gap:14px;margin-left:auto;flex-shrink:0}
 .line-coverage-score{display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:3px 6px;width:78px;text-align:right;font:400 10px/1.4 system-ui,sans-serif;font-variant-numeric:tabular-nums}
 .line-coverage-percent{font-size:11px;color:var(--fg);font-weight:500}
+.line-coverage-percent.is-unmeasured{color:color-mix(in srgb,var(--fg-muted) 60%,var(--panel));font-weight:400;grid-column:1/-1}
 .line-coverage-score small{font-size:9px;color:var(--fg-muted);font-weight:400}
 .line-coverage-meter{grid-column:1/-1;height:2px;border-radius:2px;background:color-mix(in srgb,var(--fg) 7%,var(--panel));overflow:hidden}
 .line-coverage-meter::before{content:'';display:block;width:var(--coverage);height:100%;background:#36b37e;border-radius:inherit}
@@ -209,6 +223,23 @@ onBeforeUnmount(() => { sourceRequest++ })
 .line-coverage-search::placeholder{color:var(--fg-muted);opacity:.8}
 .line-coverage-summary>span{font-family:inherit;font-size:9px;font-weight:400;color:color-mix(in srgb,var(--fg) 65%,var(--panel))}
 .line-coverage-summary .line-coverage-clear{padding:2px}
+
+/* Match the project sidebar's functional coverage list while retaining both metric columns. */
+.overlay-panel.sidebar-coverage-panel{background:var(--panel)}
+.sidebar-coverage-panel .line-coverage-toolbar{align-items:center;min-height:30px}
+.sidebar-coverage-panel .line-coverage-summary{flex-wrap:nowrap;gap:6px}
+.sidebar-coverage-panel .line-coverage-summary>span{white-space:nowrap}
+.sidebar-coverage-panel .line-coverage-toggle:hover:enabled{color:var(--fg)}
+.sidebar-coverage-panel .line-coverage-list.tree-scroll{padding:6px 8px 16px}
+.sidebar-coverage-panel .line-coverage-columns{padding:3px 14px 6px 9px}
+.sidebar-coverage-panel .coverage-tree-row{padding:5px 14px 5px calc(9px + var(--coverage-depth)*18px);transition:background .15s}
+.sidebar-coverage-panel .coverage-tree-row:hover:not(.is-selected){background:color-mix(in srgb,var(--fg) 4%,var(--panel))}
+.sidebar-coverage-panel .coverage-tree-row:focus-visible{outline:1px solid var(--accent);outline-offset:-2px}
+.sidebar-coverage-panel .coverage-tree-row .tree-inst{font:500 12px/18px system-ui,sans-serif}
+.sidebar-coverage-panel .coverage-tree-row.is-root .tree-inst{font-weight:650}
+.sidebar-coverage-panel .line-coverage-columns span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sidebar-coverage-panel .line-coverage-empty{margin:0 -12px;padding:14px 12px 0}
+@media(prefers-reduced-motion:reduce){.coverage-tree-row,.tree-caret svg{transition:none}}
 </style>
 
 <style scoped>
@@ -218,5 +249,7 @@ onBeforeUnmount(() => { sourceRequest++ })
 </style>
 
 <style scoped>
-.metric-details{margin:12px 0;font-size:12px}.metric-details summary{cursor:pointer}.metric-details-scroll{max-height:360px;overflow:auto}.metric-details table{border-collapse:collapse;width:100%;text-align:left}.metric-details th,.metric-details td{padding:6px 9px;border-bottom:1px solid #8883;white-space:nowrap}.metric-details th{position:sticky;top:0;background:var(--panel-bg,#fff)}.metric-failed{color:#c62828}
+.metric-details{margin:12px 0}.sidebar-coverage-panel .metric-details{margin:0 -12px;border-top:1px solid var(--line)}
+.sidebar-coverage-panel .metric-details-scroll{padding:0 8px 8px 22px}
+.metric-details-scroll{max-height:360px;overflow:auto}.metric-details table{border-collapse:collapse;width:100%;text-align:left}.metric-details th,.metric-details td{padding:6px 9px;border-bottom:1px solid #8883;white-space:nowrap}.metric-details th{position:sticky;top:0;background:var(--panel)}.metric-failed{color:#c62828}
 </style>

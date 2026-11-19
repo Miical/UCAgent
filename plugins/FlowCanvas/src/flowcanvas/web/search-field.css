@@ -1,0 +1,23 @@
+/* Shared search chrome for the project sidebar and its embedded RTL viewer. */
+:is(#project-content,.flowcanvas-project-sidebar) .flowcanvas-search{
+  --search-surface:var(--surface,var(--panel));
+  --search-text:var(--text,var(--fg));
+  --search-muted:var(--text-dim,var(--fg-muted));
+  display:flex;flex:1;align-items:center;gap:5px;min-width:0;padding-inline:7px;
+  border-radius:5px;background:color-mix(in srgb,var(--search-text) 3%,var(--search-surface));cursor:text;
+}
+:is(#project-content,.flowcanvas-project-sidebar) .flowcanvas-search:focus-within{
+  outline:1px solid color-mix(in srgb,var(--accent) 38%,var(--border,var(--line)));
+  background:var(--search-surface);
+}
+:is(#project-content,.flowcanvas-project-sidebar) .flowcanvas-search::before{
+  content:'';width:13px;height:13px;flex:none;background:var(--search-muted);
+  mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.35' stroke-linecap='round'%3E%3Ccircle cx='7' cy='7' r='3.75'/%3E%3Cpath d='m10 10 3 3'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+:is(#project-content,.flowcanvas-project-sidebar) .flowcanvas-search>input{
+  flex:1;min-width:0;width:100%;height:25px;padding:3px 0;box-sizing:border-box;
+  border:0;background:transparent;color:var(--search-text);font:11px/14px system-ui,sans-serif;outline:0;
+}
+:is(#project-content,.flowcanvas-project-sidebar) .flowcanvas-search>input::placeholder{
+  color:var(--search-muted);opacity:.8;
+}

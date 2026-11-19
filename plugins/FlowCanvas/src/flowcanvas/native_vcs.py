@@ -116,19 +116,26 @@ async def run_urg(executable, arguments, root, environment, log_path):
     if process.returncode:raise ValueError('URG extraction failed; see '+str(log_path))
 
 
-async def extract(root, database, output, build_id, *, test_id=None):
+def copy_compile_metadata(database, destination):
+    """Copy VCS design metadata while excluding counters written by simulations."""
+    shutil.copytree(database,destination,ignore=shutil.ignore_patterns('testdata'))
+
+
+async def extract(root, database, output, build_id, *, test_id=None, additional_databases=(), merged_database=None):
     """Run native URG and convert one stable database snapshot into the shared schema."""
     root=Path(root).resolve();output=Path(output);output.parent.mkdir(parents=True,exist_ok=True)
     config=configuration(root);folder=root/'output/flowcanvas/coverage'
     executable=config.get('urg_executable') or shutil.which('urg')
     if not executable:raise ValueError('URG is unavailable; configure urg_executable or put urg on PATH')
-    compile_db=folder/'database/compile.vdb';databases=[str(database)]
-    if compile_db.is_dir():
+    compile_db=folder/'database/compile.vdb';databases=[str(database), *map(str,additional_databases)]
+    legacy_db=folder/'database/coverage.vdb'
+    if not compile_db.is_dir() and (legacy_db/'snps/coverage/db/design').is_dir():
+        compile_db=legacy_db
+    if compile_db.is_dir() and str(compile_db) not in databases:
         # Reuse only compilation metadata, never old runtime tests in a build database.
         metadata=output.parent/'compile.vdb'
         if metadata.exists():shutil.rmtree(metadata)
-        await asyncio.to_thread(shutil.copytree,compile_db,metadata,
-                                ignore=lambda directory,names: ['testdata'] if 'testdata' in names else [])
+        await asyncio.to_thread(copy_compile_metadata,compile_db,metadata)
         databases.insert(0,str(metadata))
     environment=dict(os.environ)
     tool=Path(executable).resolve()
@@ -136,6 +143,8 @@ async def extract(root, database, output, build_id, *, test_id=None):
         environment.setdefault('VCS_HOME',str(tool.parent.parent))
     report_dir=output.parent/'urg-report'
     arguments=['-full64','-dir',*databases]
+    if merged_database is not None:
+        arguments.extend(['-dbname',str(merged_database)])
     if test_id is not None:
         inventory=output.parent/'available-tests.log'
         await run_urg(executable,[*arguments,'-show','availabletests'],root,environment,inventory)
@@ -168,6 +177,31 @@ async def extract(root, database, output, build_id, *, test_id=None):
     atomic(output,report)
     return report
 
+
+
+def external_test_ids(database):
+    """Return the test names in a known external VDB."""
+    tests=database/'snps/coverage/db/testdata'
+    return [path.name for path in sorted(tests.iterdir()) if path.is_dir()]
+
+
+def managed_databases(root, records):
+    """Locate immutable VDB inputs for managed runs accepted in the current epoch."""
+    folder=Path(root)/'output/flowcanvas/test-runs'
+    return [folder/row['id']/'coverage.vdb' for row in records if row.get('isolated_vdb')]
+
+
+async def accumulate(root, external, managed, output, build_id, external_token):
+    """Merge accepted inputs into a new VDB, leaving the previous snapshot intact."""
+    databases=([external] if external_token else [])+list(managed)
+    merged=output.parent/'coverage.vdb'
+    report=await extract(root,databases[0],output,build_id,
+                         additional_databases=databases[1:],merged_database=merged)
+    if not merged.is_dir():
+        raise ValueError('URG did not create the cumulative VDB')
+    if await asyncio.to_thread(writer_active,root) or await asyncio.to_thread(fingerprint,root)!=external_token:
+        raise ValueError('External VCS coverage changed during accumulation; retry after it finishes')
+    return report, str(merged)
 
 def writer_active(root):
     """Recognize local VCS processes still writing the agreed database, including external runs."""

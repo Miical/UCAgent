@@ -37,7 +37,7 @@ a Yes Yes Yes INPUT
 Module Instance : tb.dut
 Instance :
 '''
-    urg=root/'urg';urg.write_text('#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\nassert "-nomdacmp" in sys.argv\np=Path(sys.argv[sys.argv.index("-report")+1]);p.mkdir(parents=True,exist_ok=True)\n(p/"modinfo.txt").write_text('+repr(output)+')\n');urg.chmod(0o755)
+    urg=root/'urg';urg.write_text('#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\nassert "-nomdacmp" in sys.argv\nif "-dbname" in sys.argv: Path(sys.argv[sys.argv.index("-dbname")+1]).mkdir(parents=True)\np=Path(sys.argv[sys.argv.index("-report")+1]);p.mkdir(parents=True,exist_ok=True)\n(p/"modinfo.txt").write_text('+repr(output)+')\n');urg.chmod(0o755)
     atomic(folder/'config.json',dict(provider='vcs',dut_instance='tb.dut',urg_executable=str(urg)))
     return folder,database
 
@@ -61,6 +61,23 @@ async def test_native_extract_uses_fixed_metadata_and_current_sources(tmp_path):
     with pytest.raises(ValueError):CoverageConfig(provider='vcs',tool='vcs',description='Native',extract_command='custom')
     atomic(folder/'build.json',dict(inputs=['../outside']))
     with pytest.raises(ValueError,match='escapes'):build_identity(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_legacy_combined_vdb_preserves_compile_metadata(tmp_path):
+    """Private runs can read a legacy build and clear leaves its design reusable."""
+    folder,database=native_project(tmp_path)
+    design=database/'snps/coverage/db/design'
+    design.mkdir()
+    (design/'origin').write_text('compiled')
+    run=tmp_path/'attempt/coverage.vdb'
+    run.mkdir(parents=True)
+    await extract(tmp_path,run,run.parent/'coverage.json',build_identity(tmp_path))
+    assert (run.parent/'compile.vdb/snps/coverage/db/design/origin').is_file()
+    reset(tmp_path)
+    compile_db=folder/'database/compile.vdb/snps/coverage/db'
+    assert (compile_db/'design/origin').is_file() and not (compile_db/'testdata').exists()
+    assert not database.exists()
 
 
 @pytest.mark.asyncio
@@ -158,7 +175,7 @@ async def test_managed_native_run_uses_builtin_extractor_and_deduplicates_watch(
     from test_case_import import make_case
     from target_test_support import set_case_runners
     folder,database=native_project(tmp_path)
-    identity,_=make_case(tmp_path,'import sys\nfrom pathlib import Path\np=Path(sys.argv[1])/"counter"\np.write_text("fresh")\nprint("READY test_start")\n')
+    identity,_=make_case(tmp_path,'import sys\nfrom pathlib import Path\np=Path(sys.argv[1])/"counter"\np.parent.mkdir(parents=True)\np.write_text("fresh")\nprint("READY test_start")\n')
     set_case_runners(Cases(tmp_path),dict(command=shlex.quote(sys.executable)+' test_start.py {coverage_db} {coverage_name} {case}',description='Native fixture'))
     configure(tmp_path,{'coverage':dict(provider='vcs',tool='vcs-urg',description='Native')},Cases(tmp_path).read().revision)
     runner=Runs();watch=CoverageWatch(None,runner,0)
@@ -168,6 +185,9 @@ async def test_managed_native_run_uses_builtin_extractor_and_deduplicates_watch(
     assert result['coverage_status']=='merged',result
     assert result['status']=='completed'
     before=state(tmp_path)
+    assert Path(row['coverage_db']).parent==Path(row['run_dir'])
+    assert Path(before['merged_database']).is_dir()
+    assert {entry['id'] for entry in before['runs']}=={'one',row['id']}
     await watch.tick(tmp_path);await watch.tick(tmp_path)
     assert state(tmp_path)==before
 

@@ -10,8 +10,9 @@ import signal
 import time
 import uuid
 import urllib.request
+from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from .targets import atomic
 from .testcases import Cases
 
@@ -22,6 +23,8 @@ class TestRuns:
         self.processes = {}
         self.result_cache = {}
         self.lock = asyncio.Lock()
+        from .test_batches import TestBatches
+        self.batches = TestBatches(self)
 
     def folder(self, root):
         path = Path(root)/'output/flowcanvas/test-runs'
@@ -75,7 +78,7 @@ class TestRuns:
         task = self.tasks.get(run_id)
         if task:
             process = self.processes.get(run_id)
-            publishing_native = (run.get('coverage_config') or {}).get('provider') == 'toffee' and (
+            publishing_native = (run.get('coverage_config') or {}).get('provider') in {'vcs','toffee'} and (
                 process is not None and process.returncode is not None
             )
             if not publishing_native:
@@ -84,7 +87,7 @@ class TestRuns:
             await asyncio.gather(task, return_exceptions=True)
         return self.output(root, run_id)
 
-    async def start(self, root, case_id, mode="test", ready_pattern="", startup_timeout=120):
+    async def start(self, root, case_id, mode="test", ready_pattern="", startup_timeout=120, *, batch=None):
         if mode not in {'test','startup_smoke','coverage_smoke'}:
             raise ValueError('Unknown run mode')
         if mode in {'startup_smoke','coverage_smoke'}:
@@ -93,8 +96,16 @@ class TestRuns:
             re.compile(ready_pattern)
         async with self.lock:
             store=Cases(root); data=store.read()
-            if any(r['status'] in {'starting','running'} for r in self.list(root)):
-                raise ValueError('本项目已有命令运行中，请等待完成，避免覆盖共享构建和日志')
+            active_batch=self.batches.active.get(store.root)
+            active_runs=[row for row in self.list(root) if row['id'] in self.tasks]
+            if batch is None and (active_batch or active_runs):
+                raise ValueError('本项目已有测试运行，请等待结束')
+            if batch is not None and (
+                not active_batch or active_batch[0] is not batch or batch['status']!='running'
+                or len(active_runs)>=batch['concurrency']
+                or any(row['case_id']==case_id for row in active_runs)
+            ):
+                raise ValueError('批次已停止或运行名额已占用')
             if mode=='coverage_smoke' and (data.coverage is None or
                     (data.coverage.mode!='shared' and data.coverage.provider!='toffee')):
                 raise ValueError('Coverage smoke requires configured shared coverage or native Toffee coverage')
@@ -118,8 +129,9 @@ class TestRuns:
             run_dir=folder/run_id;run_dir.mkdir()
             wave_dir=run_dir/'waveforms';wave_dir.mkdir()
             from .coverage_runtime import render
-            database=(run_dir/'coverage.vdb' if mode in {'startup_smoke','coverage_smoke'} else
-                      store.root/'output/flowcanvas/coverage/database/coverage.vdb')
+            database=run_dir/'coverage.vdb'
+            if mode=='test' and data.coverage and data.coverage.provider=='commands' and data.coverage.mode=='shared':
+                database=store.root/'output/flowcanvas/coverage/database/coverage.vdb'
             if data.coverage and data.coverage.mode=='shared':
                 if not all(token in template.command for token in ('{coverage_db}','{coverage_name}')):
                     raise ValueError('Shared coverage runner requires {coverage_db} and {coverage_name}')
@@ -133,6 +145,8 @@ class TestRuns:
             row['run_dir']=str(run_dir)
             row['wave_dir']=str(wave_dir)
             row['coverage_db']=str(database)
+            if batch is not None:
+                row['batch_id']=batch['id']
             if mode in {'startup_smoke','coverage_smoke'}:
                 from .smoke_runs import case_identity
                 row.update(mode=mode,smoke_status='pending',ready_pattern=ready_pattern,
@@ -256,6 +270,7 @@ class TestRuns:
         return stdout.decode('utf-8',errors='replace')
 
     async def close(self):
+        await self.batches.close()
         tasks=list(self.tasks.values())
         for task in tasks:task.cancel()
         await asyncio.gather(*tasks,return_exceptions=True)
@@ -284,10 +299,14 @@ def routes(projects,runner):
         from . import native_toffee
         async with runner.lock:
             project=root(identity)
-            if any(run['id'] in runner.tasks or run['status'] in {'starting','running'} for run in runner.list(project)):
+            if Path(project).resolve() in runner.batches.active or any(run['id'] in runner.tasks for run in runner.list(project)):
                 raise HTTPException(409,'Cannot clear accumulated coverage while a test is active')
             if native_toffee.enabled(project):
                 return native_toffee.reset(project)
+            if (Path(project)/'output/flowcanvas/coverage/config.json').is_file():
+                from .native_vcs import writer_active
+                if await asyncio.to_thread(writer_active,project):
+                    raise HTTPException(409,'Cannot clear accumulated coverage while an external VCS writer is active')
             return reset(project)
     @router.get('/{identity}/test-runs')
     def runs(identity:str,case_id:str|None=None,include_smoke:bool=False):
@@ -307,6 +326,33 @@ def routes(projects,runner):
     async def start(identity:str,request:RunRequest):
         try:return await runner.start(root(identity),request.case_id)
         except (ValueError,OSError,SyntaxError) as exc:raise HTTPException(422,str(exc)) from None
+
+    from .test_batches import MAX_CONCURRENCY
+
+    class BatchRequest(BaseModel):
+        case_ids: list[str] = Field(min_length=1,max_length=1000)
+        concurrency: Annotated[int, Field(ge=1,le=MAX_CONCURRENCY)] | Literal['auto'] = 2
+
+    @router.get('/{identity}/test-batches')
+    async def latest_batch(identity: str):
+        """Read the latest project batch and the supported concurrency limit."""
+        from .test_batches import concurrency_limit
+        project = root(identity)
+        return dict(batch=runner.batches.latest(project),
+                    max_concurrency=concurrency_limit(Cases(project).read().coverage))
+
+    @router.post('/{identity}/test-batches')
+    async def start_batch(identity: str, request: BatchRequest):
+        """Submit selected IDs without opening an individual run page."""
+        try:
+            return await runner.batches.start(root(identity),request.case_ids,request.concurrency)
+        except (ValueError,OSError,SyntaxError) as exc:
+            raise HTTPException(422,str(exc)) from None
+
+    @router.post('/{identity}/test-batches/{batch_id}/stop')
+    async def stop_batch(identity: str, batch_id: str):
+        """Stop the project batch and return its final progress."""
+        return await runner.batches.stop(root(identity),batch_id)
 
     def coverage_links(identity, item_id, loader):
         project=root(identity)

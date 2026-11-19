@@ -62,7 +62,7 @@ window.FlowCanvasTargetCoveragePanel=function({panel,project,content,refresh,fai
     if(active==='functional')return;
     if(!frame.src||new URL(frame.src).searchParams.get('metric')!==active){
       const view='/api/chat/projects/'+encodeURIComponent(project.id)+'/rtl-view';
-      frame.src='/rtl-viewer/?coverageOnly=1&metric='+encodeURIComponent(active)+'&view='+encodeURIComponent(view);
+      frame.src='/rtl-viewer/?sidebar=1&coverageOnly=1&metric='+encodeURIComponent(active)+'&view='+encodeURIComponent(view);
     }
   }
 

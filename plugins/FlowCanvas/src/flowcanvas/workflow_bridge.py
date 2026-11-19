@@ -149,6 +149,9 @@ class WorkflowBridge:
                     raise ValueError('请选择工作区访问或完全访问模式')
                 from .testcases import configure
                 async with runner.lock:
+                    from pathlib import Path
+                    if Path(root).resolve() in runner.batches.active:
+                        raise ValueError('Wait until the batch ends before configuring execution')
                     return await asyncio.to_thread(configure,root,settings or {},expected_revision)
             if operation == 'list':
                 from .testcases import Cases, CasesDefinition

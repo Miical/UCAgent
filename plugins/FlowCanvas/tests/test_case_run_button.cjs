@@ -10,7 +10,7 @@ function fixture(targets){
     querySelector(){return this.caption;},append(caption){this.caption=caption;},
   });
   const buttons=targets.map(fakeButton),detail=[];
-  const context={caseMode:true,panel:{querySelectorAll:selector=>selector==='[data-case-run]'?buttons:[]},
+  const context={caseMode:true,batchStarting:false,batch:null,paintBatchSelection(){},panel:{querySelectorAll:selector=>selector==='[data-case-run]'?buttons:[]},
     document:{querySelectorAll:()=>detail},data:{targets},pendingRun:null,runCases:new Set(),runsLoaded:true,
     el:(_tag,_class,textContent)=>({textContent,setAttribute(){}}),queueMicrotask,
     smallAction:(_label,_path,onclick)=>Object.assign(fakeButton(),{onclick}),

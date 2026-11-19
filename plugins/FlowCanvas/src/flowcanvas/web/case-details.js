@@ -20,8 +20,46 @@ window.FlowCanvasDetailSection=function(owner,label,key=label){
   section.open=states.get(key)!==false;section.ontoggle=()=>states.set(key,section.open);return section;
 };
 
+/** Present both directions of coverage association as the same flat, navigable list. */
+window.FlowCanvasCoverageGroup=function(container,{label,kind}){
+  const el=(tag,cls,text)=>{const node=document.createElement(tag);if(cls)node.className=cls;if(text!==undefined)node.textContent=text;return node;};
+  const group=el('div','coverage-link-group');
+  group.dataset.kind=kind;
+  const count=el('span','coverage-link-count'),body=el('div','coverage-link-body');
+  if(label){
+    const heading=el('div','coverage-link-heading');
+    heading.append(el('h5','',label),count);
+    group.append(heading);
+  }
+  group.append(body);container.append(group);
+  function list(rows,nested=false){
+    const entries=el('ul','coverage-link-list'+(nested?' coverage-link-children':''));
+    for(const row of rows){
+      const entry=el('li','coverage-link-entry');
+      const link=el('button','coverage-link-row');
+      link.type='button';link.disabled=!row.open;
+      if(row.open)link.onclick=row.open;
+      link.append(el('span','coverage-link-name',row.label));
+      if(row.kind)link.append(el('span','coverage-link-kind',row.kind));
+      const arrow=el('span','coverage-link-arrow');
+      arrow.innerHTML='<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9m-4-4 4 4-4 4"/></svg>';
+      link.append(arrow);entry.append(link);
+      if(row.description)entry.append(el('p','coverage-link-description',row.description));
+      if(row.children?.length)entry.append(list(row.children,true));
+      entries.append(entry);
+    }
+    return entries;
+  }
+  function render(rows,message,total=rows.length){
+    count.textContent=total||'';
+    body.replaceChildren(rows.length?list(rows):el('p','coverage-link-empty',message));
+  }
+  render([],'正在读取…');
+  return render;
+};
+
 /** Place a short binding near the upper third, or show its start with a few lines of context. */
-window.FlowCanvasScrollToSourceLine=function(panel,row,endRow=row){
+window.FlowCanvasScrollToSourceLine=function(panel,row,endRow=row,{pad=true}={}){
   if(!row)return;
   requestAnimationFrame(()=>{
     if(!panel.contains(row)||!row.getClientRects().length)return;
@@ -36,6 +74,10 @@ window.FlowCanvasScrollToSourceLine=function(panel,row,endRow=row){
       return;
     }
     const anchor=Math.max(height/3,rangeHeight/2);
+    if(!pad){
+      panel.scrollTop=Math.max(0,offset+rangeHeight/2-anchor);
+      return;
+    }
     const midpoint=rowRect.top+rangeHeight/2;
     const contentEnd=panel.lastElementChild.getBoundingClientRect().bottom;
     const before=Math.ceil(Math.max(0,anchor-offset-rangeHeight/2));
@@ -79,9 +121,7 @@ window.FlowCanvasCaseDetails=function(host,project,createRunButton){
   function section(label,key=label){const node=label==='波形'?el('section','case-section'):window.FlowCanvasDetailSection(host,label,selected.id+':'+tab+':'+key);if(label==='波形')node.append(el('h4','module-section-heading',label));body.append(node);if(label==='AI 解读'&&tab==='wave'){waveExplanation=node;window.FlowCanvasCaseWorkspace?.setWaveAnalysis(project().id,selected.id,node);}return node;}
   /** Render a labeled value using the shared section layout. */
   function field(label,value,code=false){section(label).append(el(code?'pre':'p','',value||'尚未填写'));}
-  function coverageTree(host,rows,empty){
-    host.replaceChildren();
-    if(!rows.length){host.append(el('p','case-detail-empty',empty));return;}
+  function coverageTree(render,rows,empty){
     const ids=new Set(rows.map(row=>row.id));
     const children=new Map();
     for(const row of rows){
@@ -89,32 +129,30 @@ window.FlowCanvasCaseDetails=function(host,project,createRunButton){
       if(!children.has(parent))children.set(parent,[]);
       children.get(parent).push(row);
     }
-    const tree=parent=>{
-      const list=el('ul','module-child-list case-coverage-tree');
-      for(const row of children.get(parent)||[]){
-        const item=el('li'),link=el('button','goal-detail-child',row.name);
-        link.type='button';link.disabled=row.available===false;
-        link.onclick=()=>document.dispatchEvent(new CustomEvent('flowcanvas-case-restore',{
-          detail:{project_id:project().id,case_id:row.id,coverageLink:true}
-        }));
-        item.append(link,el('small','case-coverage-kind',({group:'功能组',point:'功能点',testpoint:'测试点'})[row.kind]));
-        if(children.has(row.id))item.append(tree(row.id));
-        list.append(item);
-      }
-      return list;
-    };
-    host.append(tree(null));
+    const build=parent=>(children.get(parent)||[]).map(row=>({
+      label:row.name,
+      kind:({group:'功能组',point:'功能点',testpoint:'测试点'})[row.kind],
+      open:row.available===false?null:()=>document.dispatchEvent(new CustomEvent('flowcanvas-case-restore',{
+        detail:{project_id:project().id,case_id:row.id,coverageLink:true}
+      })),
+      children:build(row.id)
+    }));
+    render(build(null),empty,rows.length);
   }
   function showCoverageOverview(){
-    const part=section('关联验证目标'),planned=el('div','case-coverage-links'),actual=el('div','case-coverage-links');
-    part.append(el('h5','','计划覆盖'),planned,el('h5','','本批实际命中'),actual);
-    coverageSections={planned,actual,signature:''};
+    const content=el('div','coverage-link-groups');
+    section('关联验证目标').append(content);
+    coverageSections={
+      planned:window.FlowCanvasCoverageGroup(content,{label:'计划覆盖',kind:'planned'}),
+      actual:window.FlowCanvasCoverageGroup(content,{label:'本批实际命中',kind:'actual'}),
+      signature:''
+    };
     refreshCoverageLinks();
   }
   function showRunCoverage(){
-    const actual=el('div','case-coverage-links');
-    section('本次实际命中').append(actual);
-    coverageSections={actual,signature:''};
+    const content=el('div','coverage-link-groups');
+    section('本次实际命中').append(content);
+    coverageSections={actual:window.FlowCanvasCoverageGroup(content,{kind:'actual'}),signature:''};
     refreshCoverageLinks();
   }
   async function refreshCoverageLinks(){
@@ -132,7 +170,10 @@ window.FlowCanvasCaseDetails=function(host,project,createRunButton){
       const empty=({pending:'运行结束后更新',unavailable:'暂无覆盖数据',partial:'暂无可确认的命中'})[result.status]||'暂无命中';
       coverageTree(parts.actual,overview?result.actual:result.targets,empty);
     }catch(error){
-      if(parts===coverageSections&&!parts.signature)parts.actual.replaceChildren(el('p','case-detail-empty','暂时无法读取覆盖关联'));
+      if(parts===coverageSections&&!parts.signature){
+        parts.planned?.([],'暂时无法读取覆盖关联');
+        parts.actual([],'暂时无法读取覆盖关联');
+      }
     }finally{
       coveragePolling=false;
       if(parts!==coverageSections&&coverageSections)refreshCoverageLinks();
